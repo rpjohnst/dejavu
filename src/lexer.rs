@@ -2,16 +2,16 @@ use symbol::Symbol;
 use token::{Token, BinOp, Delim};
 use {SourceFile, Span};
 
-pub struct Reader<'a> {
-    source_file: &'a SourceFile,
+pub struct Reader<'s> {
+    source_file: &'s SourceFile,
 
     current: Option<char>,
     position: usize,
     next_position: usize,
 }
 
-impl<'a> Reader<'a> {
-    pub fn new(source_file: &'a SourceFile) -> Reader<'a> {
+impl<'s> Reader<'s> {
+    pub fn new(source_file: &'s SourceFile) -> Reader<'s> {
         let mut reader = Reader {
             source_file: source_file,
 

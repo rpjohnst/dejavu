@@ -3,6 +3,8 @@ use Span;
 
 #[derive(PartialEq, Debug)]
 pub enum Stmt {
+    Error(Expr),
+
     Assign(Option<Op>, Box<(Expr, Span)>, Box<(Expr, Span)>),
     Invoke(Call),
     Declare(Declare, Box<[(Symbol, Span)]>),
