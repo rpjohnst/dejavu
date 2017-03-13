@@ -1,12 +1,17 @@
-#![feature(optin_builtin_traits)]
+#![feature(optin_builtin_traits, box_patterns, box_syntax)]
 
 use std::path::PathBuf;
 
 mod symbol;
+mod entity;
+
 mod token;
-mod lexer;
 mod ast;
+mod ssa;
+
+mod lexer;
 mod parser;
+mod codegen;
 
 pub struct SourceFile {
     pub name: PathBuf,
@@ -19,6 +24,7 @@ pub struct Span {
     pub high: usize,
 }
 
+pub use codegen::Codegen;
 pub use parser::Parser;
 pub use lexer::Reader;
 
