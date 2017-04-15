@@ -1,8 +1,8 @@
 use symbol::Symbol;
-use token::{Token, BinOp, Delim};
+use front::token::{Token, BinOp, Delim};
 use {SourceFile, Span};
 
-pub struct Reader<'s> {
+pub struct Lexer<'s> {
     source_file: &'s SourceFile,
 
     current: Option<char>,
@@ -10,9 +10,9 @@ pub struct Reader<'s> {
     next_position: usize,
 }
 
-impl<'s> Reader<'s> {
-    pub fn new(source_file: &'s SourceFile) -> Reader<'s> {
-        let mut reader = Reader {
+impl<'s> Lexer<'s> {
+    pub fn new(source_file: &'s SourceFile) -> Lexer<'s> {
+        let mut lexer = Lexer {
             source_file: source_file,
 
             current: None,
@@ -20,8 +20,8 @@ impl<'s> Reader<'s> {
             next_position: 0,
         };
 
-        reader.advance_char();
-        reader
+        lexer.advance_char();
+        lexer
     }
 
     pub fn read_token(&mut self) -> (Token, Span) {
@@ -317,14 +317,14 @@ mod tests {
     #[test]
     fn spans() {
         let source = setup("/* comment */ var foo; foo = 3");
-        let mut reader = Reader::new(&source);
+        let mut lexer = Lexer::new(&source);
 
-        assert_eq!(reader.read_token(), (keyword("var"), span(14, 17)));
-        assert_eq!(reader.read_token(), (ident("foo"), span(18, 21)));
-        assert_eq!(reader.read_token(), (Token::Semicolon, span(21, 22)));
-        assert_eq!(reader.read_token(), (ident("foo"), span(23, 26)));
-        assert_eq!(reader.read_token(), (Token::Eq, span(27, 28)));
-        assert_eq!(reader.read_token(), (real("3"), span(29, 30)));
-        assert_eq!(reader.read_token(), (Token::Eof, span(30, 30)));
+        assert_eq!(lexer.read_token(), (keyword("var"), span(14, 17)));
+        assert_eq!(lexer.read_token(), (ident("foo"), span(18, 21)));
+        assert_eq!(lexer.read_token(), (Token::Semicolon, span(21, 22)));
+        assert_eq!(lexer.read_token(), (ident("foo"), span(23, 26)));
+        assert_eq!(lexer.read_token(), (Token::Eq, span(27, 28)));
+        assert_eq!(lexer.read_token(), (real("3"), span(29, 30)));
+        assert_eq!(lexer.read_token(), (Token::Eof, span(30, 30)));
     }
 }

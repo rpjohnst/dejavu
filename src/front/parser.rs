@@ -2,13 +2,13 @@ use std::mem;
 use std::str::FromStr;
 
 use symbol::{Symbol, keyword};
-use token::{Token, Delim, BinOp};
-use lexer::Reader;
-use ast;
+use front::token::{Token, Delim, BinOp};
+use front::Lexer;
+use front::ast;
 use {ErrorHandler, Span};
 
 pub struct Parser<'s, 'e> {
-    reader: Reader<'s>,
+    reader: Lexer<'s>,
     errors: &'e ErrorHandler,
 
     current: Token,
@@ -16,7 +16,7 @@ pub struct Parser<'s, 'e> {
 }
 
 impl<'s, 'e> Parser<'s, 'e> {
-    pub fn new(reader: Reader<'s>, errors: &'e ErrorHandler) -> Parser<'s, 'e> {
+    pub fn new(reader: Lexer<'s>, errors: &'e ErrorHandler) -> Parser<'s, 'e> {
         let mut parser = Parser {
             reader: reader,
             errors: errors,
@@ -57,7 +57,7 @@ impl<'s, 'e> Parser<'s, 'e> {
     pub fn parse_statement(&mut self) -> (ast::Stmt, Span) {
         let low = self.span.low;
 
-        use token::Token::*;
+        use front::token::Token::*;
         use symbol::keyword::*;
 
         #[allow(non_upper_case_globals)]
@@ -94,9 +94,9 @@ impl<'s, 'e> Parser<'s, 'e> {
             _ => (),
         }
 
-        use token::Token::*;
-        use token::BinOp::*;
-        use ast::Op::*;
+        use front::token::Token::*;
+        use front::token::BinOp::*;
+        use front::ast::Op::*;
         let op = match self.current {
             Eq | ColonEq => None,
             BinOpEq(Plus) => Some(Add),
@@ -414,7 +414,7 @@ impl<'s, 'e> Parser<'s, 'e> {
     fn parse_prefix_expression(&mut self) -> (ast::Expr, Span, bool) {
         let low = self.span.low;
 
-        use token::Token::*;
+        use front::token::Token::*;
         use symbol::keyword::*;
 
         let (current, span) = self.advance_token();
@@ -537,8 +537,8 @@ enum Infix {
 
 impl Infix {
     fn from_token(token: Token) -> Option<(Infix, usize)> {
-        use ast::Binary::*;
-        use ast::Op::*;
+        use front::ast::Binary::*;
+        use front::ast::Op::*;
 
         let op = match token {
             Token::Dot => Infix::Access,
@@ -596,11 +596,12 @@ impl Infix {
 
 #[cfg(test)]
 mod tests {
-    use {Parser, Reader, Span, SourceFile, ErrorHandler};
+    use {Span, SourceFile, ErrorHandler};
+    use front::{Parser, Lexer};
 
     use std::path::PathBuf;
     use symbol::Symbol;
-    use ast::*;
+    use front::ast::*;
 
     fn setup(source: &str) -> SourceFile {
         SourceFile {
@@ -621,7 +622,7 @@ mod tests {
             show_message(x * y) \
         }");
         let errors = ErrorHandler;
-        let reader = Reader::new(&source);
+        let reader = Lexer::new(&source);
         let mut parser = Parser::new(reader, &errors);
 
         let x = Symbol::intern("x");
@@ -655,7 +656,7 @@ mod tests {
     fn precedence() {
         let source = setup("x + y * (3 + z)");
         let errors = ErrorHandler;
-        let reader = Reader::new(&source);
+        let reader = Lexer::new(&source);
         let mut parser = Parser::new(reader, &errors);
 
         let x = Symbol::intern("x");

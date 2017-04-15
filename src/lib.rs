@@ -5,13 +5,9 @@ use std::path::PathBuf;
 mod symbol;
 mod entity;
 
-mod token;
-mod ast;
-mod ssa;
-
-mod lexer;
-mod parser;
-mod codegen;
+pub mod front;
+pub mod back;
+pub mod vm;
 
 pub struct SourceFile {
     pub name: PathBuf,
@@ -23,10 +19,6 @@ pub struct Span {
     pub low: usize,
     pub high: usize,
 }
-
-pub use codegen::Codegen;
-pub use parser::Parser;
-pub use lexer::Reader;
 
 pub struct ErrorHandler;
 

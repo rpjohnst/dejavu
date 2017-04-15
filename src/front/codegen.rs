@@ -1,7 +1,7 @@
 use std::{mem, iter};
-use ast;
-use ssa;
 use symbol::{Symbol, keyword};
+use front::ast;
+use back::ssa;
 use {ErrorHandler, Span};
 
 pub struct Codegen<'e> {
@@ -52,8 +52,9 @@ impl<'e> Codegen<'e> {
         }
     }
 
-    pub fn compile(&mut self, program: &(ast::Stmt, Span)) {
+    pub fn compile(mut self, program: &(ast::Stmt, Span)) -> ssa::Function {
         self.emit_statement(program);
+        self.function
     }
 
     fn emit_statement(&mut self, statement: &(ast::Stmt, Span)) {
