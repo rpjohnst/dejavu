@@ -1,21 +1,25 @@
-use {ErrorHandler};
 use back::ssa;
+use back::analysis::*;
+use back::regalloc::*;
 use vm::code;
 
-pub struct Codegen<'e> {
+pub struct Codegen {
     function: code::Function,
-    errors: &'e ErrorHandler,
 }
 
-impl<'e> Codegen<'e> {
-    pub fn new(errors: &'e ErrorHandler) -> Codegen<'e> {
+impl Codegen {
+    pub fn new() -> Codegen {
         Codegen {
             function: code::Function::new(),
-            errors: errors,
         }
     }
 
     pub fn compile(mut self, program: &ssa::Function) -> code::Function {
+        let control_flow = ControlFlow::compute(program);
+        let liveness = Liveness::compute(program, &control_flow);
+        let interference = Interference::build(program, &liveness);
+        let registers = interference.color();
+
         self.function
     }
 }

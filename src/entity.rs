@@ -17,6 +17,26 @@ impl<K, V> EntityMap<K, V> where K: Entity {
         EntityMap { keys: PhantomData, values: Vec::new() }
     }
 
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    fn contains_key(&self, k: K) -> bool {
+        k.index() < self.values.len()
+    }
+
+    pub fn get(&self, k: K) -> Option<&V> {
+        self.values.get(k.index())
+    }
+
+    pub fn keys(&self) -> Keys<K> {
+        Keys {
+            pos: 0,
+            len: self.values.len(),
+            key: PhantomData,
+        }
+    }
+
     pub fn push(&mut self, v: V) -> K {
         let k = self.next_key();
         self.values.push(v);
@@ -25,6 +45,31 @@ impl<K, V> EntityMap<K, V> where K: Entity {
 
     fn next_key(&self) -> K {
         K::new(self.values.len())
+    }
+
+    pub fn swap(&mut self, a: K, b: K) {
+        self.values.swap(a.index(), b.index())
+    }
+}
+
+impl<K, V> EntityMap<K, V> where K: Entity, V: Clone + Default {
+    pub fn with_capacity(n: usize) -> Self {
+        let map = EntityMap {
+            keys: PhantomData,
+            values: vec![V::default(); n],
+        };
+        map
+    }
+
+    pub fn resize(&mut self, n: usize) {
+        self.values.resize(n, V::default());
+    }
+
+    pub fn ensure(&mut self, k: K) -> &mut V {
+        if !self.contains_key(k) {
+            self.resize(k.index() + 1);
+        }
+        &mut self.values[k.index()]
     }
 }
 
@@ -41,6 +86,45 @@ impl<K, V> IndexMut<K> for EntityMap<K, V> where K: Entity {
         &mut self.values[k.index()]
     }
 }
+
+pub struct Keys<K> {
+    pos: usize,
+    len: usize,
+    key: PhantomData<K>,
+}
+
+impl<K> Iterator for Keys<K> where K: Entity {
+    type Item = K;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos < self.len {
+            let key = K::new(self.pos);
+            self.pos += 1;
+            Some(key)
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len - self.pos;
+        (len, Some(len))
+    }
+}
+
+impl<K> DoubleEndedIterator for Keys<K> where K: Entity {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.pos < self.len {
+            self.len -= 1;
+            let key = K::new(self.len);
+            Some(key)
+        } else {
+            None
+        }
+    }
+}
+
+impl<K> ExactSizeIterator for Keys<K> where K: Entity {}
 
 #[cfg(test)]
 mod tests {

@@ -3,13 +3,13 @@ use entity::{Entity, EntityMap};
 use symbol::Symbol;
 
 pub struct Function {
-    blocks: EntityMap<Block, Body>,
-    values: EntityMap<Value, Instruction>,
+    pub blocks: EntityMap<Block, BlockBody>,
+    pub values: EntityMap<Value, Instruction>,
 }
 
 impl Function {
     pub fn new() -> Self {
-        let entry = Body {
+        let entry = BlockBody {
             arguments: vec![],
             instructions: vec![],
         };
@@ -25,6 +25,50 @@ impl Function {
 
     pub fn entry(&self) -> Block {
         Block(0)
+    }
+
+    pub fn successors(&self, block: Block) -> Vec<Block> {
+        let value = *self.blocks[block].instructions.last()
+            .expect("empty block");
+
+        match self.values[value] {
+            Instruction::Jump(block, _) => vec![block],
+            Instruction::Branch(_, t, _, f, _) => vec![t, f],
+            Instruction::Return(_) | Instruction::Exit => vec![],
+
+            _ => panic!("corrupt block"),
+        }
+    }
+
+    pub fn uses(&self, value: Value) -> Vec<Value> {
+        match self.values[value] {
+            Instruction::Unary(_, value) => vec![value],
+            Instruction::Binary(_, left, right) => vec![left, right],
+
+            Instruction::Load(value, _, [i, j]) => vec![value, i, j],
+            Instruction::Store(lvalue, _, [i, j], rvalue) => vec![lvalue, i, j, rvalue],
+
+            Instruction::Call(function, box ref arguments) => {
+                let mut uses = Vec::with_capacity(1 + arguments.len());
+                uses.push(function);
+                uses.extend(arguments);
+                uses
+            }
+            Instruction::Jump(_, box ref arguments) => arguments.iter().cloned().collect(),
+            Instruction::Branch(value, _, box ref t, _, box ref f) => {
+                let mut uses = Vec::with_capacity(1 + t.len() + f.len());
+                uses.push(value);
+                uses.extend(t);
+                uses.extend(f);
+                uses
+            }
+            Instruction::Return(value) => vec![value],
+
+            Instruction::With(value) => vec![value],
+            Instruction::Next(value) => vec![value],
+
+            _ => vec![],
+        }
     }
 
     pub fn emit_constant(&mut self, value: Constant) -> Value {
@@ -44,7 +88,7 @@ impl Function {
     }
 
     pub fn make_block(&mut self) -> Block {
-        let block = Body {
+        let block = BlockBody {
             arguments: vec![],
             instructions: vec![],
         };
@@ -53,9 +97,9 @@ impl Function {
     }
 }
 
-pub struct Body {
-    arguments: Vec<Value>,
-    instructions: Vec<Value>,
+pub struct BlockBody {
+    pub arguments: Vec<Value>,
+    pub instructions: Vec<Value>,
 }
 
 #[derive(PartialEq, Debug)]
