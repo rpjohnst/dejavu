@@ -45,8 +45,23 @@ impl Function {
             Instruction::Unary(_, value) => vec![value],
             Instruction::Binary(_, left, right) => vec![left, right],
 
-            Instruction::Load(value, _, [i, j]) => vec![value, i, j],
-            Instruction::Store(lvalue, _, [i, j], rvalue) => vec![lvalue, i, j, rvalue],
+            Instruction::LoadField(scope, _) => vec![scope],
+            Instruction::LoadIndex(array, box ref indices) => {
+                let mut uses = Vec::with_capacity(1 + indices.len());
+                uses.push(array);
+                uses.extend(indices);
+                uses
+            }
+
+            Instruction::StoreDynamic(_, value) => vec![value],
+            Instruction::StoreField(scope, _, value) => vec![scope, value],
+            Instruction::StoreIndex(array, box ref indices, value) => {
+                let mut uses = Vec::with_capacity(1 + indices.len() + 1);
+                uses.push(array);
+                uses.extend(indices);
+                uses.push(value);
+                uses
+            }
 
             Instruction::Call(function, box ref arguments) => {
                 let mut uses = Vec::with_capacity(1 + arguments.len());
@@ -69,10 +84,6 @@ impl Function {
 
             _ => vec![],
         }
-    }
-
-    pub fn emit_constant(&mut self, value: Constant) -> Value {
-        self.values.push(Instruction::Immediate(value))
     }
 
     pub fn emit_instruction(&mut self, block: Block, inst: Instruction) -> Value {
@@ -108,11 +119,17 @@ pub enum Instruction {
     Unary(Unary, Value),
     Binary(Binary, Value, Value),
 
-    Declare(Value, Symbol),
-    Load(Value, Symbol, [Value; 2]),
-    Store(Value, Symbol, [Value; 2], Value),
-
     Argument,
+    Declare(f64, Symbol),
+
+    LoadDynamic(Symbol),
+    LoadField(Value, Symbol),
+    LoadIndex(Value, Box<[Value]>),
+
+    StoreDynamic(Symbol, Value),
+    StoreField(Value, Symbol, Value),
+    StoreIndex(Value, Box<[Value]>, Value),
+
     Call(Value, Box<[Value]>),
     Jump(Block, Box<[Value]>),
     Branch(Value, Block, Box<[Value]>, Block, Box<[Value]>),

@@ -1,4 +1,4 @@
-use std::{mem, iter};
+use std::mem;
 use symbol::{Symbol, keyword};
 use front::ast;
 use back::ssa;
@@ -19,17 +19,21 @@ pub struct Codegen<'e> {
     current_default: Option<ssa::Block>,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-struct Lvalue(ssa::Value, Symbol, [ssa::Value; 2]);
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+enum Lvalue {
+    Local(Symbol),
+    Field(ssa::Value, Symbol),
+    Index(ssa::Value, Box<[ssa::Value]>),
+}
 
-const ONE: ssa::Constant = ssa::Constant::Real(1.0);
-const ZERO: ssa::Constant = ssa::Constant::Real(0.0);
-const SELF: ssa::Constant = ssa::Constant::Real(-1.0);
-const OTHER: ssa::Constant = ssa::Constant::Real(-2.0);
-const ALL: ssa::Constant = ssa::Constant::Real(-3.0);
-const NOONE: ssa::Constant = ssa::Constant::Real(-4.0);
-const GLOBAL: ssa::Constant = ssa::Constant::Real(-5.0);
-const LOCAL: ssa::Constant = ssa::Constant::Real(-6.0);
+const ONE: f64 = 1.0;
+const ZERO: f64 = 0.0;
+const SELF: f64 = -1.0;
+const OTHER: f64 = -2.0;
+const ALL: f64 = -3.0;
+const NOONE: f64 = -4.0;
+const GLOBAL: f64 = -5.0;
+const LOCAL: f64 = -6.0;
 
 impl<'e> Codegen<'e> {
     pub fn new(errors: &'e ErrorHandler) -> Codegen<'e> {
@@ -67,6 +71,7 @@ impl<'e> Codegen<'e> {
                 };
 
                 let rvalue = if let Some(op) = op {
+                    let lvalue = lvalue.clone();
                     let left = self.emit_load(lvalue);
                     let right = self.emit_rvalue(rvalue);
                     self.emit_instruction(
@@ -83,15 +88,12 @@ impl<'e> Codegen<'e> {
                 self.emit_call(call);
             }
 
-            ast::Stmt::Declare(ast::Declare::Local, box ref names) => {
-                let scope = self.emit_constant(LOCAL);
-                for &(name, _) in names {
-                    self.emit_instruction(ssa::Instruction::Declare(scope, name));
-                }
-            }
+            ast::Stmt::Declare(scope, box ref names) => {
+                let scope = match scope {
+                    ast::Declare::Local => LOCAL,
+                    ast::Declare::Global => GLOBAL,
+                };
 
-            ast::Stmt::Declare(ast::Declare::Global, box ref names) => {
-                let scope = self.emit_constant(GLOBAL);
                 for &(name, _) in names {
                     self.emit_instruction(ssa::Instruction::Declare(scope, name));
                 }
@@ -138,7 +140,7 @@ impl<'e> Codegen<'e> {
 
                 self.current_block = next_block;
                 let count = self.emit_argument();
-                let one = self.emit_constant(ONE);
+                let one = self.emit_real(ONE);
                 let next = self.emit_instruction(
                     ssa::Instruction::Binary(ssa::Binary::Subtract, count, one)
                 );
@@ -285,7 +287,7 @@ impl<'e> Codegen<'e> {
             }
 
             ast::Stmt::Jump(_) => {
-                let zero = self.emit_constant(ZERO);
+                let zero = self.emit_real(ZERO);
                 self.emit_instruction(ssa::Instruction::Return(zero));
             }
 
@@ -331,22 +333,17 @@ impl<'e> Codegen<'e> {
     fn emit_rvalue(&mut self, expression: &(ast::Expr, Span)) -> ssa::Value {
         let (ref expr, _expr_span) = *expression;
         match *expr {
-            ast::Expr::Value(ast::Value::Real(real)) => {
-                self.emit_constant(ssa::Constant::Real(real))
-            }
+            ast::Expr::Value(ast::Value::Real(real)) => self.emit_real(real),
+            ast::Expr::Value(ast::Value::String(string)) => self.emit_string(string),
 
-            ast::Expr::Value(ast::Value::String(string)) => {
-                self.emit_constant(ssa::Constant::String(string))
-            }
-
-            ast::Expr::Value(ast::Value::Ident(keyword::True)) => self.emit_constant(ONE),
-            ast::Expr::Value(ast::Value::Ident(keyword::False)) => self.emit_constant(ZERO),
-            ast::Expr::Value(ast::Value::Ident(keyword::Self_)) => self.emit_constant(SELF),
-            ast::Expr::Value(ast::Value::Ident(keyword::Other)) => self.emit_constant(OTHER),
-            ast::Expr::Value(ast::Value::Ident(keyword::All)) => self.emit_constant(ALL),
-            ast::Expr::Value(ast::Value::Ident(keyword::NoOne)) => self.emit_constant(NOONE),
-            ast::Expr::Value(ast::Value::Ident(keyword::Global)) => self.emit_constant(GLOBAL),
-            ast::Expr::Value(ast::Value::Ident(keyword::Local)) => self.emit_constant(LOCAL),
+            ast::Expr::Value(ast::Value::Ident(keyword::True)) => self.emit_real(ONE),
+            ast::Expr::Value(ast::Value::Ident(keyword::False)) => self.emit_real(ZERO),
+            ast::Expr::Value(ast::Value::Ident(keyword::Self_)) => self.emit_real(SELF),
+            ast::Expr::Value(ast::Value::Ident(keyword::Other)) => self.emit_real(OTHER),
+            ast::Expr::Value(ast::Value::Ident(keyword::All)) => self.emit_real(ALL),
+            ast::Expr::Value(ast::Value::Ident(keyword::NoOne)) => self.emit_real(NOONE),
+            ast::Expr::Value(ast::Value::Ident(keyword::Global)) => self.emit_real(GLOBAL),
+            ast::Expr::Value(ast::Value::Ident(keyword::Local)) => self.emit_real(LOCAL),
 
             ast::Expr::Unary(ast::Unary::Positive, box ref expr) => self.emit_rvalue(expr),
             ast::Expr::Unary(op, box ref expr) => {
@@ -382,15 +379,12 @@ impl<'e> Codegen<'e> {
         let (ref expression, expression_span) = *expression;
         match *expression {
             ast::Expr::Value(ast::Value::Ident(symbol)) if !symbol.is_keyword() => {
-                let scope = self.emit_constant(LOCAL);
-                let zero = self.emit_constant(ZERO);
-                Ok(Lvalue(scope, symbol, [zero, zero]))
+                Ok(Lvalue::Local(symbol))
             }
 
-            ast::Expr::Access(box ref expr, (field, _field_span)) => {
+            ast::Expr::Field(box ref expr, (field, _field_span)) => {
                 let scope = self.emit_rvalue(expr);
-                let zero = self.emit_constant(ZERO);
-                Ok(Lvalue(scope, field, [zero, zero]))
+                Ok(Lvalue::Field(scope, field))
             }
 
             ast::Expr::Index(box ref expr, box ref indices) => {
@@ -398,15 +392,13 @@ impl<'e> Codegen<'e> {
                     self.errors.error(expression_span, "invalid number of array indices");
                 }
 
-                let Lvalue(scope, field, _) = self.emit_lvalue(expr)?;
-                let zero = self.emit_constant(ZERO);
-                let mut indices = indices.iter()
+                let array = self.emit_rvalue(expr);
+                let indices: Vec<_> = indices.iter()
                     .map(|index| self.emit_rvalue(index))
-                    .chain(iter::repeat(zero));
+                    .collect();
+                let indices = indices.into_boxed_slice();
 
-                let i = indices.next().unwrap();
-                let j = indices.next().unwrap();
-                Ok(Lvalue(scope, field, [i, j]))
+                Ok(Lvalue::Index(array, indices))
             }
 
             _ => {
@@ -417,13 +409,21 @@ impl<'e> Codegen<'e> {
     }
 
     fn emit_load(&mut self, lvalue: Lvalue) -> ssa::Value {
-        let Lvalue(scope, field, indices) = lvalue;
-        self.emit_instruction(ssa::Instruction::Load(scope, field, indices))
+        let instruction = match lvalue {
+            Lvalue::Local(symbol) => ssa::Instruction::LoadDynamic(symbol),
+            Lvalue::Field(scope, field) => ssa::Instruction::LoadField(scope, field),
+            Lvalue::Index(array, indices) => ssa::Instruction::LoadIndex(array, indices),
+        };
+        self.emit_instruction(instruction)
     }
 
     fn emit_store(&mut self, lvalue: Lvalue, value: ssa::Value) -> ssa::Value {
-        let Lvalue(scope, field, indices) = lvalue;
-        self.emit_instruction(ssa::Instruction::Store(scope, field, indices, value))
+        let instruction = match lvalue {
+            Lvalue::Local(symbol) => ssa::Instruction::StoreDynamic(symbol, value),
+            Lvalue::Field(scope, field) => ssa::Instruction::StoreField(scope, field, value),
+            Lvalue::Index(array, indices) => ssa::Instruction::StoreIndex(array, indices, value),
+        };
+        self.emit_instruction(instruction)
     }
 
     fn emit_jump(&mut self, block: ssa::Block, arguments: Box<[ssa::Value]>) {
@@ -451,12 +451,20 @@ impl<'e> Codegen<'e> {
         self.emit_instruction(ssa::Instruction::Call(function, arguments.into_boxed_slice()))
     }
 
-    fn emit_instruction(&mut self, instruction: ssa::Instruction) -> ssa::Value {
+    fn emit_real(&mut self, real: f64) -> ssa::Value {
+        let constant = ssa::Constant::Real(real);
+        let instruction = ssa::Instruction::Immediate(constant);
         self.function.emit_instruction(self.current_block, instruction)
     }
 
-    fn emit_constant(&mut self, value: ssa::Constant) -> ssa::Value {
-        self.function.emit_constant(value)
+    fn emit_string(&mut self, string: Symbol) -> ssa::Value {
+        let constant = ssa::Constant::String(string);
+        let instruction = ssa::Instruction::Immediate(constant);
+        self.function.emit_instruction(self.current_block, instruction)
+    }
+
+    fn emit_instruction(&mut self, instruction: ssa::Instruction) -> ssa::Value {
+        self.function.emit_instruction(self.current_block, instruction)
     }
 
     fn emit_argument(&mut self) -> ssa::Value {

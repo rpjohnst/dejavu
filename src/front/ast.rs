@@ -41,7 +41,7 @@ pub enum Expr {
     Value(Value),
     Unary(Unary, Box<(Expr, Span)>),
     Binary(Binary, Box<(Expr, Span)>, Box<(Expr, Span)>),
-    Access(Box<(Expr, Span)>, (Symbol, Span)),
+    Field(Box<(Expr, Span)>, (Symbol, Span)),
     Index(Box<(Expr, Span)>, Box<[(Expr, Span)]>),
     Call(Call),
 }

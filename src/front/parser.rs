@@ -365,7 +365,7 @@ impl<'s, 'e> Parser<'s, 'e> {
                 }
 
                 (&ast::Expr::Value(ast::Value::Ident(_)), Infix::Index) |
-                (&ast::Expr::Access(..), Infix::Index)
+                (&ast::Expr::Field(..), Infix::Index)
                 if !parens => {
                     let (args, high) = self.parse_args(Delim::Bracket);
 
@@ -374,9 +374,9 @@ impl<'s, 'e> Parser<'s, 'e> {
                     parens = false;
                 }
 
-                (&ast::Expr::Value(ast::Value::Ident(_)), Infix::Access) |
-                (&ast::Expr::Access(..), Infix::Access) |
-                (&ast::Expr::Index(..), Infix::Access) => {
+                (&ast::Expr::Value(ast::Value::Ident(_)), Infix::Field) |
+                (&ast::Expr::Field(..), Infix::Field) |
+                (&ast::Expr::Index(..), Infix::Field) => {
                     self.advance_token();
 
                     let (field, field_span) = if let Token::Ident(field) = self.current {
@@ -388,7 +388,7 @@ impl<'s, 'e> Parser<'s, 'e> {
                     };
                     let high = field_span.high;
 
-                    left = ast::Expr::Access(Box::new((left, left_span)), (field, field_span));
+                    left = ast::Expr::Field(Box::new((left, left_span)), (field, field_span));
                     left_span = Span { low: low, high: high };
                     parens = false;
                 }
@@ -530,7 +530,7 @@ impl<'s, 'e> Parser<'s, 'e> {
 
 enum Infix {
     Binary(ast::Binary),
-    Access,
+    Field,
     Index,
     Call,
 }
@@ -541,7 +541,7 @@ impl Infix {
         use front::ast::Op::*;
 
         let op = match token {
-            Token::Dot => Infix::Access,
+            Token::Dot => Infix::Field,
             Token::OpenDelim(Delim::Bracket) => Infix::Index,
             Token::OpenDelim(Delim::Paren) => Infix::Call,
 
@@ -579,7 +579,7 @@ impl Infix {
         }
 
         let precedence = match op {
-            Infix::Access | Infix::Index | Infix::Call => 7,
+            Infix::Field | Infix::Index | Infix::Call => 7,
             Infix::Binary(op) => match op {
                 Op(Multiply) | Op(Divide) | Div | Mod => 6,
                 Op(Add) | Op(Subtract) => 5,
