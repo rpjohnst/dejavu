@@ -1,3 +1,4 @@
+use std::cmp;
 use std::collections::HashSet;
 use entity::EntityMap;
 use back::ssa;
@@ -48,12 +49,13 @@ impl Interference {
     /// This is a simple greedy algorithm to optimally color chordal graphs. It visits each node in
     /// a perfect elimination order, and assigns it the lowest color not used by any of its
     /// neighbors.
-    pub fn color(self) -> EntityMap<ssa::Value, usize> {
+    pub fn color(self) -> (EntityMap<ssa::Value, usize>, usize) {
         let mut colors = EntityMap::with_capacity(self.adjacency.len());
         for &value in &self.vertices {
             colors[value] = usize::max_value();
         }
 
+        let mut color_count = 0;
         for value in Self::perfect_elimination_order(self.vertices, &self.adjacency) {
             let mut neighbors = HashSet::with_capacity(self.adjacency[value].len());
             for &neighbor in &self.adjacency[value] {
@@ -63,12 +65,13 @@ impl Interference {
             for color in 0.. {
                 if !neighbors.contains(&color) {
                     colors[value] = color;
+                    color_count = cmp::max(color_count, color + 1);
                     break;
                 }
             }
         }
 
-        colors
+        (colors, color_count)
     }
 
     /// Computes a chordal graph's perfect elimination order using maximum cardinality search.

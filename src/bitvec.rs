@@ -7,6 +7,13 @@ impl BitVec {
         BitVec { data: Vec::new() }
     }
 
+    pub fn get(&self, bit: usize) -> bool {
+        let word = bit / 64;
+        let mask = 1 << (bit % 64);
+
+        (self.data.get(word).unwrap_or(&0) & mask) != 0
+    }
+
     pub fn set(&mut self, bit: usize) -> bool {
         self.ensure(bit);
 

@@ -20,6 +20,10 @@ impl Symbol {
             InternedString(mem::transmute::<_, &str>(interner.get(self)))
         })
     }
+
+    pub fn into_index(self) -> u32 {
+        self.0
+    }
 }
 
 impl fmt::Debug for Symbol {

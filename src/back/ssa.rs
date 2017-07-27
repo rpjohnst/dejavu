@@ -130,14 +130,15 @@ pub enum Instruction {
     StoreField(Value, Symbol, Value),
     StoreIndex(Value, Box<[Value]>, Value),
 
+    With(Value),
+    Next(Value),
+
     Call(Value, Box<[Value]>),
-    Jump(Block, Box<[Value]>),
-    Branch(Value, Block, Box<[Value]>, Block, Box<[Value]>),
     Return(Value),
     Exit,
 
-    With(Value),
-    Next(Value),
+    Jump(Block, Box<[Value]>),
+    Branch(Value, Block, Box<[Value]>, Block, Box<[Value]>),
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
