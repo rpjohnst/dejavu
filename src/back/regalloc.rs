@@ -1,5 +1,6 @@
 use std::cmp;
 use std::collections::HashSet;
+
 use entity::EntityMap;
 use back::ssa;
 use back::analysis::*;

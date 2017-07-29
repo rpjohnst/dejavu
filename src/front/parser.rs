@@ -2,10 +2,8 @@ use std::mem;
 use std::str::FromStr;
 
 use symbol::{Symbol, keyword};
+use front::{ast, Lexer, Span, ErrorHandler};
 use front::token::{Token, Delim, BinOp};
-use front::Lexer;
-use front::ast;
-use {ErrorHandler, Span};
 
 pub struct Parser<'s, 'e> {
     reader: Lexer<'s>,
@@ -596,11 +594,10 @@ impl Infix {
 
 #[cfg(test)]
 mod tests {
-    use {Span, SourceFile, ErrorHandler};
-    use front::{Parser, Lexer};
-
     use std::path::PathBuf;
+
     use symbol::Symbol;
+    use front::{SourceFile, Span, ErrorHandler, Parser, Lexer};
     use front::ast::*;
 
     fn setup(source: &str) -> SourceFile {

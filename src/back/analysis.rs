@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+
 use entity::{Entity, EntityMap};
 use bitvec::BitVec;
 use back::ssa;

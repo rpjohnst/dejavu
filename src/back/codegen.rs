@@ -1,13 +1,14 @@
 use std::u32;
 use std::collections::{HashMap, VecDeque};
 use std::collections::hash_map::Entry;
+
+use bitvec::BitVec;
+use symbol::Symbol;
+use entity::{Entity, EntityMap};
 use back::ssa;
 use back::analysis::*;
 use back::regalloc::*;
-use vm::code;
-use entity::{Entity, EntityMap};
-use symbol::Symbol;
-use bitvec::BitVec;
+use vm::{self, code};
 
 pub struct Codegen {
     function: code::Function,
@@ -20,7 +21,7 @@ pub struct Codegen {
     jump_offsets: HashMap<usize, ssa::Block>,
     edge_block: usize,
 
-    constants: HashMap<code::Value, usize>,
+    constants: HashMap<vm::Value, usize>,
 }
 
 impl Codegen {
@@ -344,16 +345,16 @@ impl Codegen {
     }
 
     fn emit_real(&mut self, real: f64) -> usize {
-        let constant = code::Value::from(real);
+        let constant = vm::Value::from(real);
         self.emit_constant(constant)
     }
 
     fn emit_string(&mut self, string: Symbol) -> usize {
-        let constant = code::Value::from(string);
+        let constant = vm::Value::from(string);
         self.emit_constant(constant)
     }
 
-    fn emit_constant(&mut self, value: code::Value) -> usize {
+    fn emit_constant(&mut self, value: vm::Value) -> usize {
         let Self { ref mut constants, ref mut function, .. } = *self;
         *constants.entry(value).or_insert_with(|| {
             let index = function.constants.len();

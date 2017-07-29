@@ -1,5 +1,5 @@
 use symbol::Symbol;
-use Span;
+use front::Span;
 
 #[derive(PartialEq, Debug)]
 pub enum Stmt {

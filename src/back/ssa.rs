@@ -1,4 +1,5 @@
 use std::u32;
+
 use entity::{Entity, EntityMap};
 use symbol::Symbol;
 

@@ -1,8 +1,8 @@
 use std::mem;
+
 use symbol::{Symbol, keyword};
-use front::ast;
+use front::{ast, Span, ErrorHandler};
 use back::ssa;
-use {ErrorHandler, Span};
 
 pub struct Codegen<'e> {
     function: ssa::Function,
