@@ -27,10 +27,15 @@ impl Interference {
         for block in program.blocks.keys() {
             let mut live: HashSet<_> = liveness.out[block].clone();
             for &value in program.blocks[block].instructions.iter().rev() {
-                live.remove(&value);
+                for def in program.defs(value) {
+                    live.remove(&def);
+                    vertices.push(def);
 
-                vertices.push(value);
-                adjacency[value].extend(live.iter().cloned());
+                    adjacency[def].extend(live.iter().cloned());
+                    for &used in &live {
+                        adjacency[used].push(def);
+                    }
+                }
 
                 live.extend(program.uses(value));
             }
@@ -84,8 +89,8 @@ impl Interference {
         let mut buckets = Vec::with_capacity(vertices.len());
         buckets.push(vertices.len());
 
-        let weights = EntityMap::with_capacity(vertices.len());
-        let mut indices = EntityMap::with_capacity(vertices.len());
+        let weights = EntityMap::with_capacity(adjacency.len());
+        let mut indices = EntityMap::with_capacity(adjacency.len());
         for (i, &value) in vertices.iter().enumerate() {
             indices[value] = i;
         }
@@ -127,9 +132,16 @@ impl<'a> Iterator for MaximumCardinalitySearch<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.vertices.pop().map(|value| {
+            let weight = self.weights[value];
+            self.buckets[weight] -= 1;
+            self.buckets.truncate(weight + 1);
+
             for &neighbor in &self.adjacency[value] {
                 let weight = self.weights[neighbor];
                 let index = self.indices[neighbor];
+                if index >= self.vertices.len() {
+                    continue;
+                }
 
                 self.buckets[weight] -= 1;
                 let bucket = self.buckets[weight];

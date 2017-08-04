@@ -41,22 +41,34 @@ impl Function {
         }
     }
 
-    pub fn uses(&self, value: Value) -> Vec<Value> {
+    pub fn defs(&self, value: Value) -> Option<Value> {
+        use self::Instruction::*;
         match self.values[value] {
-            Instruction::Unary(_, value) => vec![value],
-            Instruction::Binary(_, left, right) => vec![left, right],
+            Immediate(..) | Unary(..) | Binary(..) | Argument |
+            LoadDynamic(..) | LoadField(..) | LoadIndex(..) |
+            With(..) | Next(..) |
+            Call(..) => Some(value),
+            _ => None,
+        }
+    }
 
-            Instruction::LoadField(scope, _) => vec![scope],
-            Instruction::LoadIndex(array, box ref indices) => {
+    pub fn uses(&self, value: Value) -> Vec<Value> {
+        use self::Instruction::*;
+        match self.values[value] {
+            Unary(_, value) => vec![value],
+            Binary(_, left, right) => vec![left, right],
+
+            LoadField(scope, _) => vec![scope],
+            LoadIndex(array, box ref indices) => {
                 let mut uses = Vec::with_capacity(1 + indices.len());
                 uses.push(array);
                 uses.extend(indices);
                 uses
             }
 
-            Instruction::StoreDynamic(_, value) => vec![value],
-            Instruction::StoreField(scope, _, value) => vec![scope, value],
-            Instruction::StoreIndex(array, box ref indices, value) => {
+            StoreDynamic(_, value) => vec![value],
+            StoreField(scope, _, value) => vec![scope, value],
+            StoreIndex(array, box ref indices, value) => {
                 let mut uses = Vec::with_capacity(1 + indices.len() + 1);
                 uses.push(array);
                 uses.extend(indices);
@@ -64,24 +76,24 @@ impl Function {
                 uses
             }
 
-            Instruction::Call(function, box ref arguments) => {
+            Call(function, box ref arguments) => {
                 let mut uses = Vec::with_capacity(1 + arguments.len());
                 uses.push(function);
                 uses.extend(arguments);
                 uses
             }
-            Instruction::Jump(_, box ref arguments) => arguments.iter().cloned().collect(),
-            Instruction::Branch(value, _, box ref t, _, box ref f) => {
+            Jump(_, box ref arguments) => arguments.iter().cloned().collect(),
+            Branch(value, _, box ref t, _, box ref f) => {
                 let mut uses = Vec::with_capacity(1 + t.len() + f.len());
                 uses.push(value);
                 uses.extend(t);
                 uses.extend(f);
                 uses
             }
-            Instruction::Return(value) => vec![value],
+            Return(value) => vec![value],
 
-            Instruction::With(value) => vec![value],
-            Instruction::Next(value) => vec![value],
+            With(value) => vec![value],
+            Next(value) => vec![value],
 
             _ => vec![],
         }
