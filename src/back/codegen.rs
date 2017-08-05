@@ -52,10 +52,11 @@ impl Codegen {
 
         self.edge_block = program.blocks.len();
 
-        self.function.params = 0;
-        self.function.locals = register_count as u32;
         self.emit_blocks(program, program.entry());
         self.fixup_jumps();
+
+        self.function.params = 0;
+        self.function.locals = self.register_count as u32;
 
         self.function
     }
@@ -292,7 +293,12 @@ impl Codegen {
         let mut phis: HashMap<_, _> = {
             let targets = parameters.iter().map(|&a| self.registers[a]);
             let sources = arguments.iter().map(|&a| self.registers[a]);
-            Iterator::zip(targets, sources).collect()
+
+            // Single-vertex cycles are a success by the register allocator (in particular, copy
+            // coalescing), so leave them out rather than spilling them later.
+            Iterator::zip(targets, sources)
+                .filter(|&(target, source)| target != source)
+                .collect()
         };
 
         let mut uses = HashMap::new();
