@@ -443,8 +443,7 @@ impl<'e> Codegen<'e> {
     }
 
     fn emit_call(&mut self, call: &ast::Call) -> ssa::Value {
-        let ast::Call(box ref function, box ref arguments) = *call;
-        let function = self.emit_rvalue(function);
+        let ast::Call((function, _), box ref arguments) = *call;
         let arguments: Vec<_> = arguments.iter()
             .map(|argument| self.emit_rvalue(argument))
             .collect();

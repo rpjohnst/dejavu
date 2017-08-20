@@ -96,4 +96,4 @@ pub enum Op {
 }
 
 #[derive(PartialEq, Debug)]
-pub struct Call(pub Box<(Expr, Span)>, pub Box<[(Expr, Span)]>);
+pub struct Call(pub (Symbol, Span), pub Box<[(Expr, Span)]>);

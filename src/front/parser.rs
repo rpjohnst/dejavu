@@ -354,10 +354,10 @@ impl<'s, 'e> Parser<'s, 'e> {
 
             let low = left_span.low;
             match (&left, op) {
-                (&ast::Expr::Value(ast::Value::Ident(_)), Infix::Call) => {
+                (&ast::Expr::Value(ast::Value::Ident(symbol)), Infix::Call) => {
                     let (args, high) = self.parse_args(Delim::Paren);
 
-                    left = ast::Expr::Call(ast::Call(Box::new((left, left_span)), args));
+                    left = ast::Expr::Call(ast::Call((symbol, left_span), args));
                     left_span = Span { low: low, high: high };
                     parens = true;
                 }
@@ -637,7 +637,7 @@ mod tests {
                     Box::new((Expr::Value(Value::Real(3.0)), span(13, 14))),
                 ), span(9, 14)),
                 (Stmt::Invoke(Call(
-                    Box::new((Expr::Value(Value::Ident(show_message)), span(15, 27))),
+                    (show_message, span(15, 27)),
                     vec![(Expr::Binary(
                         Binary::Op(Op::Multiply), 
                         Box::new((Expr::Value(Value::Ident(x)), span(28, 29))),

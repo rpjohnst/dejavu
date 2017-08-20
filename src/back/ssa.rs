@@ -76,9 +76,8 @@ impl Function {
                 uses
             }
 
-            Call(function, box ref arguments) => {
-                let mut uses = Vec::with_capacity(1 + arguments.len());
-                uses.push(function);
+            Call(_, box ref arguments) => {
+                let mut uses = Vec::with_capacity(arguments.len());
                 uses.extend(arguments);
                 uses
             }
@@ -146,7 +145,7 @@ pub enum Instruction {
     With(Value),
     Next(Value),
 
-    Call(Value, Box<[Value]>),
+    Call(Symbol, Box<[Value]>),
     Return(Value),
     Exit,
 

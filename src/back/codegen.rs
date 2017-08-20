@@ -190,7 +190,7 @@ impl Codegen {
 
                 Call(a, box ref args) => {
                     let target = self.registers[value];
-                    let a = self.registers[a];
+                    let a = self.emit_string(a);
                     let b = args.len();
 
                     let inst = code::Inst::encode(code::Op::Call, target, a, b);
