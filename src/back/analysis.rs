@@ -82,7 +82,7 @@ impl Liveness {
                 }
                 in_[block].extend(&live);
 
-                for &pred in control_flow.pred[block].iter() {
+                for &pred in &control_flow.pred[block] {
                     let len = out[pred].len();
                     out[pred].extend(&live);
                     if out[pred].len() == len {
