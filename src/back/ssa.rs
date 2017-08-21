@@ -45,7 +45,7 @@ impl Function {
         use self::Instruction::*;
         match self.values[value] {
             Immediate(..) | Unary(..) | Binary(..) | Argument |
-            LoadDynamic(..) | LoadField(..) | LoadIndex(..) |
+            LoadField(..) | LoadIndex(..) |
             With(..) | Next(..) |
             Call(..) => Some(value),
             _ => None,
@@ -66,7 +66,6 @@ impl Function {
                 uses
             }
 
-            StoreDynamic(_, value) => vec![value],
             StoreField(scope, _, value) => vec![scope, value],
             StoreIndex(array, box ref indices, value) => {
                 let mut uses = Vec::with_capacity(1 + indices.len() + 1);
@@ -132,13 +131,13 @@ pub enum Instruction {
     Binary(Binary, Value, Value),
 
     Argument,
-    Declare(f64, Symbol),
 
-    LoadDynamic(Symbol),
+    DeclareGlobal(Symbol),
+    Lookup(Symbol),
+
     LoadField(Value, Symbol),
     LoadIndex(Value, Box<[Value]>),
 
-    StoreDynamic(Symbol, Value),
     StoreField(Value, Symbol, Value),
     StoreIndex(Value, Box<[Value]>, Value),
 

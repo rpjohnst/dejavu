@@ -100,19 +100,18 @@ impl Codegen {
 
                 Argument => unreachable!("corrupt function"),
 
-                Declare(scope, symbol) => {
-                    let a = self.emit_real(scope);
-                    let b = self.emit_string(symbol);
+                DeclareGlobal(symbol) => {
+                    let a = self.emit_string(symbol);
 
-                    let inst = code::Inst::encode(code::Op::Declare, a, b, 0);
+                    let inst = code::Inst::encode(code::Op::DeclareGlobal, a, 0, 0);
                     self.function.instructions.push(inst);
                 }
 
-                LoadDynamic(symbol) => {
+                Lookup(symbol) => {
                     let target = self.registers[value];
                     let a = self.emit_string(symbol);
 
-                    let inst = code::Inst::encode(code::Op::LoadDynamic, target, a, 0);
+                    let inst = code::Inst::encode(code::Op::Lookup, target, a, 0);
                     self.function.instructions.push(inst);
                 }
 
@@ -137,14 +136,6 @@ impl Codegen {
                     let j = indices.get(1).map(|&j| self.registers[j]).unwrap_or(0);
 
                     let inst = code::Inst::encode(code::Op::Args, i, j, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                StoreDynamic(symbol, value) => {
-                    let source = self.registers[value];
-                    let a = self.emit_string(symbol);
-
-                    let inst = code::Inst::encode(code::Op::StoreDynamic, source, a, 0);
                     self.function.instructions.push(inst);
                 }
 

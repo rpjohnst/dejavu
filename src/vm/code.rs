@@ -81,13 +81,12 @@ pub enum Op {
     ShiftLeft,
     ShiftRight,
 
-    Declare,
+    DeclareGlobal,
+    Lookup,
 
-    LoadDynamic,
     LoadField,
     LoadIndex,
 
-    StoreDynamic,
     StoreField,
     StoreIndex,
 

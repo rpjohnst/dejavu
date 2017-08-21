@@ -1,4 +1,5 @@
 use std::mem;
+use std::collections::HashSet;
 
 use symbol::{Symbol, keyword};
 use front::{ast, Span, ErrorHandler};
@@ -7,6 +8,10 @@ use back::ssa;
 pub struct Codegen<'e> {
     function: ssa::Function,
     errors: &'e ErrorHandler,
+
+    /// GML `var` declarations are static and independent of control flow. All references to a
+    /// `var`-declared name after its declaration in the source text are treated as local.
+    locals: HashSet<Symbol>,
 
     current_block: ssa::Block,
 
@@ -21,10 +26,12 @@ pub struct Codegen<'e> {
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum Lvalue {
-    Local(Symbol),
     Field(ssa::Value, Symbol),
     Index(ssa::Value, Box<[ssa::Value]>),
 }
+
+#[derive(Debug)]
+struct LvalueError;
 
 // TODO: deduplicate these with the ones from vm::interpreter?
 const SELF: f64 = -1.0;
@@ -42,6 +49,8 @@ impl<'e> Codegen<'e> {
         Codegen {
             function: function,
             errors: errors,
+
+            locals: HashSet::new(),
 
             current_block: entry,
 
@@ -70,7 +79,7 @@ impl<'e> Codegen<'e> {
             ast::Stmt::Assign(op, box ref lvalue, box ref rvalue) => {
                 let lvalue = match self.emit_lvalue(lvalue) {
                     Ok(lvalue) => lvalue,
-                    Err(()) => return,
+                    Err(LvalueError) => return,
                 };
 
                 let rvalue = if let Some(op) = op {
@@ -91,14 +100,16 @@ impl<'e> Codegen<'e> {
             }
 
             ast::Stmt::Declare(scope, box ref names) => {
-                let scope = match scope {
-                    ast::Declare::Local => LOCAL,
-                    ast::Declare::Global => GLOBAL,
-                };
+                let names = names.iter().map(|&(name, _)| name);
 
-                for &(name, _) in names {
-                    self.emit_instruction(ssa::Instruction::Declare(scope, name));
-                }
+                match scope {
+                    ast::Declare::Local => self.locals.extend(names),
+                    ast::Declare::Global => {
+                        for name in names {
+                            self.emit_instruction(ssa::Instruction::DeclareGlobal(name));
+                        }
+                    }
+                };
             }
 
             ast::Stmt::Block(box ref statements) => {
@@ -385,11 +396,18 @@ impl<'e> Codegen<'e> {
         }
     }
 
-    fn emit_lvalue(&mut self, expression: &(ast::Expr, Span)) -> Result<Lvalue, ()> {
+    fn emit_lvalue(&mut self, expression: &(ast::Expr, Span)) -> Result<Lvalue, LvalueError> {
         let (ref expression, expression_span) = *expression;
         match *expression {
             ast::Expr::Value(ast::Value::Ident(symbol)) if !symbol.is_keyword() => {
-                Ok(Lvalue::Local(symbol))
+                if self.locals.contains(&symbol) {
+                    let scope = self.emit_real(LOCAL);
+                    Ok(Lvalue::Field(scope, symbol))
+                } else {
+                    let inst = ssa::Instruction::Lookup(symbol);
+                    let scope = self.function.emit_instruction(self.current_block, inst);
+                    Ok(Lvalue::Field(scope, symbol))
+                }
             }
 
             ast::Expr::Field(box ref expr, (field, _field_span)) => {
@@ -413,14 +431,13 @@ impl<'e> Codegen<'e> {
 
             _ => {
                 self.errors.error(expression_span, "expected a variable");
-                Err(())
+                Err(LvalueError)
             }
         }
     }
 
     fn emit_load(&mut self, lvalue: Lvalue) -> ssa::Value {
         let instruction = match lvalue {
-            Lvalue::Local(symbol) => ssa::Instruction::LoadDynamic(symbol),
             Lvalue::Field(scope, field) => ssa::Instruction::LoadField(scope, field),
             Lvalue::Index(array, indices) => ssa::Instruction::LoadIndex(array, indices),
         };
@@ -429,7 +446,6 @@ impl<'e> Codegen<'e> {
 
     fn emit_store(&mut self, lvalue: Lvalue, value: ssa::Value) {
         let instruction = match lvalue {
-            Lvalue::Local(symbol) => ssa::Instruction::StoreDynamic(symbol, value),
             Lvalue::Field(scope, field) => ssa::Instruction::StoreField(scope, field, value),
             Lvalue::Index(array, indices) => ssa::Instruction::StoreIndex(array, indices, value),
         };
