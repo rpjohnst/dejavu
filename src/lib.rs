@@ -3,6 +3,7 @@
 mod symbol;
 mod entity;
 mod bitvec;
+mod slice;
 
 pub mod front;
 pub mod back;

@@ -1,4 +1,4 @@
-use std::mem;
+use std::{mem, iter};
 use std::collections::HashSet;
 
 use symbol::{Symbol, keyword};
@@ -15,7 +15,7 @@ pub struct Codegen<'e> {
 
     current_block: ssa::Block,
 
-    current_iter: Option<Box<[ssa::Value]>>,
+    current_iter: Option<Vec<ssa::Value>>,
     current_next: Option<ssa::Block>,
     current_exit: Option<ssa::Block>,
 
@@ -27,7 +27,7 @@ pub struct Codegen<'e> {
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum Lvalue {
     Field(ssa::Value, Symbol),
-    Index(ssa::Value, Box<[ssa::Value]>),
+    Index(ssa::Value, [ssa::Value; 2]),
 }
 
 #[derive(Debug)]
@@ -68,7 +68,7 @@ impl<'e> Codegen<'e> {
         self.emit_statement(program);
 
         let zero = self.emit_real(0.0);
-        self.emit_instruction(ssa::Instruction::Return(zero));
+        self.emit_instruction(ssa::Inst::Return { arg: zero });
 
         self.function
     }
@@ -86,7 +86,9 @@ impl<'e> Codegen<'e> {
                     let lvalue = lvalue.clone();
                     let left = self.emit_load(lvalue);
                     let right = self.emit_rvalue(rvalue);
-                    let inst = ssa::Instruction::Binary(ast::Binary::Op(op).into(), left, right);
+
+                    let op = ast::Binary::Op(op).into();
+                    let inst = ssa::Inst::Binary { op, args: [left, right] };
                     self.emit_instruction(inst)
                 } else {
                     self.emit_rvalue(rvalue)
@@ -105,8 +107,8 @@ impl<'e> Codegen<'e> {
                 match scope {
                     ast::Declare::Local => self.locals.extend(names),
                     ast::Declare::Global => {
-                        for name in names {
-                            self.emit_instruction(ssa::Instruction::DeclareGlobal(name));
+                        for symbol in names {
+                            self.emit_instruction(ssa::Inst::DeclareGlobal { symbol });
                         }
                     }
                 };
@@ -132,12 +134,12 @@ impl<'e> Codegen<'e> {
 
                 self.current_block = true_block;
                 self.emit_statement(true_branch);
-                self.emit_jump(merge_block, box []);
+                self.emit_jump(merge_block, &[]);
 
                 if let Some(box ref false_branch) = *false_branch {
                     self.current_block = false_block;
                     self.emit_statement(false_branch);
-                    self.emit_jump(merge_block, box []);
+                    self.emit_jump(merge_block, &[]);
                 }
 
                 self.current_block = merge_block;
@@ -149,12 +151,14 @@ impl<'e> Codegen<'e> {
                 let exit_block = self.function.make_block();
 
                 let count = self.emit_rvalue(count);
-                self.emit_jump(next_block, box [count]);
+                self.emit_jump(next_block, &[count]);
 
                 self.current_block = next_block;
                 let count = self.emit_argument();
                 let one = self.emit_real(1.0);
-                let inst = ssa::Instruction::Binary(ssa::Binary::Subtract, count, one);
+
+                let op = ssa::Binary::Subtract;
+                let inst = ssa::Inst::Binary { op, args: [count, one] };
                 let next = self.emit_instruction(inst);
                 self.emit_branch(count, body_block, &[], exit_block, &[]);
 
@@ -162,7 +166,7 @@ impl<'e> Codegen<'e> {
                 self.with_loop(&[next], next_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block, box [next]);
+                self.emit_jump(next_block, &[next]);
 
                 self.current_block = exit_block;
             }
@@ -172,7 +176,7 @@ impl<'e> Codegen<'e> {
                 let body_block = self.function.make_block();
                 let exit_block = self.function.make_block();
 
-                self.emit_jump(next_block, box []);
+                self.emit_jump(next_block, &[]);
 
                 self.current_block = next_block;
                 let expr = self.emit_rvalue(expr);
@@ -182,7 +186,7 @@ impl<'e> Codegen<'e> {
                 self.with_loop(&[], next_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block, box []);
+                self.emit_jump(next_block, &[]);
 
                 self.current_block = exit_block;
             }
@@ -192,13 +196,13 @@ impl<'e> Codegen<'e> {
                 let next_block = self.function.make_block();
                 let exit_block = self.function.make_block();
 
-                self.emit_jump(body_block, box []);
+                self.emit_jump(body_block, &[]);
 
                 self.current_block = body_block;
                 self.with_loop(&[], next_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block, box []);
+                self.emit_jump(next_block, &[]);
 
                 self.current_block = next_block;
                 let expr = self.emit_rvalue(expr);
@@ -214,7 +218,7 @@ impl<'e> Codegen<'e> {
                 let exit_block = self.function.make_block();
 
                 self.emit_statement(init);
-                self.emit_jump(expr_block, box []);
+                self.emit_jump(expr_block, &[]);
 
                 self.current_block = expr_block;
                 let expr = self.emit_rvalue(expr);
@@ -224,11 +228,11 @@ impl<'e> Codegen<'e> {
                 self.with_loop(&[], next_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block, box []);
+                self.emit_jump(next_block, &[]);
 
                 self.current_block = next_block;
                 self.emit_statement(next);
-                self.emit_jump(expr_block, box []);
+                self.emit_jump(expr_block, &[]);
 
                 self.current_block = exit_block;
             }
@@ -239,19 +243,21 @@ impl<'e> Codegen<'e> {
                 let exit_block = self.function.make_block();
 
                 let expr = self.emit_rvalue(expr);
-                let with = self.emit_instruction(ssa::Instruction::With(expr));
-                self.emit_jump(next_block, box [with]);
+                let op = ssa::Unary::With;
+                let with = self.emit_instruction(ssa::Inst::Unary { op, arg: expr });
+                self.emit_jump(next_block, &[with]);
 
                 self.current_block = next_block;
                 let with = self.emit_argument();
-                let next = self.emit_instruction(ssa::Instruction::Next(with));
+                let op = ssa::Unary::Next;
+                let next = self.emit_instruction(ssa::Inst::Unary { op, arg: with });
                 self.emit_branch(with, body_block, &[], exit_block, &[]);
 
                 self.current_block = body_block;
                 self.with_loop(&[next], next_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block, box [next]);
+                self.emit_jump(next_block, &[next]);
 
                 self.current_block = exit_block;
             }
@@ -269,13 +275,13 @@ impl<'e> Codegen<'e> {
                     for statement in body {
                         self_.emit_statement(statement);
                     }
-                    self_.emit_jump(exit_block, box []);
+                    self_.emit_jump(exit_block, &[]);
 
                     self_.current_block = self_.current_expr.expect("corrupt switch state");
-                    self_.emit_jump(default_block, box []);
+                    self_.emit_jump(default_block, &[]);
 
                     self_.current_block = default_block;
-                    self_.emit_jump(exit_block, box []);
+                    self_.emit_jump(default_block, &[]);
                 });
 
                 self.current_block = exit_block;
@@ -284,7 +290,7 @@ impl<'e> Codegen<'e> {
             ast::Stmt::Jump(ast::Jump::Break) if self.current_exit.is_some() => {
                 let exit_block = self.current_exit.unwrap();
 
-                self.emit_jump(exit_block, box []);
+                self.emit_jump(exit_block, &[]);
                 self.current_block = self.function.make_block();
             }
 
@@ -292,12 +298,12 @@ impl<'e> Codegen<'e> {
                 let next_block = self.current_next.unwrap();
                 let iter = self.current_iter.as_ref().expect("corrupt loop state").clone();
 
-                self.emit_jump(next_block, iter);
+                self.emit_jump(next_block, &iter[..]);
                 self.current_block = self.function.make_block();
             }
 
             ast::Stmt::Jump(ast::Jump::Exit) => {
-                self.emit_instruction(ssa::Instruction::Exit);
+                self.emit_instruction(ssa::Inst::Exit);
                 self.current_block = self.function.make_block();
             }
 
@@ -306,14 +312,14 @@ impl<'e> Codegen<'e> {
             ast::Stmt::Jump(_) => {
                 let zero = self.emit_real(0.0);
 
-                self.emit_instruction(ssa::Instruction::Return(zero));
+                self.emit_instruction(ssa::Inst::Return { arg: zero });
                 self.current_block = self.function.make_block();
             }
 
             ast::Stmt::Return(box ref expr) => {
                 let expr = self.emit_rvalue(expr);
 
-                self.emit_instruction(ssa::Instruction::Return(expr));
+                self.emit_instruction(ssa::Inst::Return { arg: expr });
                 self.current_block = self.function.make_block();
             }
 
@@ -321,15 +327,15 @@ impl<'e> Codegen<'e> {
                 let case_block = self.function.make_block();
                 let expr_block = self.function.make_block();
 
-                self.emit_jump(case_block, box []);
+                self.emit_jump(case_block, &[]);
 
                 self.current_block = self.current_expr.unwrap();
                 self.current_expr = Some(expr_block);
                 let switch = self.current_switch.expect("corrupt switch state");
                 let expr = self.emit_rvalue(expr);
-                let expr = self.emit_instruction(
-                    ssa::Instruction::Binary(ssa::Binary::Eq, switch, expr)
-                );
+                let op = ssa::Binary::Eq;
+                let inst = ssa::Inst::Binary { op, args: [switch, expr] };
+                let expr = self.emit_instruction(inst);
                 self.emit_branch(expr, case_block, &[], expr_block, &[]);
 
                 self.current_block = case_block;
@@ -338,7 +344,7 @@ impl<'e> Codegen<'e> {
             ast::Stmt::Case(None) if self.current_default.is_some() => {
                 let default_block = self.current_default.unwrap();
 
-                self.emit_jump(default_block, box []);
+                self.emit_jump(default_block, &[]);
 
                 self.current_block = default_block;
             }
@@ -375,13 +381,14 @@ impl<'e> Codegen<'e> {
                     _ => unreachable!(),
                 };
                 let expr = self.emit_rvalue(expr);
-                self.emit_instruction(ssa::Instruction::Unary(op, expr))
+                self.emit_instruction(ssa::Inst::Unary { op, arg: expr })
             }
 
             ast::Expr::Binary(op, box ref left, box ref right) => {
                 let left = self.emit_rvalue(left);
                 let right = self.emit_rvalue(right);
-                self.emit_instruction(ssa::Instruction::Binary(op.into(), left, right))
+                let op = op.into();
+                self.emit_instruction(ssa::Inst::Binary { op, args: [left, right] })
             }
 
             ast::Expr::Call(ref call) => {
@@ -404,7 +411,7 @@ impl<'e> Codegen<'e> {
                     let scope = self.emit_real(LOCAL);
                     Ok(Lvalue::Field(scope, symbol))
                 } else {
-                    let inst = ssa::Instruction::Lookup(symbol);
+                    let inst = ssa::Inst::Lookup { symbol };
                     let scope = self.function.emit_instruction(self.current_block, inst);
                     Ok(Lvalue::Field(scope, symbol))
                 }
@@ -421,12 +428,14 @@ impl<'e> Codegen<'e> {
                 }
 
                 let array = self.emit_rvalue(expr);
-                let indices: Vec<_> = indices.iter()
+                let zero = self.emit_real(0.0);
+                let mut indices = indices.iter().rev()
                     .map(|index| self.emit_rvalue(index))
-                    .collect();
-                let indices = indices.into_boxed_slice();
+                    .chain(iter::repeat(zero));
 
-                Ok(Lvalue::Index(array, indices))
+                let j = indices.next().unwrap();
+                let i = indices.next().unwrap();
+                Ok(Lvalue::Index(array, [i, j]))
             }
 
             _ => {
@@ -438,57 +447,62 @@ impl<'e> Codegen<'e> {
 
     fn emit_load(&mut self, lvalue: Lvalue) -> ssa::Value {
         let instruction = match lvalue {
-            Lvalue::Field(scope, field) => ssa::Instruction::LoadField(scope, field),
-            Lvalue::Index(array, indices) => ssa::Instruction::LoadIndex(array, indices),
+            Lvalue::Field(scope, field) => ssa::Inst::LoadField { scope, field },
+            Lvalue::Index(array, [i, j]) => ssa::Inst::LoadIndex { args: [array, i, j] },
         };
         self.emit_instruction(instruction)
     }
 
     fn emit_store(&mut self, lvalue: Lvalue, value: ssa::Value) {
         let instruction = match lvalue {
-            Lvalue::Field(scope, field) => ssa::Instruction::StoreField(scope, field, value),
-            Lvalue::Index(array, indices) => ssa::Instruction::StoreIndex(array, indices, value),
+            Lvalue::Field(scope, field) => ssa::Inst::StoreField { args: [value, scope], field },
+            Lvalue::Index(array, [i, j]) => ssa::Inst::StoreIndex { args: [value, array, i, j] },
         };
         self.emit_instruction(instruction);
     }
 
-    fn emit_jump(&mut self, block: ssa::Block, arguments: Box<[ssa::Value]>) {
-        self.emit_instruction(ssa::Instruction::Jump(block, arguments));
+    fn emit_jump(&mut self, target: ssa::Block, arguments: &[ssa::Value]) {
+        self.emit_instruction(ssa::Inst::Jump { target, args: arguments.to_vec() });
     }
 
     fn emit_branch(
         &mut self, expr: ssa::Value,
-        true_block: ssa::Block, true_arguments: &[ssa::Value],
-        false_block: ssa::Block, false_arguments: &[ssa::Value],
+        true_block: ssa::Block, true_args: &[ssa::Value],
+        false_block: ssa::Block, false_args: &[ssa::Value],
     ) {
-        let true_arguments = true_arguments.to_vec().into_boxed_slice();
-        let false_arguments = false_arguments.to_vec().into_boxed_slice();
-        self.emit_instruction(ssa::Instruction::Branch(
-            expr, true_block, true_arguments, false_block, false_arguments,
-        ));
+        let mut args = Vec::with_capacity(1 + true_args.len() + false_args.len());
+        args.push(expr);
+        args.extend(true_args);
+        args.extend(false_args);
+
+        self.emit_instruction(ssa::Inst::Branch {
+            targets: [true_block, false_block],
+            arg_lens: [true_args.len(), false_args.len()],
+            args
+        });
     }
 
     fn emit_call(&mut self, call: &ast::Call) -> ssa::Value {
-        let ast::Call((function, _), box ref arguments) = *call;
-        let arguments: Vec<_> = arguments.iter()
+        let ast::Call((symbol, _), box ref args) = *call;
+        let args: Vec<_> = args.iter()
             .map(|argument| self.emit_rvalue(argument))
             .collect();
-        self.emit_instruction(ssa::Instruction::Call(function, arguments.into_boxed_slice()))
+        self.emit_instruction(ssa::Inst::Call { symbol, args })
     }
 
     fn emit_real(&mut self, real: f64) -> ssa::Value {
-        let constant = ssa::Constant::Real(real);
-        let instruction = ssa::Instruction::Immediate(constant);
+        let value = ssa::Constant::Real(real);
+        let instruction = ssa::Inst::Immediate { value };
         self.function.emit_instruction(self.current_block, instruction)
     }
 
     fn emit_string(&mut self, string: Symbol) -> ssa::Value {
-        let constant = ssa::Constant::String(string);
-        let instruction = ssa::Instruction::Immediate(constant);
+        let value = ssa::Constant::String(string);
+        let instruction = ssa::Inst::Immediate { value };
         self.function.emit_instruction(self.current_block, instruction)
     }
 
-    fn emit_instruction(&mut self, instruction: ssa::Instruction) -> ssa::Value {
+    fn emit_instruction(&mut self, instruction: ssa::Inst) -> ssa::Value {
         self.function.emit_instruction(self.current_block, instruction)
     }
 
@@ -499,7 +513,7 @@ impl<'e> Codegen<'e> {
     fn with_loop<F>(
         &mut self, iter: &[ssa::Value], next: ssa::Block, exit: ssa::Block, f: F
     ) where F: FnOnce(&mut Codegen) {
-        let iter = iter.to_vec().into_boxed_slice();
+        let iter = iter.to_vec();
 
         let old_iter = mem::replace(&mut self.current_iter, Some(iter));
         let old_next = mem::replace(&mut self.current_next, Some(next));

@@ -66,9 +66,9 @@ impl Codegen {
         self.block_offsets.insert(block, self.function.instructions.len());
 
         for &value in &program.blocks[block].instructions {
-            use back::ssa::Instruction::*;
+            use back::ssa::Inst::*;
             match program.values[value] {
-                Immediate(constant) => {
+                Immediate { value: constant } => {
                     let target = self.registers[value];
                     let a = match constant {
                         ssa::Constant::Real(real) => self.emit_real(real),
@@ -79,7 +79,7 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 },
 
-                Unary(op, a) => {
+                Unary { op, arg: a } => {
                     let op = code::Op::from(op);
                     let target = self.registers[value];
                     let a = self.registers[a];
@@ -88,7 +88,7 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
-                Binary(op, a, b) => {
+                Binary { op, args: [a, b] } => {
                     let op = code::Op::from(op);
                     let target = self.registers[value];
                     let a = self.registers[a];
@@ -100,14 +100,14 @@ impl Codegen {
 
                 Argument => unreachable!("corrupt function"),
 
-                DeclareGlobal(symbol) => {
+                DeclareGlobal { symbol } => {
                     let a = self.emit_string(symbol);
 
                     let inst = code::Inst::encode(code::Op::DeclareGlobal, a, 0, 0);
                     self.function.instructions.push(inst);
                 }
 
-                Lookup(symbol) => {
+                Lookup { symbol } => {
                     let target = self.registers[value];
                     let a = self.emit_string(symbol);
 
@@ -115,71 +115,53 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
-                LoadField(scope, symbol) => {
+                LoadField { scope, field } => {
                     let target = self.registers[value];
                     let a = self.registers[scope];
-                    let b = self.emit_string(symbol);
+                    let b = self.emit_string(field);
 
                     let inst = code::Inst::encode(code::Op::LoadField, target, a, b);
                     self.function.instructions.push(inst);
                 }
 
-                LoadIndex(array, box ref indices) => {
+                LoadIndex { args: [array, i, j] } => {
                     let target = self.registers[value];
                     let a = self.registers[array];
-                    let b = indices.len();
 
-                    let inst = code::Inst::encode(code::Op::LoadIndex, target, a, b);
+                    let inst = code::Inst::encode(code::Op::LoadIndex, target, a, 2);
                     self.function.instructions.push(inst);
 
-                    let i = indices.get(0).map(|&i| self.registers[i]).unwrap_or(0);
-                    let j = indices.get(1).map(|&j| self.registers[j]).unwrap_or(0);
+                    let i = self.registers[i];
+                    let j = self.registers[j];
 
                     let inst = code::Inst::encode(code::Op::Args, i, j, 0);
                     self.function.instructions.push(inst);
                 }
 
-                StoreField(scope, symbol, value) => {
+                StoreField { args: [value, scope], field } => {
                     let source = self.registers[value];
                     let a = self.registers[scope];
-                    let b = self.emit_string(symbol);
+                    let b = self.emit_string(field);
 
                     let inst = code::Inst::encode(code::Op::StoreField, source, a, b);
                     self.function.instructions.push(inst);
                 }
 
-                StoreIndex(array, box ref indices, value) => {
+                StoreIndex { args: [value, array, i, j] } => {
                     let source = self.registers[value];
                     let a = self.registers[array];
-                    let b = indices.len();
 
-                    let inst = code::Inst::encode(code::Op::StoreIndex, source, a, b);
+                    let inst = code::Inst::encode(code::Op::StoreIndex, source, a, 2);
                     self.function.instructions.push(inst);
 
-                    let i = indices.get(0).map(|&i| self.registers[i]).unwrap_or(0);
-                    let j = indices.get(1).map(|&j| self.registers[j]).unwrap_or(0);
+                    let i = self.registers[i];
+                    let j = self.registers[j];
 
                     let inst = code::Inst::encode(code::Op::Args, i, j, 0);
                     self.function.instructions.push(inst);
                 }
 
-                With(a) => {
-                    let target = self.registers[value];
-                    let a = self.registers[a];
-
-                    let inst = code::Inst::encode(code::Op::With, target, a, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                Next(a) => {
-                    let target = self.registers[value];
-                    let a = self.registers[a];
-
-                    let inst = code::Inst::encode(code::Op::Next, target, a, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                Call(a, box ref args) => {
+                Call { symbol: a, ref args } => {
                     let target = self.registers[value];
                     let a = self.emit_string(a);
                     let b = args.len();
@@ -197,7 +179,7 @@ impl Codegen {
                     }
                 }
 
-                Return(a) => {
+                Return { arg: a } => {
                     let a = self.registers[a];
 
                     let inst = code::Inst::encode(code::Op::Ret, a, 0, 0);
@@ -209,27 +191,35 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
-                Jump(block, box ref arguments) => {
-                    self.emit_edge(program, block, arguments);
+                Jump { target, ref args } => {
+                    self.emit_edge(program, target, args);
                 }
 
                 // TODO: solve the block scheduling problem more explicitly
-                Branch(a, true_block, box ref true_args, false_block, box ref false_args) => {
+                Branch {
+                    targets: [true_block, false_block],
+                    arg_lens: [true_args, false_args],
+                    ref args
+                } => {
                     // split the false CFG edge to make room for the phi moves
                     let edge_block = ssa::Block::new(self.edge_block);
                     self.edge_block += 1;
 
-                    let a = self.registers[a];
+                    let a = self.registers[args[0]];
                     self.jump_offsets.insert(self.function.instructions.len(), edge_block);
 
                     let inst = code::Inst::encode(code::Op::BranchFalse, a, 0, 0);
                     self.function.instructions.push(inst);
 
-                    self.emit_edge(program, true_block, true_args);
+                    let true_start = 1;
+                    let true_end = true_start + true_args;
+                    self.emit_edge(program, true_block, &args[true_start..true_end]);
 
                     self.block_offsets.insert(edge_block, self.function.instructions.len());
 
-                    self.emit_edge(program, false_block, false_args);
+                    let false_start = true_end;
+                    let false_end = false_start + false_args;
+                    self.emit_edge(program, false_block, &args[false_start..false_end]);
                 }
             }
         }
@@ -389,6 +379,9 @@ impl From<ssa::Unary> for code::Op {
             ssa::Unary::Negate => code::Op::Neg,
             ssa::Unary::Invert => code::Op::Not,
             ssa::Unary::BitInvert => code::Op::BitNot,
+
+            ssa::Unary::With => code::Op::With,
+            ssa::Unary::Next => code::Op::Next,
         }
     }
 }

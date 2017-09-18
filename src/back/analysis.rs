@@ -20,7 +20,7 @@ impl ControlFlow {
         let mut pred: EntityMap<_, Vec<_>> = EntityMap::with_capacity(program.blocks.len());
 
         for predecessor in program.blocks.keys() {
-            for successor in program.successors(predecessor) {
+            for &successor in program.successors(predecessor) {
                 succ[predecessor].push(successor);
                 pred[successor].push(predecessor);
             }
