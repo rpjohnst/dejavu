@@ -52,6 +52,7 @@ impl Function {
             Argument |
             Lookup { .. } |
             LoadField { .. } | LoadIndex { .. } |
+            WriteField { .. } | ToArrayField { .. } |
             Call { .. } => Some(value),
 
             DeclareGlobal { .. } |
@@ -117,6 +118,10 @@ pub enum Inst {
     /// `args` contains `[value, array, i, j]`
     StoreIndex { args: [Value; 4] },
 
+    /// `args` contains `[value, scope]`
+    WriteField { args: [Value; 2], field: Symbol },
+    ToArrayField { scope: Value, field: Symbol },
+
     Call { symbol: Symbol, args: Vec<Value> },
     Return { arg: Value },
     Exit,
@@ -138,6 +143,9 @@ impl Inst {
 
             StoreField { ref args, .. } => args,
             StoreIndex { ref args, .. } => args,
+
+            WriteField { ref args, .. } => args,
+            ToArrayField { ref scope, .. } => ref_slice(scope),
 
             Call { ref args, .. } => &args[..],
             Return { ref arg, .. } => ref_slice(arg),
@@ -167,6 +175,9 @@ pub enum Unary {
 
     With,
     Next,
+
+    ToArray,
+    ToScalar,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]

@@ -24,10 +24,16 @@ pub struct Codegen<'e> {
     current_default: Option<ssa::Block>,
 }
 
+/// A location that can be read from or written to.
+///
+/// GML arrays are not first class values, and are instead tied to variable bindings. To accomodate
+/// this, `Lvalue::Index` is replaced with `Lvalue::IndexField`. In the future, `Index` can be used
+/// to implement first-class arrays and data structure accessors.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum Lvalue {
     Field(ssa::Value, Symbol),
     Index(ssa::Value, [ssa::Value; 2]),
+    IndexField(ssa::Value, Symbol, [ssa::Value; 2]),
 }
 
 #[derive(Debug)]
@@ -427,7 +433,7 @@ impl<'e> Codegen<'e> {
                     self.errors.error(expression_span, "invalid number of array indices");
                 }
 
-                let array = self.emit_rvalue(expr);
+                let array = self.emit_lvalue(expr)?;
                 let zero = self.emit_real(0.0);
                 let mut indices = indices.iter().rev()
                     .map(|index| self.emit_rvalue(index))
@@ -435,7 +441,15 @@ impl<'e> Codegen<'e> {
 
                 let j = indices.next().unwrap();
                 let i = indices.next().unwrap();
-                Ok(Lvalue::Index(array, [i, j]))
+
+                match array {
+                    Lvalue::Field(scope, field) => Ok(Lvalue::IndexField(scope, field, [i, j])),
+                    _ => {
+                        let (_, expr_span) = *expr;
+                        self.errors.error(expr_span, "expected a variable");
+                        Err(LvalueError)
+                    }
+                }
             }
 
             _ => {
@@ -445,20 +459,64 @@ impl<'e> Codegen<'e> {
         }
     }
 
+    /// Language-level variable load.
+    ///
+    /// This handles GML's odd behavior around arrays. Before GMS:
+    /// - all loads produce scalars; if the variable holds an array it loads `a[0, 0]`
+    /// - indexed loads from scalar variables treat the variable as a 1x1 array
     fn emit_load(&mut self, lvalue: Lvalue) -> ssa::Value {
-        let instruction = match lvalue {
-            Lvalue::Field(scope, field) => ssa::Inst::LoadField { scope, field },
-            Lvalue::Index(array, [i, j]) => ssa::Inst::LoadIndex { args: [array, i, j] },
+        let value = match lvalue {
+            Lvalue::Field(scope, field) =>
+                self.emit_instruction(ssa::Inst::LoadField { scope, field }),
+            Lvalue::Index(array, [i, j]) =>
+                self.emit_instruction(ssa::Inst::LoadIndex { args: [array, i, j] }),
+
+            Lvalue::IndexField(scope, field, [i, j]) => {
+                let array = self.emit_instruction(ssa::Inst::LoadField { scope, field });
+
+                // TODO: this only happens pre-gms
+                let op = ssa::Unary::ToArray;
+                let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
+
+                self.emit_instruction(ssa::Inst::LoadIndex { args: [array, i, j] })
+            }
         };
-        self.emit_instruction(instruction)
+
+        // TODO: this only happens pre-gms
+        let op = ssa::Unary::ToScalar;
+        self.emit_instruction(ssa::Inst::Unary { op, arg: value })
     }
 
+    /// Language-level variable store.
+    ///
+    /// This handles GML's odd behavior around arrays.
+    /// - indexed stores convert variables to arrays if they are undefined or scalar
+    ///
+    /// Before GMS:
+    /// - stores to array variables do *not* overwrite the whole array, only `a[0, 0]`
+    /// - indexed stores to scalar (or undefined) variables leave the scalar (or `0`) at `a[0, 0]`
     fn emit_store(&mut self, lvalue: Lvalue, value: ssa::Value) {
-        let instruction = match lvalue {
-            Lvalue::Field(scope, field) => ssa::Inst::StoreField { args: [value, scope], field },
-            Lvalue::Index(array, [i, j]) => ssa::Inst::StoreIndex { args: [value, array, i, j] },
-        };
-        self.emit_instruction(instruction);
+        match lvalue {
+            Lvalue::Field(scope, field) => {
+                // TODO: this only happens pre-gms
+                let inst = ssa::Inst::WriteField { args: [value, scope], field };
+                let array = self.emit_instruction(inst);
+
+                self.emit_instruction(ssa::Inst::StoreField { args: [value, scope], field });
+            }
+
+            Lvalue::Index(array, [i, j]) => {
+                self.emit_instruction(ssa::Inst::StoreIndex { args: [value, array, i, j] });
+            }
+
+            Lvalue::IndexField(scope, field, [i, j]) => {
+                // TODO: this only happens pre-gms; gms does need to handle undef
+                let array = self.emit_instruction(ssa::Inst::ToArrayField { scope, field });
+                self.emit_instruction(ssa::Inst::StoreField { args: [array, scope], field });
+
+                self.emit_instruction(ssa::Inst::StoreIndex { args: [value, array, i, j] });
+            }
+        }
     }
 
     fn emit_jump(&mut self, target: ssa::Block, arguments: &[ssa::Value]) {

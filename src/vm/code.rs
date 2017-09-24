@@ -90,6 +90,11 @@ pub enum Op {
     StoreField,
     StoreIndex,
 
+    ToArray,
+    ToScalar,
+    WriteField,
+    ToArrayField,
+
     With,
     Next,
 

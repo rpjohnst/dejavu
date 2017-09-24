@@ -161,6 +161,29 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
+                WriteField { args: [scalar, scope], field } => {
+                    let target = self.registers[value];
+                    let source = self.registers[scalar];
+                    let a = self.registers[scope];
+
+                    let inst = code::Inst::encode(code::Op::WriteField, target, source, a);
+                    self.function.instructions.push(inst);
+
+                    let b = self.emit_string(field);
+
+                    let inst = code::Inst::encode(code::Op::Args, b, 0, 0);
+                    self.function.instructions.push(inst);
+                }
+
+                ToArrayField { scope, field } => {
+                    let target = self.registers[value];
+                    let a = self.registers[scope];
+                    let b = self.emit_string(field);
+
+                    let inst = code::Inst::encode(code::Op::ToArrayField, target, a, b);
+                    self.function.instructions.push(inst);
+                }
+
                 Call { symbol: a, ref args } => {
                     let target = self.registers[value];
                     let a = self.emit_string(a);
@@ -382,6 +405,9 @@ impl From<ssa::Unary> for code::Op {
 
             ssa::Unary::With => code::Op::With,
             ssa::Unary::Next => code::Op::Next,
+
+            ssa::Unary::ToArray => code::Op::ToArray,
+            ssa::Unary::ToScalar => code::Op::ToScalar,
         }
     }
 }
