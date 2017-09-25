@@ -6,6 +6,7 @@ pub use front::codegen::Codegen;
 
 mod lexer;
 mod parser;
+mod ssa;
 mod codegen;
 
 mod token;

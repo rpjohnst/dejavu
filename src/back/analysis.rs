@@ -11,22 +11,32 @@ pub struct ControlFlow {
 }
 
 impl ControlFlow {
+    pub fn with_capacity(n: usize) -> Self {
+        let succ: EntityMap<_, Vec<_>> = EntityMap::with_capacity(n);
+        let pred: EntityMap<_, Vec<_>> = EntityMap::with_capacity(n);
+
+        ControlFlow { succ, pred }
+    }
+
+    pub fn insert(&mut self, pred: ssa::Block, succ: ssa::Block) {
+        self.succ.ensure(pred).push(succ);
+        self.pred.ensure(succ).push(pred);
+    }
+
     /// Computes the control flow graph of a function.
     ///
     /// A basic block's successors are easily retrieved from its terminating jump or branch. This
     /// function propagates that information to determine each block's predecessors.
-    pub fn compute(program: &ssa::Function) -> ControlFlow {
-        let mut succ: EntityMap<_, Vec<_>> = EntityMap::with_capacity(program.blocks.len());
-        let mut pred: EntityMap<_, Vec<_>> = EntityMap::with_capacity(program.blocks.len());
+    pub fn compute(program: &ssa::Function) -> Self {
+        let mut control_flow = Self::with_capacity(program.blocks.len());
 
-        for predecessor in program.blocks.keys() {
-            for &successor in program.successors(predecessor) {
-                succ[predecessor].push(successor);
-                pred[successor].push(predecessor);
+        for pred in program.blocks.keys() {
+            for &succ in program.successors(pred) {
+                control_flow.insert(pred, succ);
             }
         }
 
-        ControlFlow { succ, pred }
+        control_flow
     }
 }
 

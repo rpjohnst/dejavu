@@ -1,4 +1,5 @@
 pub use back::codegen::Codegen;
+pub use back::analysis::ControlFlow;
 
 pub mod ssa;
 

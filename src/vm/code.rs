@@ -84,14 +84,18 @@ pub enum Op {
     DeclareGlobal,
     Lookup,
 
+    ToArray,
+    ToScalar,
+
+    Undef,
+    Write,
+
     LoadField,
     LoadIndex,
 
     StoreField,
     StoreIndex,
 
-    ToArray,
-    ToScalar,
     WriteField,
     ToArrayField,
 

@@ -98,7 +98,26 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
-                Argument => unreachable!("corrupt function"),
+                // these should not be used as instructions
+                Undef | Alias(_) | Argument => unreachable!("corrupt function"),
+
+                Read { symbol, arg } => {
+                    if let Undef = program.values[arg] {
+                        let a = self.emit_string(symbol);
+
+                        let inst = code::Inst::encode(code::Op::Undef, a, 0, 0);
+                        self.function.instructions.push(inst);
+                    }
+                }
+
+                Write { args: [source, array] } => {
+                    let target = self.registers[value];
+                    let a = self.registers[source];
+                    let b = self.registers[array];
+
+                    let inst = code::Inst::encode(code::Op::Write, target, a, b);
+                    self.function.instructions.push(inst);
+                }
 
                 DeclareGlobal { symbol } => {
                     let a = self.emit_string(symbol);

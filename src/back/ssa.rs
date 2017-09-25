@@ -2,7 +2,7 @@ use std::u32;
 
 use entity::{Entity, EntityMap};
 use symbol::Symbol;
-use slice::ref_slice;
+use slice::{ref_slice, ref_slice_mut};
 
 pub struct Function {
     pub blocks: EntityMap<Block, BlockBody>,
@@ -49,13 +49,15 @@ impl Function {
         use self::Inst::*;
         match self.values[value] {
             Immediate { .. } | Unary { .. } | Binary { .. } |
-            Argument |
-            Lookup { .. } |
+            Argument | Lookup { .. } |
+            Write { .. } |
             LoadField { .. } | LoadIndex { .. } |
             WriteField { .. } | ToArrayField { .. } |
             Call { .. } => Some(value),
 
+            Undef | Alias(_) |
             DeclareGlobal { .. } |
+            Read { .. } |
             StoreField { .. } | StoreIndex { .. } |
             Return { .. } | Exit |
             Jump { .. } | Branch { .. } => None,
@@ -99,15 +101,27 @@ pub struct BlockBody {
 /// values" are stored in contiguous arrays, which enables more uniform interfaces elsewhere.
 #[derive(PartialEq, Debug)]
 pub enum Inst {
+    /// A placeholder for an undefined value.
+    Undef,
+    /// A placeholder for a value that has been replaced.
+    ///
+    /// Aliases must not exist in blocks, and must be removed before codegen. They should also be
+    /// removed between or as part of optimization passes that generate them.
+    Alias(Value),
+
     Immediate { value: Constant },
     Unary { op: Unary, arg: Value },
     Binary { op: Binary, args: [Value; 2] },
 
     /// A placeholder for an argument to a basic block.
     Argument,
-
     DeclareGlobal { symbol: Symbol },
     Lookup { symbol: Symbol },
+
+    /// Mark a value as read at this point, error on `Undef`.
+    Read { symbol: Symbol, arg: Value },
+    /// `args` contains `[value, array]`. If array is a scalar, return `value`.
+    Write { args: [Value; 2] },
 
     LoadField { scope: Value, field: Symbol },
     /// `args` contains `[array, i, j]`
@@ -138,6 +152,9 @@ impl Inst {
             Unary { ref arg, .. } => ref_slice(arg),
             Binary { ref args, .. } => args,
 
+            Read { ref arg, .. } => ref_slice(arg),
+            Write { ref args } => args,
+
             LoadField { ref scope, .. } => ref_slice(scope),
             LoadIndex { ref args, .. } => args,
 
@@ -153,10 +170,41 @@ impl Inst {
             Jump { ref args, .. } => &args[..],
             Branch { ref args, .. } => &args[..],
 
+            Undef | Alias(..) |
             Immediate { .. } |
-            Argument |
-            DeclareGlobal { .. } | Lookup { .. } |
+            Argument | DeclareGlobal { .. } | Lookup { .. } |
             Exit => &[],
+        }
+    }
+
+    pub fn arguments_mut(&mut self) -> &mut [Value] {
+        use self::Inst::*;
+        match *self {
+            Unary { ref mut arg, .. } => ref_slice_mut(arg),
+            Binary { ref mut args, .. } => args,
+
+            Read { ref mut arg, .. } => ref_slice_mut(arg),
+            Write { ref mut args, .. } => args,
+
+            LoadField { ref mut scope, .. } => ref_slice_mut(scope),
+            LoadIndex { ref mut args, .. } => args,
+
+            StoreField { ref mut args, .. } => args,
+            StoreIndex { ref mut args, .. } => args,
+
+            WriteField { ref mut args, .. } => args,
+            ToArrayField { ref mut scope, .. } => ref_slice_mut(scope),
+
+            Call { ref mut args, .. } => &mut args[..],
+            Return { ref mut arg, .. } => ref_slice_mut(arg),
+
+            Jump { ref mut args, .. } => &mut args[..],
+            Branch { ref mut args, .. } => &mut args[..],
+
+            Undef | Alias(..) |
+            Immediate { .. } |
+            Argument | DeclareGlobal { .. } | Lookup { .. } |
+            Exit => &mut [],
         }
     }
 }
