@@ -45,7 +45,7 @@ impl Codegen {
         let control_flow = ControlFlow::compute(program);
         let liveness = Liveness::compute(program, &control_flow);
         let interference = Interference::build(program, &liveness);
-        let (registers, register_count) = interference.color();
+        let (registers, param_count, register_count) = interference.color();
 
         self.registers = registers;
         self.register_count = register_count;
@@ -55,7 +55,7 @@ impl Codegen {
         self.emit_blocks(program, program.entry());
         self.fixup_jumps();
 
-        self.function.params = 0;
+        self.function.params = param_count as u32;
         self.function.locals = self.register_count as u32;
 
         self.function

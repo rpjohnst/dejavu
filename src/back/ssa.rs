@@ -80,6 +80,10 @@ impl Function {
         value
     }
 
+    pub fn emit_undef(&mut self) -> Value {
+        self.values.push(Inst::Undef)
+    }
+
     pub fn make_block(&mut self) -> Block {
         let block = BlockBody {
             arguments: vec![],

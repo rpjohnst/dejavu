@@ -11,6 +11,7 @@ use back::analysis::*;
 /// means that values can be assigned non-interfering storage locations by coloring the graph so
 /// that no two adjacent nodes share the same color.
 pub struct Interference {
+    params: Vec<ssa::Value>,
     vertices: Vec<ssa::Value>,
     adjacency: EntityMap<ssa::Value, Vec<ssa::Value>>,
 }
@@ -21,6 +22,7 @@ impl Interference {
     /// Using a function's live value analysis, this algorithm determines which values are live at
     /// each definition point and marks them as interfering with the defined value.
     pub fn build(program: &ssa::Function, liveness: &Liveness) -> Interference {
+        let mut params = Vec::new();
         let mut vertices = Vec::with_capacity(program.values.len());
         let mut adjacency: EntityMap<_, Vec<_>> = EntityMap::with_capacity(program.values.len());
 
@@ -42,12 +44,18 @@ impl Interference {
 
             let arguments = &program.blocks[block].arguments;
             for &value in arguments {
-                vertices.push(value);
                 adjacency[value].extend(arguments.into_iter().filter(|&&other| value != other));
+            }
+
+            // arguments to the entry block are actually program-level arguments
+            if block == program.entry() {
+                params.extend(arguments);
+            } else {
+                vertices.extend(arguments);
             }
         }
 
-        Interference { vertices, adjacency }
+        Interference { params, vertices, adjacency }
     }
 
     /// Colors the interference graph using an unbounded number of colors.
@@ -55,14 +63,21 @@ impl Interference {
     /// This is a simple greedy algorithm to optimally color chordal graphs. It visits each node in
     /// a perfect elimination order, and assigns it the lowest color not used by any of its
     /// neighbors.
-    pub fn color(self) -> (EntityMap<ssa::Value, usize>, usize) {
+    pub fn color(self) -> (EntityMap<ssa::Value, usize>, usize, usize) {
         let mut colors = EntityMap::with_capacity(self.adjacency.len());
         for &value in &self.vertices {
             colors[value] = usize::max_value();
         }
 
-        let mut color_count = 0;
-        for value in Self::perfect_elimination_order(self.vertices, &self.adjacency) {
+        // Program arguments must be in order at the start of the stack frame
+        // We know they all interfere with each other so there's no reason to run MCS on them.
+        let param_count = self.params.len();
+        for (color, &value) in self.params.iter().enumerate() {
+            colors[value] = color;
+        }
+
+        let mut color_count = self.params.len();
+        for value in Self::perfect_elimination_order(self.params, self.vertices, &self.adjacency) {
             let mut neighbors = HashSet::with_capacity(self.adjacency[value].len());
             for &neighbor in &self.adjacency[value] {
                 neighbors.insert(colors[neighbor]);
@@ -77,14 +92,15 @@ impl Interference {
             }
         }
 
-        (colors, color_count)
+        (colors, param_count, color_count)
     }
 
     /// Computes a chordal graph's perfect elimination order using maximum cardinality search.
     ///
     /// See the `MaximumCardinalitySearch` iterator for details.
     fn perfect_elimination_order(
-        vertices: Vec<ssa::Value>, adjacency: &EntityMap<ssa::Value, Vec<ssa::Value>>
+        params: Vec<ssa::Value>, vertices: Vec<ssa::Value>,
+        adjacency: &EntityMap<ssa::Value, Vec<ssa::Value>>
     ) -> MaximumCardinalitySearch {
         let mut buckets = Vec::with_capacity(vertices.len());
         buckets.push(vertices.len());
@@ -93,6 +109,11 @@ impl Interference {
         let mut indices = EntityMap::with_capacity(adjacency.len());
         for (i, &value) in vertices.iter().enumerate() {
             indices[value] = i;
+        }
+
+        // tell the algorithm that parameters have already been colored
+        for (i, &value) in params.iter().enumerate() {
+            indices[value] = vertices.len() + i;
         }
 
         MaximumCardinalitySearch {

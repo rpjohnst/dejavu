@@ -1,4 +1,4 @@
-use std::{mem, iter};
+use std::{mem, cmp, iter};
 use std::collections::HashSet;
 
 use symbol::{Symbol, keyword};
@@ -12,6 +12,7 @@ pub struct Codegen<'e> {
     /// GML `var` declarations are static and independent of control flow. All references to a
     /// `var`-declared name after its declaration in the source text are treated as local.
     locals: HashSet<Symbol>,
+    arguments: u32,
 
     current_block: ssa::Block,
 
@@ -59,6 +60,7 @@ impl<'e> Codegen<'e> {
             errors: errors,
 
             locals: HashSet::new(),
+            arguments: 0,
 
             current_block: entry,
 
@@ -113,7 +115,14 @@ impl<'e> Codegen<'e> {
             }
 
             ast::Stmt::Declare(scope, box ref names) => {
-                let names = names.iter().map(|&(name, _)| name);
+                let names: Vec<_> = names.iter().filter_map(|&(name, name_span)| {
+                    if name.is_argument() {
+                        self.errors.error(name_span, "cannot redeclare a builtin variable");
+                        return None;
+                    }
+
+                    Some(name)
+                }).collect();
 
                 match scope {
                     ast::Declare::Local => self.locals.extend(names),
@@ -448,6 +457,18 @@ impl<'e> Codegen<'e> {
         let (ref expression, expression_span) = *expression;
         match *expression {
             ast::Expr::Value(ast::Value::Ident(symbol)) if !symbol.is_keyword() => {
+                if let Some(argument) = symbol.as_argument() {
+                    for argument in self.arguments..argument + 1 {
+                        let symbol = Symbol::from_argument(argument);
+                        self.locals.insert(symbol);
+
+                        let entry = self.builder.function.entry();
+                        let argument = self.builder.function.emit_argument(entry);
+                        self.builder.write_local(entry, symbol, argument);
+                    }
+                    self.arguments = cmp::max(self.arguments, argument + 1);
+                }
+
                 if self.locals.contains(&symbol) {
                     Ok(Lvalue::Local(symbol))
                 } else {

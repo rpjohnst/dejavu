@@ -24,6 +24,10 @@ impl Symbol {
     pub fn into_index(self) -> u32 {
         self.0
     }
+
+    pub fn from_index(index: u32) -> Symbol {
+        Symbol(index)
+    }
 }
 
 impl fmt::Debug for Symbol {
@@ -99,8 +103,9 @@ impl Interner {
     }
 }
 
-macro_rules! declare_keywords {(
-    $( ($index: expr, $name: ident, $string: expr) )*
+macro_rules! declare_symbols {(
+    keywords: $(($index: expr, $name: ident, $string: expr))*
+    arguments: $(($symbol_index: expr, $argument_index: expr))*
 ) => {
     #[allow(non_upper_case_globals)]
     pub mod keyword {
@@ -113,12 +118,16 @@ macro_rules! declare_keywords {(
 
     impl Interner {
         fn new() -> Self {
-            Interner::fill(&[$($string,)*])
+            Interner::fill(&[
+                $($string,)*
+                $(concat!("argument", $argument_index),)*
+            ])
         }
     }
 }}
 
-declare_keywords! {
+declare_symbols! {
+keywords:
     (0, True, "true")
     (1, False, "false")
 
@@ -158,11 +167,46 @@ declare_keywords! {
     (31, And, "and")
     (32, Or, "or")
     (33, Xor, "xor")
+
+arguments:
+    (34, 0)
+    (35, 1)
+    (36, 2)
+    (37, 3)
+    (38, 4)
+    (39, 5)
+    (40, 6)
+    (41, 7)
+    (42, 8)
+    (43, 9)
+    (44, 10)
+    (45, 11)
+    (46, 12)
+    (47, 13)
+    (48, 14)
+    (49, 15)
 }
 
 impl Symbol {
     pub fn is_keyword(&self) -> bool {
-        self.0 <= 33
+        self.0 < 34
+    }
+
+    pub fn is_argument(&self) -> bool {
+        34 <= self.0 && self.0 < 50
+    }
+
+    pub fn as_argument(&self) -> Option<u32> {
+        if self.is_argument() {
+            Some(self.0 - 34)
+        } else {
+            None
+        }
+    }
+
+    pub fn from_argument(argument: u32) -> Symbol {
+        assert!(argument < 16);
+        Symbol::from_index(34 + argument)
     }
 }
 
