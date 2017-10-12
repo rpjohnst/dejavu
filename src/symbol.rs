@@ -1,24 +1,20 @@
-use std::{mem, ops, fmt};
+use std::{mem, ops, cmp, fmt};
+use std::hash::{Hash, Hasher};
+use std::borrow::Borrow;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// A symbol is an index into a thread-local interner
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Symbol(u32);
 
 impl !Send for Symbol {}
+impl !Sync for Symbol {}
 
 impl Symbol {
     /// Map a string to its interned symbol
     pub fn intern(string: &str) -> Self {
         Interner::with(|interner| interner.intern(string))
-    }
-
-    /// Map a symbol to its string
-    pub fn as_str(self) -> InternedString {
-        Interner::with(|interner| unsafe {
-            InternedString(mem::transmute::<_, &str>(interner.get(self)))
-        })
     }
 
     pub fn into_index(self) -> u32 {
@@ -30,6 +26,28 @@ impl Symbol {
     }
 }
 
+impl ops::Deref for Symbol {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        Interner::with(|interner| unsafe { mem::transmute(interner.get(*self)) })
+    }
+}
+
+impl Borrow<str> for Symbol {
+    fn borrow(&self) -> &str {
+        self
+    }
+}
+
+impl cmp::PartialOrd for Symbol {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        let a: &str = self;
+        let b: &str = other;
+        a.partial_cmp(b)
+    }
+}
+
 impl fmt::Debug for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}({})", self, self.0)
@@ -38,36 +56,42 @@ impl fmt::Debug for Symbol {
 
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self.as_str(), f)
-    }
-}
-
-/// A thread-local interned string
-pub struct InternedString(&'static str);
-
-impl !Send for InternedString {}
-
-impl ops::Deref for InternedString {
-    type Target = str;
-    fn deref(&self) -> &str { self.0 }
-}
-
-impl fmt::Debug for InternedString {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(self.0, f)
-    }
-}
-
-impl fmt::Display for InternedString {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(self.0, f)
+        write!(f, "{}", &self)
     }
 }
 
 #[derive(Default)]
 struct Interner {
-    names: HashMap<Box<str>, Symbol>,
-    strings: Vec<Box<str>>,
+    strings: HashSet<Entry>,
+    ids: Vec<*const str>,
+}
+
+struct Entry {
+    string: Box<str>,
+    id: u32,
+}
+
+impl cmp::PartialEq for Entry {
+    fn eq(&self, other: &Self) -> bool {
+        let a: &str = self.borrow();
+        let b: &str = other.borrow();
+        a == b
+    }
+}
+
+impl cmp::Eq for Entry {}
+
+impl Hash for Entry {
+    fn hash<H>(&self, state: &mut H) where H: Hasher {
+        let a: &str = self.borrow();
+        a.hash(state)
+    }
+}
+
+impl Borrow<str> for Entry {
+    fn borrow(&self) -> &str {
+        &self.string
+    }
 }
 
 impl Interner {
@@ -80,19 +104,21 @@ impl Interner {
     }
 
     fn intern(&mut self, string: &str) -> Symbol {
-        if let Some(&name) = self.names.get(string) {
-            return name;
+        if let Some(entry) = self.strings.get(string) {
+            return Symbol(entry.id);
         }
 
-        let name = Symbol(self.strings.len() as u32);
-        let string = string.to_string().into_boxed_str();
-        self.strings.push(string.clone());
-        self.names.insert(string, name);
-        name
+        let string = String::from(string).into_boxed_str();
+        let data = &*string as *const str;
+        let id = self.ids.len() as u32;
+        self.strings.insert(Entry { string, id });
+        self.ids.push(data);
+
+        Symbol(id)
     }
 
     fn get(&self, name: Symbol) -> &str {
-        &self.strings[name.0 as usize]
+        unsafe { &*self.ids[name.0 as usize] }
     }
 
     fn with<T, F: FnOnce(&mut Interner) -> T>(f: F) -> T {
@@ -111,9 +137,7 @@ macro_rules! declare_symbols {(
     pub mod keyword {
         use super::Symbol;
 
-        $(
-            pub const $name: Symbol = Symbol($index);
-        )*
+        $(pub const $name: Symbol = Symbol($index);)*
     }
 
     impl Interner {

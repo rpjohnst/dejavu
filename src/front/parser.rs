@@ -427,13 +427,12 @@ impl<'s, 'e> Parser<'s, 'e> {
             }
 
             Real(symbol) => {
-                let contents = symbol.as_str();
-                let value = match contents.chars().next() {
-                    Some('$') => u64::from_str_radix(&contents[1..], 16).unwrap_or_else(|_| {
+                let value = match symbol.chars().next() {
+                    Some('$') => u64::from_str_radix(&symbol[1..], 16).unwrap_or_else(|_| {
                         self.errors.error(span, "invalid integer literal");
                         0
                     }) as f64,
-                    _ => f64::from_str(&contents).unwrap_or_else(|_| {
+                    _ => f64::from_str(&symbol).unwrap_or_else(|_| {
                         self.errors.error(span, "invalid floating point literal");
                         0.0
                     }),
@@ -442,8 +441,7 @@ impl<'s, 'e> Parser<'s, 'e> {
             }
 
             String(symbol) => {
-                let contents = symbol.as_str();
-                let symbol = Symbol::intern(&contents[1..contents.len() - 1]);
+                let symbol = Symbol::intern(&symbol[1..symbol.len() - 1]);
                 (ast::Expr::Value(ast::Value::String(symbol)), span, false)
             }
 
