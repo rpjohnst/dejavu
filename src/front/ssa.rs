@@ -3,17 +3,21 @@ use std::collections::HashMap;
 
 use bitvec::BitVec;
 use entity::{Entity, EntityMap};
-use symbol::Symbol;
 use back::{ssa, ControlFlow};
 
 pub struct Builder {
     pub function: ssa::Function,
     pub control_flow: ControlFlow,
 
-    current_defs: EntityMap<ssa::Block, HashMap<Symbol, ssa::Value>>,
-    current_args: EntityMap<ssa::Block, Vec<(Symbol, ssa::Value)>>,
+    local: u32,
+
+    current_defs: EntityMap<ssa::Block, HashMap<Local, ssa::Value>>,
+    current_args: EntityMap<ssa::Block, Vec<(Local, ssa::Value)>>,
     sealed: BitVec,
 }
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Local(u32);
 
 /// A utility type for tracking whether block argument values are unique.
 enum ZeroOneMany<T> {
@@ -31,6 +35,8 @@ impl Builder {
             function: function,
             control_flow: ControlFlow::with_capacity(0),
 
+            local: 0,
+
             current_defs: EntityMap::new(),
             current_args: EntityMap::new(),
             sealed: BitVec::new(),
@@ -41,9 +47,15 @@ impl Builder {
         self.control_flow.insert(pred, succ)
     }
 
-    pub fn read_local(&mut self, block: ssa::Block, symbol: Symbol) -> ssa::Value {
+    pub fn emit_local(&mut self) -> Local {
+        let local = Local(self.local);
+        self.local += 1;
+        local
+    }
+
+    pub fn read_local(&mut self, block: ssa::Block, local: Local) -> ssa::Value {
         // TODO: factor out `ensure` call with NLL
-        if let Some(&def) = self.current_defs.ensure(block).get(&symbol) {
+        if let Some(&def) = self.current_defs.ensure(block).get(&local) {
             return def;
         }
 
@@ -55,29 +67,29 @@ impl Builder {
             value = self.function.emit_argument(block);
 
             let args = self.current_args.ensure(block);
-            args.push((symbol, value));
+            args.push((local, value));
         } else if pred_len == 0 {
             value = ssa::Value::new(0);
         } else if pred_len == 1 {
             let pred = self.control_flow.pred[block][0];
-            value = self.read_local(pred, symbol);
+            value = self.read_local(pred, local);
         } else {
             let argument = self.function.emit_argument(block);
-            self.write_local(block, symbol, argument);
-            value = self.read_predecessors(block, symbol, argument);
+            self.write_local(block, local, argument);
+            value = self.read_predecessors(block, local, argument);
         }
 
-        self.write_local(block, symbol, value);
+        self.write_local(block, local, value);
         value
     }
 
-    pub fn write_local(&mut self, block: ssa::Block, symbol: Symbol, value: ssa::Value) {
+    pub fn write_local(&mut self, block: ssa::Block, local: Local, value: ssa::Value) {
         let defs = self.current_defs.ensure(block);
-        defs.insert(symbol, value);
+        defs.insert(local, value);
     }
 
     pub fn read_predecessors(
-        &mut self, block: ssa::Block, symbol: Symbol, argument: ssa::Value
+        &mut self, block: ssa::Block, local: Local, argument: ssa::Value
     ) -> ssa::Value {
         use self::ZeroOneMany::*;
 
@@ -88,7 +100,7 @@ impl Builder {
         let mut unique = Zero;
         for i in 0..pred_len {
             let pred = self.control_flow.pred[block][i];
-            let value = self.read_local(pred, symbol);
+            let value = self.read_local(pred, local);
 
             unique = match unique {
                 Zero if value == argument => Zero,
@@ -160,8 +172,8 @@ impl Builder {
     pub fn seal_block(&mut self, block: ssa::Block) {
         // TODO: factor out `ensure` call with NLL
         let arguments = mem::replace(self.current_args.ensure(block), Vec::default());
-        for (symbol, argument) in arguments {
-            self.read_predecessors(block, symbol, argument);
+        for (local, argument) in arguments {
+            self.read_predecessors(block, local, argument);
         }
         self.sealed.set(block.index());
     }

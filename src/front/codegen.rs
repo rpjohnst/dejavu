@@ -1,5 +1,5 @@
 use std::{mem, cmp, iter};
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use symbol::{Symbol, keyword};
 use front::{self, ast, Span, ErrorHandler};
@@ -11,12 +11,11 @@ pub struct Codegen<'e> {
 
     /// GML `var` declarations are static and independent of control flow. All references to a
     /// `var`-declared name after its declaration in the source text are treated as local.
-    locals: HashSet<Symbol>,
+    locals: HashMap<Symbol, front::ssa::Local>,
     arguments: u32,
 
     current_block: ssa::Block,
 
-    current_iter: Option<Vec<ssa::Value>>,
     current_next: Option<ssa::Block>,
     current_exit: Option<ssa::Block>,
 
@@ -59,12 +58,11 @@ impl<'e> Codegen<'e> {
             builder: builder,
             errors: errors,
 
-            locals: HashSet::new(),
+            locals: HashMap::new(),
             arguments: 0,
 
             current_block: entry,
 
-            current_iter: None,
             current_next: None,
             current_exit: None,
 
@@ -125,7 +123,13 @@ impl<'e> Codegen<'e> {
                 }).collect();
 
                 match scope {
-                    ast::Declare::Local => self.locals.extend(names),
+                    ast::Declare::Local => {
+                        for symbol in names {
+                            let local = self.builder.emit_local();
+                            self.locals.insert(symbol, local);
+                        }
+                    }
+
                     ast::Declare::Global => {
                         for symbol in names {
                             self.emit_instruction(ssa::Inst::DeclareGlobal { symbol });
@@ -150,18 +154,18 @@ impl<'e> Codegen<'e> {
                 };
 
                 let expr = self.emit_rvalue(expr);
-                self.emit_branch(expr, true_block, &[], false_block, &[]);
+                self.emit_branch(expr, true_block, false_block);
                 self.builder.seal_block(true_block);
                 self.builder.seal_block(false_block);
 
                 self.current_block = true_block;
                 self.emit_statement(true_branch);
-                self.emit_jump(merge_block, &[]);
+                self.emit_jump(merge_block);
 
                 if let Some(box ref false_branch) = *false_branch {
                     self.current_block = false_block;
                     self.emit_statement(false_branch);
-                    self.emit_jump(merge_block, &[]);
+                    self.emit_jump(merge_block);
                 }
 
                 self.builder.seal_block(merge_block);
@@ -169,30 +173,31 @@ impl<'e> Codegen<'e> {
                 self.current_block = merge_block;
             }
 
-            // TODO: refactor this to use the SSA builder
-            ast::Stmt::Repeat(box ref count, box ref body) => {
+            ast::Stmt::Repeat(box ref expr, box ref body) => {
                 let next_block = self.make_block();
                 let body_block = self.make_block();
                 let exit_block = self.make_block();
 
-                let count = self.emit_rvalue(count);
-                self.emit_jump(next_block, &[count]);
+                let iter = self.builder.emit_local();
+
+                let count = self.emit_rvalue(expr);
+                self.builder.write_local(self.current_block, iter, count);
+                self.emit_jump(next_block);
 
                 self.current_block = next_block;
-                let count = self.builder.function.emit_argument(self.current_block);
+                let count = self.builder.read_local(self.current_block, iter);
                 let one = self.emit_real(1.0);
-
                 let op = ssa::Binary::Subtract;
-                let inst = ssa::Inst::Binary { op, args: [count, one] };
-                let next = self.emit_instruction(inst);
-                self.emit_branch(count, body_block, &[], exit_block, &[]);
+                let next = self.emit_instruction(ssa::Inst::Binary { op, args: [count, one] });
+                self.builder.write_local(self.current_block, iter, next);
+                self.emit_branch(count, body_block, exit_block);
                 self.builder.seal_block(body_block);
 
                 self.current_block = body_block;
-                self.with_loop(&[next], next_block, exit_block, |self_| {
+                self.with_loop(next_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block, &[next]);
+                self.emit_jump(next_block);
                 self.builder.seal_block(next_block);
                 self.builder.seal_block(exit_block);
 
@@ -204,18 +209,18 @@ impl<'e> Codegen<'e> {
                 let body_block = self.make_block();
                 let exit_block = self.make_block();
 
-                self.emit_jump(next_block, &[]);
+                self.emit_jump(next_block);
 
                 self.current_block = next_block;
                 let expr = self.emit_rvalue(expr);
-                self.emit_branch(expr, body_block, &[], exit_block, &[]);
+                self.emit_branch(expr, body_block, exit_block);
                 self.builder.seal_block(body_block);
 
                 self.current_block = body_block;
-                self.with_loop(&[], next_block, exit_block, |self_| {
+                self.with_loop(next_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block, &[]);
+                self.emit_jump(next_block);
                 self.builder.seal_block(next_block);
                 self.builder.seal_block(exit_block);
 
@@ -227,18 +232,18 @@ impl<'e> Codegen<'e> {
                 let next_block = self.make_block();
                 let exit_block = self.make_block();
 
-                self.emit_jump(body_block, &[]);
+                self.emit_jump(body_block);
 
                 self.current_block = body_block;
-                self.with_loop(&[], next_block, exit_block, |self_| {
+                self.with_loop(next_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block, &[]);
+                self.emit_jump(next_block);
                 self.builder.seal_block(next_block);
 
                 self.current_block = next_block;
                 let expr = self.emit_rvalue(expr);
-                self.emit_branch(expr, exit_block, &[], body_block, &[]);
+                self.emit_branch(expr, exit_block, body_block);
                 self.builder.seal_block(body_block);
                 self.builder.seal_block(exit_block);
 
@@ -252,52 +257,55 @@ impl<'e> Codegen<'e> {
                 let exit_block = self.make_block();
 
                 self.emit_statement(init);
-                self.emit_jump(expr_block, &[]);
+                self.emit_jump(expr_block);
 
                 self.current_block = expr_block;
                 let expr = self.emit_rvalue(expr);
-                self.emit_branch(expr, body_block, &[], exit_block, &[]);
+                self.emit_branch(expr, body_block, exit_block);
                 self.builder.seal_block(body_block);
 
                 self.current_block = body_block;
-                self.with_loop(&[], next_block, exit_block, |self_| {
+                self.with_loop(next_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block, &[]);
+                self.emit_jump(next_block);
                 self.builder.seal_block(next_block);
                 self.builder.seal_block(exit_block);
 
                 self.current_block = next_block;
                 self.emit_statement(next);
-                self.emit_jump(expr_block, &[]);
+                self.emit_jump(expr_block);
                 self.builder.seal_block(expr_block);
 
                 self.current_block = exit_block;
             }
 
-            // TODO: refactor this to use the SSA builder
             ast::Stmt::With(box ref expr, box ref body) => {
                 let next_block = self.make_block();
                 let body_block = self.make_block();
                 let exit_block = self.make_block();
 
+                let iter = self.builder.emit_local();
+
                 let expr = self.emit_rvalue(expr);
                 let op = ssa::Unary::With;
                 let with = self.emit_instruction(ssa::Inst::Unary { op, arg: expr });
-                self.emit_jump(next_block, &[with]);
+                self.builder.write_local(self.current_block, iter, with);
+                self.emit_jump(next_block);
 
                 self.current_block = next_block;
-                let with = self.builder.function.emit_argument(self.current_block);
+                let with = self.builder.read_local(self.current_block, iter);
                 let op = ssa::Unary::Next;
                 let next = self.emit_instruction(ssa::Inst::Unary { op, arg: with });
-                self.emit_branch(with, body_block, &[], exit_block, &[]);
+                self.builder.write_local(self.current_block, iter, next);
+                self.emit_branch(with, body_block, exit_block);
                 self.builder.seal_block(body_block);
 
                 self.current_block = body_block;
-                self.with_loop(&[next], next_block, exit_block, |self_| {
+                self.with_loop(next_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block, &[next]);
+                self.emit_jump(next_block);
                 self.builder.seal_block(next_block);
                 self.builder.seal_block(exit_block);
 
@@ -319,10 +327,10 @@ impl<'e> Codegen<'e> {
                     for statement in body {
                         self_.emit_statement(statement);
                     }
-                    self_.emit_jump(exit_block, &[]);
+                    self_.emit_jump(exit_block);
 
                     self_.current_block = self_.current_expr.expect("corrupt switch state");
-                    self_.emit_jump(default_block, &[]);
+                    self_.emit_jump(default_block);
                     self_.builder.seal_block(default_block);
                 });
                 self.builder.seal_block(exit_block);
@@ -334,7 +342,7 @@ impl<'e> Codegen<'e> {
                 let case_block = self.make_block();
                 let expr_block = self.make_block();
 
-                self.emit_jump(case_block, &[]);
+                self.emit_jump(case_block);
 
                 self.current_block = self.current_expr.unwrap();
                 self.current_expr = Some(expr_block);
@@ -343,7 +351,7 @@ impl<'e> Codegen<'e> {
                 let op = ssa::Binary::Eq;
                 let inst = ssa::Inst::Binary { op, args: [switch, expr] };
                 let expr = self.emit_instruction(inst);
-                self.emit_branch(expr, case_block, &[], expr_block, &[]);
+                self.emit_branch(expr, case_block, expr_block);
                 self.builder.seal_block(case_block);
                 self.builder.seal_block(expr_block);
 
@@ -353,7 +361,7 @@ impl<'e> Codegen<'e> {
             ast::Stmt::Case(None) if self.current_default.is_some() => {
                 let default_block = self.current_default.unwrap();
 
-                self.emit_jump(default_block, &[]);
+                self.emit_jump(default_block);
 
                 self.current_block = default_block;
             }
@@ -365,16 +373,15 @@ impl<'e> Codegen<'e> {
             ast::Stmt::Jump(ast::Jump::Break) if self.current_exit.is_some() => {
                 let exit_block = self.current_exit.unwrap();
 
-                self.emit_jump(exit_block, &[]);
+                self.emit_jump(exit_block);
                 self.current_block = self.make_block();
                 self.builder.seal_block(self.current_block);
             }
 
             ast::Stmt::Jump(ast::Jump::Continue) if self.current_next.is_some() => {
                 let next_block = self.current_next.unwrap();
-                let iter = self.current_iter.as_ref().expect("corrupt loop state").clone();
 
-                self.emit_jump(next_block, &iter[..]);
+                self.emit_jump(next_block);
                 self.current_block = self.make_block();
                 self.builder.seal_block(self.current_block);
             }
@@ -460,16 +467,17 @@ impl<'e> Codegen<'e> {
                 if let Some(argument) = symbol.as_argument() {
                     for argument in self.arguments..argument + 1 {
                         let symbol = Symbol::from_argument(argument);
-                        self.locals.insert(symbol);
+                        let local = self.builder.emit_local();
+                        self.locals.insert(symbol, local);
 
                         let entry = self.builder.function.entry();
                         let argument = self.builder.function.emit_argument(entry);
-                        self.builder.write_local(entry, symbol, argument);
+                        self.builder.write_local(entry, local, argument);
                     }
                     self.arguments = cmp::max(self.arguments, argument + 1);
                 }
 
-                if self.locals.contains(&symbol) {
+                if self.locals.contains_key(&symbol) {
                     Ok(Lvalue::Local(symbol))
                 } else {
                     let inst = ssa::Inst::Lookup { symbol };
@@ -526,7 +534,8 @@ impl<'e> Codegen<'e> {
 
         let value = match lvalue {
             Lvalue::Local(symbol) => {
-                let value = self.builder.read_local(block, symbol);
+                let local = self.get_local(symbol);
+                let value = self.builder.read_local(block, local);
                 self.emit_instruction(ssa::Inst::Read { symbol, arg: value });
                 value
             }
@@ -536,7 +545,8 @@ impl<'e> Codegen<'e> {
                 self.emit_instruction(ssa::Inst::LoadIndex { args: [array, i, j] }),
 
             Lvalue::IndexLocal(symbol, [i, j]) => {
-                let array = self.builder.read_local(block, symbol);
+                let local = self.get_local(symbol);
+                let array = self.builder.read_local(block, local);
                 self.emit_instruction(ssa::Inst::Read { symbol, arg: array });
 
                 // TODO: this only happens pre-gms
@@ -577,10 +587,11 @@ impl<'e> Codegen<'e> {
         match lvalue {
             Lvalue::Local(symbol) => {
                 // TODO: this only happens pre-gms
-                let array = self.builder.read_local(block, symbol);
+                let local = self.get_local(symbol);
+                let array = self.builder.read_local(block, local);
                 let value = self.emit_instruction(ssa::Inst::Write { args: [value, array] });
 
-                self.builder.write_local(block, symbol, value);
+                self.builder.write_local(block, local, value);
             }
 
             Lvalue::Field(scope, field) => {
@@ -596,12 +607,13 @@ impl<'e> Codegen<'e> {
             }
 
             Lvalue::IndexLocal(symbol, [i, j]) => {
-                let array = self.builder.read_local(block, symbol);
+                let local = self.get_local(symbol);
+                let array = self.builder.read_local(block, local);
 
                 // TODO: this only happens pre-gms; gms does need to handle undef
                 let op = ssa::Unary::ToArray;
                 let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
-                self.builder.write_local(block, symbol, array);
+                self.builder.write_local(block, local, array);
 
                 self.emit_instruction(ssa::Inst::StoreIndex { args: [value, array, i, j] });
             }
@@ -616,26 +628,17 @@ impl<'e> Codegen<'e> {
         }
     }
 
-    fn emit_jump(&mut self, target: ssa::Block, arguments: &[ssa::Value]) {
-        self.emit_instruction(ssa::Inst::Jump { target, args: arguments.to_vec() });
+    fn emit_jump(&mut self, target: ssa::Block) {
+        self.emit_instruction(ssa::Inst::Jump { target, args: vec![] });
 
         self.builder.insert_edge(self.current_block, target);
     }
 
-    fn emit_branch(
-        &mut self, expr: ssa::Value,
-        true_block: ssa::Block, true_args: &[ssa::Value],
-        false_block: ssa::Block, false_args: &[ssa::Value],
-    ) {
-        let mut args = Vec::with_capacity(1 + true_args.len() + false_args.len());
-        args.push(expr);
-        args.extend(true_args);
-        args.extend(false_args);
-
+    fn emit_branch(&mut self, expr: ssa::Value, true_block: ssa::Block, false_block: ssa::Block) {
         self.emit_instruction(ssa::Inst::Branch {
             targets: [true_block, false_block],
-            arg_lens: [true_args.len(), false_args.len()],
-            args
+            arg_lens: [0, 0],
+            args: vec![expr],
         });
 
         self.builder.insert_edge(self.current_block, true_block);
@@ -670,18 +673,21 @@ impl<'e> Codegen<'e> {
         self.builder.function.make_block()
     }
 
-    fn with_loop<F>(
-        &mut self, iter: &[ssa::Value], next: ssa::Block, exit: ssa::Block, f: F
-    ) where F: FnOnce(&mut Codegen) {
-        let iter = iter.to_vec();
+    fn get_local(&mut self, symbol: Symbol) -> front::ssa::Local {
+        // TODO: get rid of this with better closure capture rules
+        let builder = &mut self.builder;
+        *self.locals.entry(symbol)
+            .or_insert_with(|| builder.emit_local())
+    }
 
-        let old_iter = mem::replace(&mut self.current_iter, Some(iter));
+    fn with_loop<F>(&mut self, next: ssa::Block, exit: ssa::Block, f: F) where
+        F: FnOnce(&mut Codegen)
+    {
         let old_next = mem::replace(&mut self.current_next, Some(next));
         let old_exit = mem::replace(&mut self.current_exit, Some(exit));
 
         f(self);
 
-        self.current_iter = old_iter;
         self.current_next = old_next;
         self.current_exit = old_exit;
     }
