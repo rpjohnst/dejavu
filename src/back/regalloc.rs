@@ -42,16 +42,21 @@ impl Interference {
                 live.extend(program.uses(value));
             }
 
-            let arguments = &program.blocks[block].arguments;
-            for &value in arguments {
-                adjacency[value].extend(arguments.into_iter().filter(|&&other| value != other));
-            }
-
             // arguments to the entry block are actually program-level arguments
+            let arguments = &program.blocks[block].arguments;
             if block == program.entry() {
                 params.extend(arguments);
             } else {
                 vertices.extend(arguments);
+            }
+
+            for &def in arguments {
+                let live = live.iter().filter(|&&other| def != other);
+
+                adjacency[def].extend(live.clone());
+                for &used in live {
+                    adjacency[used].push(def);
+                }
             }
         }
 
@@ -78,10 +83,9 @@ impl Interference {
 
         let mut color_count = self.params.len();
         for value in Self::perfect_elimination_order(self.params, self.vertices, &self.adjacency) {
-            let mut neighbors = HashSet::with_capacity(self.adjacency[value].len());
-            for &neighbor in &self.adjacency[value] {
-                neighbors.insert(colors[neighbor]);
-            }
+            let neighbors: HashSet<_> = self.adjacency[value].iter()
+                .map(|&neighbor| colors[neighbor])
+                .collect();
 
             for color in 0.. {
                 if !neighbors.contains(&color) {
