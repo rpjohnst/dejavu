@@ -400,13 +400,8 @@ impl<'e> Codegen<'e> {
                 self.builder.seal_block(self.current_block);
             }
 
-            ast::Stmt::Jump(ast::Jump::Exit) => {
-                self.emit_instruction(ssa::Inst::Exit);
-                self.current_block = self.make_block();
-                self.builder.seal_block(self.current_block);
-            }
-
-            // break or continue outside a loop just returns 0
+            // exit returns 0
+            // break or continue outside a loop returns 0
             // TODO: does this change in versions with `undefined`?
             ast::Stmt::Jump(_) => {
                 let zero = self.emit_real(0.0);

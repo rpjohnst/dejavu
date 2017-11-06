@@ -39,7 +39,7 @@ impl Function {
         match self.values[value] {
             Inst::Jump { ref target, .. } => ref_slice(target),
             Inst::Branch { ref targets, .. } => targets,
-            Inst::Return { .. } | Inst::Exit => &[],
+            Inst::Return { .. } => &[],
 
             _ => panic!("corrupt block"),
         }
@@ -59,7 +59,7 @@ impl Function {
             DeclareGlobal { .. } |
             Read { .. } |
             StoreField { .. } | StoreIndex { .. } |
-            Return { .. } | Exit |
+            Return { .. } |
             Jump { .. } | Branch { .. } => None,
         }
     }
@@ -138,7 +138,6 @@ pub enum Inst {
 
     Call { symbol: Symbol, args: Vec<Value> },
     Return { arg: Value },
-    Exit,
 
     Jump { target: Block, args: Vec<Value> },
     /// `args` contains `[condition, arg_lens[0].., arg_lens[1]..]`
@@ -172,8 +171,7 @@ impl Inst {
 
             Undef | Alias(..) |
             Immediate { .. } |
-            Argument | DeclareGlobal { .. } | Lookup { .. } |
-            Exit => &[],
+            Argument | DeclareGlobal { .. } | Lookup { .. } => &[],
         }
     }
 
@@ -203,8 +201,7 @@ impl Inst {
 
             Undef | Alias(..) |
             Immediate { .. } |
-            Argument | DeclareGlobal { .. } | Lookup { .. } |
-            Exit => &mut [],
+            Argument | DeclareGlobal { .. } | Lookup { .. } => &mut [],
         }
     }
 }

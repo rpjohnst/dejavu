@@ -227,11 +227,6 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
-                Exit => {
-                    let inst = code::Inst::encode(code::Op::Exit, 0, 0, 0);
-                    self.function.instructions.push(inst);
-                }
-
                 Jump { target, ref args } => {
                     self.emit_edge(program, target, args);
                 }

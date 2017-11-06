@@ -104,7 +104,6 @@ pub enum Op {
 
     Call,
     Ret,
-    Exit,
 
     Jump,
     BranchFalse,
