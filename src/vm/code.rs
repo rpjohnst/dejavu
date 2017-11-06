@@ -87,7 +87,7 @@ pub enum Op {
     ToArray,
     ToScalar,
 
-    Undef,
+    Read,
     Write,
 
     LoadField,

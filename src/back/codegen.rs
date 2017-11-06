@@ -102,12 +102,11 @@ impl Codegen {
                 Undef | Alias(_) | Argument => unreachable!("corrupt function"),
 
                 Read { symbol, arg } => {
-                    if let Undef = program.values[arg] {
-                        let a = self.emit_string(symbol);
+                    let a = self.emit_string(symbol);
+                    let b = self.registers[arg];
 
-                        let inst = code::Inst::encode(code::Op::Undef, a, 0, 0);
-                        self.function.instructions.push(inst);
-                    }
+                    let inst = code::Inst::encode(code::Op::Read, a, b, 0);
+                    self.function.instructions.push(inst);
                 }
 
                 Write { args: [source, array] } => {

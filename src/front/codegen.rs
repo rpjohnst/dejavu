@@ -11,7 +11,11 @@ pub struct Codegen<'e> {
 
     /// GML `var` declarations are static and independent of control flow. All references to a
     /// `var`-declared name after its declaration in the source text are treated as local.
-    locals: HashMap<Symbol, front::ssa::Local>,
+    locals: HashMap<Symbol, Local>,
+    /// The number of entry-block instructions initializing local variables. This is used as an
+    /// insertion point so more can be inserted.
+    initializers: u32,
+    /// The number of script arguments that have been created so far.
     arguments: u32,
 
     current_block: ssa::Block,
@@ -41,6 +45,15 @@ enum Lvalue {
 #[derive(Debug)]
 struct LvalueError;
 
+/// A GML-level local variable.
+#[derive(Copy, Clone)]
+struct Local {
+    /// Each local variable must dynamically track whether it has been initialized- a compile-time
+    /// error for uninitialized uses would reject some valid GML programs.
+    flag: front::ssa::Local,
+    local: front::ssa::Local,
+}
+
 // TODO: deduplicate these with the ones from vm::interpreter?
 const SELF: f64 = -1.0;
 const OTHER: f64 = -2.0;
@@ -59,6 +72,7 @@ impl<'e> Codegen<'e> {
             errors: errors,
 
             locals: HashMap::new(),
+            initializers: 0,
             arguments: 0,
 
             current_block: entry,
@@ -125,7 +139,7 @@ impl<'e> Codegen<'e> {
                 match scope {
                     ast::Declare::Local => {
                         for symbol in names {
-                            let local = self.builder.emit_local();
+                            let local = self.emit_local(None);
                             self.locals.insert(symbol, local);
                         }
                     }
@@ -467,12 +481,12 @@ impl<'e> Codegen<'e> {
                 if let Some(argument) = symbol.as_argument() {
                     for argument in self.arguments..argument + 1 {
                         let symbol = Symbol::from_argument(argument);
-                        let local = self.builder.emit_local();
-                        self.locals.insert(symbol, local);
 
                         let entry = self.builder.function.entry();
                         let argument = self.builder.function.emit_argument(entry);
-                        self.builder.write_local(entry, local, argument);
+
+                        let local = self.emit_local(Some(argument));
+                        self.locals.insert(symbol, local);
                     }
                     self.arguments = cmp::max(self.arguments, argument + 1);
                 }
@@ -529,15 +543,14 @@ impl<'e> Codegen<'e> {
     /// - all loads produce scalars; if the variable holds an array it loads `a[0, 0]`
     /// - indexed loads from scalar variables treat the variable as a 1x1 array
     fn emit_load(&mut self, lvalue: Lvalue) -> ssa::Value {
-        // TODO: remove this with NLL
-        let block = self.current_block;
-
         let value = match lvalue {
             Lvalue::Local(symbol) => {
-                let local = self.get_local(symbol);
-                let value = self.builder.read_local(block, local);
-                self.emit_instruction(ssa::Inst::Read { symbol, arg: value });
-                value
+                let Local { flag, local } = self.locals[&symbol];
+
+                let flag = self.builder.read_local(self.current_block, flag);
+                self.emit_instruction(ssa::Inst::Read { symbol, arg: flag });
+
+                self.builder.read_local(self.current_block, local)
             }
             Lvalue::Field(scope, field) =>
                 self.emit_instruction(ssa::Inst::LoadField { scope, field }),
@@ -545,9 +558,12 @@ impl<'e> Codegen<'e> {
                 self.emit_instruction(ssa::Inst::LoadIndex { args: [array, i, j] }),
 
             Lvalue::IndexLocal(symbol, [i, j]) => {
-                let local = self.get_local(symbol);
-                let array = self.builder.read_local(block, local);
-                self.emit_instruction(ssa::Inst::Read { symbol, arg: array });
+                let Local { flag, local } = self.locals[&symbol];
+
+                let flag = self.builder.read_local(self.current_block, flag);
+                self.emit_instruction(ssa::Inst::Read { symbol, arg: flag });
+
+                let array = self.builder.read_local(self.current_block, local);
 
                 // TODO: this only happens pre-gms
                 let op = ssa::Unary::ToArray;
@@ -581,17 +597,18 @@ impl<'e> Codegen<'e> {
     /// - stores to array variables do *not* overwrite the whole array, only `a[0, 0]`
     /// - indexed stores to scalar (or undefined) variables leave the scalar (or `0`) at `a[0, 0]`
     fn emit_store(&mut self, lvalue: Lvalue, value: ssa::Value) {
-        // TODO: remove this with NLL
-        let block = self.current_block;
-
         match lvalue {
             Lvalue::Local(symbol) => {
+                let Local { flag, local } = self.locals[&symbol];
+
+                let one = self.emit_real(1.0);
+                self.builder.write_local(self.current_block, flag, one);
+
                 // TODO: this only happens pre-gms
-                let local = self.get_local(symbol);
-                let array = self.builder.read_local(block, local);
+                let array = self.builder.read_local(self.current_block, local);
                 let value = self.emit_instruction(ssa::Inst::Write { args: [value, array] });
 
-                self.builder.write_local(block, local, value);
+                self.builder.write_local(self.current_block, local, value);
             }
 
             Lvalue::Field(scope, field) => {
@@ -607,13 +624,17 @@ impl<'e> Codegen<'e> {
             }
 
             Lvalue::IndexLocal(symbol, [i, j]) => {
-                let local = self.get_local(symbol);
-                let array = self.builder.read_local(block, local);
+                let Local { flag, local } = self.locals[&symbol];
+
+                let one = self.emit_real(1.0);
+                self.builder.write_local(self.current_block, flag, one);
+
+                let array = self.builder.read_local(self.current_block, local);
 
                 // TODO: this only happens pre-gms; gms does need to handle undef
                 let op = ssa::Unary::ToArray;
                 let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
-                self.builder.write_local(block, local, array);
+                self.builder.write_local(self.current_block, local, array);
 
                 self.emit_instruction(ssa::Inst::StoreIndex { args: [value, array, i, j] });
             }
@@ -669,15 +690,41 @@ impl<'e> Codegen<'e> {
         self.builder.function.emit_instruction(self.current_block, instruction)
     }
 
-    fn make_block(&mut self) -> ssa::Block {
-        self.builder.function.make_block()
+    fn emit_initializer(&mut self, instruction: ssa::Inst) -> ssa::Value {
+        let entry = self.builder.function.entry();
+
+        let value = self.builder.function.values.push(instruction);
+        self.builder.function.blocks[entry].instructions.insert(self.initializers as usize, value);
+        self.initializers += 1;
+
+        value
     }
 
-    fn get_local(&mut self, symbol: Symbol) -> front::ssa::Local {
-        // TODO: get rid of this with better closure capture rules
-        let builder = &mut self.builder;
-        *self.locals.entry(symbol)
-            .or_insert_with(|| builder.emit_local())
+    /// Emit a GML-level local.
+    ///
+    /// Because `var` declarations are not control-flow dependent, set default values in the
+    /// function entry block, since that is guaranteed to dominate all uses of the local.
+    fn emit_local(&mut self, default: Option<ssa::Value>) -> Local {
+        let flag = self.builder.emit_local();
+        let local = self.builder.emit_local();
+
+        let entry = self.builder.function.entry();
+
+        let value = ssa::Constant::Real(if default.is_some() { 1.0 } else { 0.0 });
+        let initialized = self.emit_initializer(ssa::Inst::Immediate { value });
+        self.builder.write_local(entry, flag, initialized);
+
+        let default = default.unwrap_or_else(|| {
+            let value = ssa::Constant::Real(0.0);
+            self.emit_initializer(ssa::Inst::Immediate { value })
+        });
+        self.builder.write_local(entry, local, default);
+
+        Local { flag, local }
+    }
+
+    fn make_block(&mut self) -> ssa::Block {
+        self.builder.function.make_block()
     }
 
     fn with_loop<F>(&mut self, next: ssa::Block, exit: ssa::Block, f: F) where

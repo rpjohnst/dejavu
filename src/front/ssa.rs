@@ -179,27 +179,6 @@ impl Builder {
     }
 
     pub fn finish(mut self) -> ssa::Function {
-        // remove any `Write`s of undef
-        for block in self.function.blocks.keys() {
-            let block = &mut self.function.blocks[block];
-
-            let mut i = 0;
-            while i < block.instructions.len() {
-                let value = block.instructions[i];
-
-                if let ssa::Inst::Write { args: [source, array] } = self.function.values[value] {
-                    let resolved = Self::resolve_alias(&mut self.function.values, array);
-                    if let ssa::Inst::Undef = self.function.values[resolved] {
-                        self.function.values[value] = ssa::Inst::Alias(source);
-                        block.instructions.remove(i);
-                        continue;
-                    }
-                }
-
-                i += 1;
-            }
-        }
-
         // resolve any aliases left during SSA construction
         for block in self.function.blocks.keys() {
             for &value in &self.function.blocks[block].instructions {
