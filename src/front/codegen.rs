@@ -12,11 +12,13 @@ pub struct Codegen<'e> {
     /// GML `var` declarations are static and independent of control flow. All references to a
     /// `var`-declared name after its declaration in the source text are treated as local.
     locals: HashMap<Symbol, Local>,
+    /// The number of script arguments that have been created so far.
+    arguments: u32,
+    /// The return value of the program.
+    return_value: front::ssa::Local,
     /// The number of entry-block instructions initializing local variables. This is used as an
     /// insertion point so more can be inserted.
     initializers: u32,
-    /// The number of script arguments that have been created so far.
-    arguments: u32,
 
     current_block: ssa::Block,
 
@@ -64,18 +66,19 @@ const LOCAL: f64 = -6.0;
 
 impl<'e> Codegen<'e> {
     pub fn new(errors: &'e ErrorHandler) -> Codegen<'e> {
-        let builder = front::ssa::Builder::new();
-        let entry = builder.function.entry();
+        let mut builder = front::ssa::Builder::new();
+        let return_value = builder.emit_local();
 
         Codegen {
             builder: builder,
             errors: errors,
 
             locals: HashMap::new(),
-            initializers: 0,
             arguments: 0,
+            return_value: return_value,
+            initializers: 0,
 
-            current_block: entry,
+            current_block: ssa::ENTRY,
 
             current_next: None,
             current_exit: None,
@@ -87,13 +90,25 @@ impl<'e> Codegen<'e> {
     }
 
     pub fn compile(mut self, program: &(ast::Stmt, Span)) -> ssa::Function {
-        let program_block = self.current_block;
-        self.builder.seal_block(program_block);
+        let entry_block = self.current_block;
+        self.builder.seal_block(entry_block);
+
+        let zero = self.emit_real(0.0);
+        self.builder.write_local(self.current_block, self.return_value, zero);
 
         self.emit_statement(program);
 
-        let zero = self.emit_real(0.0);
-        self.emit_instruction(ssa::Inst::Return { arg: zero });
+        self.emit_jump(ssa::EXIT);
+        self.builder.seal_block(ssa::EXIT);
+
+        self.current_block = ssa::EXIT;
+        let locals = mem::replace(&mut self.locals, HashMap::default());
+        for (_, Local { local, .. }) in locals {
+            let value = self.builder.read_local(self.current_block, local);
+            self.emit_instruction(ssa::Inst::Release { arg: value });
+        }
+        let return_value = self.builder.read_local(self.current_block, self.return_value);
+        self.emit_instruction(ssa::Inst::Return { arg: return_value });
 
         self.builder.finish()
     }
@@ -400,21 +415,19 @@ impl<'e> Codegen<'e> {
                 self.builder.seal_block(self.current_block);
             }
 
-            // exit returns 0
-            // break or continue outside a loop returns 0
-            // TODO: does this change in versions with `undefined`?
+            // exit and break/continue outside loops return 0
             ast::Stmt::Jump(_) => {
-                let zero = self.emit_real(0.0);
+                self.emit_jump(ssa::EXIT);
 
-                self.emit_instruction(ssa::Inst::Return { arg: zero });
                 self.current_block = self.make_block();
                 self.builder.seal_block(self.current_block);
             }
 
             ast::Stmt::Return(box ref expr) => {
                 let expr = self.emit_rvalue(expr);
+                self.builder.write_local(self.current_block, self.return_value, expr);
+                self.emit_jump(ssa::EXIT);
 
-                self.emit_instruction(ssa::Inst::Return { arg: expr });
                 self.current_block = self.make_block();
                 self.builder.seal_block(self.current_block);
             }
@@ -477,8 +490,7 @@ impl<'e> Codegen<'e> {
                     for argument in self.arguments..argument + 1 {
                         let symbol = Symbol::from_argument(argument);
 
-                        let entry = self.builder.function.entry();
-                        let argument = self.builder.function.emit_argument(entry);
+                        let argument = self.builder.function.emit_argument(ssa::ENTRY);
 
                         let local = self.emit_local(Some(argument));
                         self.locals.insert(symbol, local);
@@ -686,10 +698,10 @@ impl<'e> Codegen<'e> {
     }
 
     fn emit_initializer(&mut self, instruction: ssa::Inst) -> ssa::Value {
-        let entry = self.builder.function.entry();
+        let function = &mut self.builder.function;
 
-        let value = self.builder.function.values.push(instruction);
-        self.builder.function.blocks[entry].instructions.insert(self.initializers as usize, value);
+        let value = function.values.push(instruction);
+        function.blocks[ssa::ENTRY].instructions.insert(self.initializers as usize, value);
         self.initializers += 1;
 
         value
@@ -703,17 +715,15 @@ impl<'e> Codegen<'e> {
         let flag = self.builder.emit_local();
         let local = self.builder.emit_local();
 
-        let entry = self.builder.function.entry();
-
         let value = ssa::Constant::Real(if default.is_some() { 1.0 } else { 0.0 });
         let initialized = self.emit_initializer(ssa::Inst::Immediate { value });
-        self.builder.write_local(entry, flag, initialized);
+        self.builder.write_local(ssa::ENTRY, flag, initialized);
 
         let default = default.unwrap_or_else(|| {
             let value = ssa::Constant::Real(0.0);
             self.emit_initializer(ssa::Inst::Immediate { value })
         });
-        self.builder.write_local(entry, local, default);
+        self.builder.write_local(ssa::ENTRY, local, default);
 
         Local { flag, local }
     }

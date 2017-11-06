@@ -86,6 +86,7 @@ pub enum Op {
 
     ToArray,
     ToScalar,
+    Release,
 
     Read,
     Write,

@@ -44,7 +44,7 @@ impl Interference {
 
             // arguments to the entry block are actually program-level arguments
             let arguments = &program.blocks[block].arguments;
-            if block == program.entry() {
+            if block == ssa::ENTRY {
                 params.extend(arguments);
             } else {
                 vertices.extend(arguments);

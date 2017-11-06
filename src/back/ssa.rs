@@ -9,24 +9,21 @@ pub struct Function {
     pub values: EntityMap<Value, Inst>,
 }
 
+pub const ENTRY: Block = Block(0);
+pub const EXIT: Block = Block(1);
+
 impl Function {
     pub fn new() -> Self {
-        let entry = BlockBody {
-            arguments: vec![],
-            instructions: vec![],
+        let mut function = Function {
+            blocks: EntityMap::new(),
+            values: EntityMap::new(),
         };
 
-        let mut blocks = EntityMap::new();
-        blocks.push(entry);
+        // entry and exit blocks
+        function.make_block();
+        function.make_block();
 
-        Function {
-            blocks: blocks,
-            values: EntityMap::new(),
-        }
-    }
-
-    pub fn entry(&self) -> Block {
-        Block(0)
+        function
     }
 
     pub fn terminator(&self, block: Block) -> Value {
@@ -57,6 +54,7 @@ impl Function {
 
             Undef | Alias(_) |
             DeclareGlobal { .. } |
+            Release { .. } |
             Read { .. } |
             StoreField { .. } | StoreIndex { .. } |
             Return { .. } |
@@ -136,6 +134,8 @@ pub enum Inst {
     WriteField { args: [Value; 2], field: Symbol },
     ToArrayField { scope: Value, field: Symbol },
 
+    Release { arg: Value },
+
     Call { symbol: Symbol, args: Vec<Value> },
     Return { arg: Value },
 
@@ -162,6 +162,8 @@ impl Inst {
 
             WriteField { ref args, .. } => args,
             ToArrayField { ref scope, .. } => ref_slice(scope),
+
+            Release { ref arg, .. } => ref_slice(arg),
 
             Call { ref args, .. } => &args[..],
             Return { ref arg, .. } => ref_slice(arg),
@@ -192,6 +194,8 @@ impl Inst {
 
             WriteField { ref mut args, .. } => args,
             ToArrayField { ref mut scope, .. } => ref_slice_mut(scope),
+
+            Release { ref mut arg, .. } => ref_slice_mut(arg),
 
             Call { ref mut args, .. } => &mut args[..],
             Return { ref mut arg, .. } => ref_slice_mut(arg),

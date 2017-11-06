@@ -52,7 +52,7 @@ impl Codegen {
 
         self.edge_block = program.blocks.len();
 
-        self.emit_blocks(program, program.entry());
+        self.emit_blocks(program, ssa::ENTRY);
         self.fixup_jumps();
 
         self.function.params = param_count as u32;
@@ -199,6 +199,13 @@ impl Codegen {
                     let b = self.emit_string(field);
 
                     let inst = code::Inst::encode(code::Op::ToArrayField, target, a, b);
+                    self.function.instructions.push(inst);
+                }
+
+                Release { arg: a } => {
+                    let a = self.registers[a];
+
+                    let inst = code::Inst::encode(code::Op::Release, a, 0, 0);
                     self.function.instructions.push(inst);
                 }
 
