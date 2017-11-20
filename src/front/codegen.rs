@@ -16,6 +16,7 @@ pub struct Codegen<'e> {
     arguments: u32,
     /// The return value of the program.
     return_value: front::ssa::Local,
+
     /// The number of entry-block instructions initializing local variables. This is used as an
     /// insertion point so more can be inserted.
     initializers: u32,
@@ -76,6 +77,7 @@ impl<'e> Codegen<'e> {
             locals: HashMap::new(),
             arguments: 0,
             return_value: return_value,
+
             initializers: 0,
 
             current_block: ssa::ENTRY,
@@ -110,7 +112,13 @@ impl<'e> Codegen<'e> {
         let return_value = self.builder.read_local(self.current_block, self.return_value);
         self.emit_instruction(ssa::Inst::Return { arg: return_value });
 
-        self.builder.finish()
+        let mut function = self.builder.finish();
+        function.return_def = match function.blocks[ssa::ENTRY].arguments.get(0) {
+            Some(&def) => def,
+            None => function.values.push(ssa::Inst::Argument),
+        };
+
+        function
     }
 
     fn emit_statement(&mut self, statement: &(ast::Stmt, Span)) {
@@ -675,10 +683,19 @@ impl<'e> Codegen<'e> {
 
     fn emit_call(&mut self, call: &ast::Call) -> ssa::Value {
         let ast::Call((symbol, _), box ref args) = *call;
+
         let args: Vec<_> = args.iter()
             .map(|argument| self.emit_rvalue(argument))
             .collect();
-        self.emit_instruction(ssa::Inst::Call { symbol, args })
+
+        // TODO: remove this from the frontend and SSA
+        //  - generate param/ret defs during regalloc?
+        //  - unconditionally precolor argument values and rely on live range splitting?
+        let parameters: Vec<_> = (0..cmp::max(1, args.len()))
+            .map(|_| self.builder.function.values.push(ssa::Inst::Argument))
+            .collect();
+
+        self.emit_instruction(ssa::Inst::Call { symbol, args, parameters })
     }
 
     fn emit_real(&mut self, real: f64) -> ssa::Value {

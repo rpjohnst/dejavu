@@ -11,9 +11,11 @@ use back::analysis::*;
 /// means that values can be assigned non-interfering storage locations by coloring the graph so
 /// that no two adjacent nodes share the same color.
 pub struct Interference {
-    params: Vec<ssa::Value>,
-    vertices: Vec<ssa::Value>,
     adjacency: EntityMap<ssa::Value, Vec<ssa::Value>>,
+    vertices: Vec<ssa::Value>,
+
+    precolored: Vec<ssa::Value>,
+    groups: Vec<usize>,
 }
 
 impl Interference {
@@ -22,16 +24,27 @@ impl Interference {
     /// Using a function's live value analysis, this algorithm determines which values are live at
     /// each definition point and marks them as interfering with the defined value.
     pub fn build(program: &ssa::Function, liveness: &Liveness) -> Interference {
-        let mut params = Vec::new();
-        let mut vertices = Vec::with_capacity(program.values.len());
         let mut adjacency: EntityMap<_, Vec<_>> = EntityMap::with_capacity(program.values.len());
+        let mut vertices = Vec::with_capacity(program.values.len());
+
+        let mut precolored = Vec::new();
+        let mut groups = Vec::new();
+
+        let defs = &program.blocks[ssa::ENTRY].arguments;
+        groups.push(precolored.len());
+        precolored.extend(defs);
+        if precolored.len() == 0 {
+            precolored.push(program.return_def);
+        }
 
         for block in program.blocks.keys() {
             let mut live: HashSet<_> = liveness.out[block].clone();
             for &value in program.blocks[block].instructions.iter().rev() {
-                for def in program.defs(value) {
+                // values defined by the instruction
+                let defs = program.defs(value);
+                vertices.extend(defs);
+                for def in defs {
                     live.remove(&def);
-                    vertices.push(def);
 
                     adjacency[def].extend(live.iter().cloned());
                     for &used in &live {
@@ -39,28 +52,41 @@ impl Interference {
                     }
                 }
 
+                // values defined inside the instruction
+                let defs = program.internal_defs(value);
+                if defs.len() > 0 {
+                    groups.push(precolored.len());
+                    precolored.extend(defs);
+                }
+                for &def in defs {
+                    adjacency[def].extend(live.iter().cloned());
+                    for &used in &live {
+                        adjacency[used].push(def);
+                    }
+                }
+
+                // values used by the instruction
                 live.extend(program.uses(value));
             }
 
-            // arguments to the entry block are actually program-level arguments
-            let arguments = &program.blocks[block].arguments;
-            if block == ssa::ENTRY {
-                params.extend(arguments);
-            } else {
-                vertices.extend(arguments);
-            }
+            // arguments to the entry block are precolored
+            if block != ssa::ENTRY {
+                let defs = &program.blocks[block].arguments;
+                vertices.extend(defs);
+                for &def in defs {
+                    let live = live.iter().cloned().filter(|&other| def != other);
 
-            for &def in arguments {
-                let live = live.iter().filter(|&&other| def != other);
-
-                adjacency[def].extend(live.clone());
-                for &used in live {
-                    adjacency[used].push(def);
+                    adjacency[def].extend(live.clone());
+                    for used in live {
+                        adjacency[used].push(def);
+                    }
                 }
             }
         }
 
-        Interference { params, vertices, adjacency }
+        groups.push(precolored.len());
+
+        Interference { adjacency, vertices, precolored, groups }
     }
 
     /// Colors the interference graph using an unbounded number of colors.
@@ -68,32 +94,58 @@ impl Interference {
     /// This is a simple greedy algorithm to optimally color chordal graphs. It visits each node in
     /// a perfect elimination order, and assigns it the lowest color not used by any of its
     /// neighbors.
+    ///
+    /// It also precolors program arguments and call parameters to match the VM's calling
+    /// convention, with arguments at the start of the frame and parameters at the end.
     pub fn color(self) -> (EntityMap<ssa::Value, usize>, usize, usize) {
         let mut colors = EntityMap::with_capacity(self.adjacency.len());
-        for &value in &self.vertices {
+        for &value in Iterator::chain(self.vertices.iter(), self.precolored.iter()) {
             colors[value] = usize::max_value();
         }
 
-        // Program arguments must be in order at the start of the stack frame
-        // We know they all interfere with each other so there's no reason to run MCS on them.
-        let param_count = self.params.len();
-        for (color, &value) in self.params.iter().enumerate() {
+        let mut color_count;
+        let param_count;
+
+        // Program arguments must be in order at the start of the stack frame.
+        let (start, end) = (self.groups[0], self.groups[1]);
+        let arguments = &self.precolored[start..end];
+        for (color, &value) in Iterator::zip(0.., arguments) {
             colors[value] = color;
         }
+        color_count = arguments.len();
+        param_count = color_count;
 
-        let mut color_count = self.params.len();
-        for value in Self::perfect_elimination_order(self.params, self.vertices, &self.adjacency) {
+        // Regular values are allocated greedily in perfect/simplical elimination order
+        for value in Self::perfect_elimination_order(&self.adjacency, self.vertices, &self.precolored) {
             let neighbors: HashSet<_> = self.adjacency[value].iter()
                 .map(|&neighbor| colors[neighbor])
                 .collect();
+            let color = (0..)
+                .skip_while(|&color| neighbors.contains(&color))
+                .next()
+                .unwrap_or(color_count);
 
-            for color in 0.. {
-                if !neighbors.contains(&color) {
-                    colors[value] = color;
-                    color_count = cmp::max(color_count, color + 1);
-                    break;
-                }
+            colors[value] = color;
+            color_count = cmp::max(color_count, color + 1);
+        }
+
+        // Call arguments must be in order at the end of the (live) stack frame.
+        for group in self.groups[1..].windows(2) {
+            let (start, end) = (group[0], group[1]);
+            let arguments = &self.precolored[start..end];
+
+            let neighbors: HashSet<_> = self.adjacency[arguments[0]].iter()
+                .map(|&neighbor| colors[neighbor])
+                .collect();
+            let color = (0..color_count).rev()
+                .take_while(|&color| !neighbors.contains(&color))
+                .last()
+                .unwrap_or(color_count);
+
+            for (color, &value) in Iterator::zip(color.., arguments) {
+                colors[value] = color;
             }
+            color_count = cmp::max(color_count, color + arguments.len());
         }
 
         (colors, param_count, color_count)
@@ -102,32 +154,32 @@ impl Interference {
     /// Computes a chordal graph's perfect elimination order using maximum cardinality search.
     ///
     /// See the `MaximumCardinalitySearch` iterator for details.
-    fn perfect_elimination_order(
-        params: Vec<ssa::Value>, vertices: Vec<ssa::Value>,
-        adjacency: &EntityMap<ssa::Value, Vec<ssa::Value>>
-    ) -> MaximumCardinalitySearch {
+    fn perfect_elimination_order<'a>(
+        adjacency: &'a EntityMap<ssa::Value, Vec<ssa::Value>>,
+        vertices: Vec<ssa::Value>, precolored: &[ssa::Value]
+    ) -> MaximumCardinalitySearch<'a> {
         let mut buckets = Vec::with_capacity(vertices.len());
         buckets.push(vertices.len());
 
+        // construct the buckets with precolored values excluded
         let weights = EntityMap::with_capacity(adjacency.len());
         let mut indices = EntityMap::with_capacity(adjacency.len());
         for (i, &value) in vertices.iter().enumerate() {
             indices[value] = i;
         }
-
-        // tell the algorithm that parameters have already been colored
-        for (i, &value) in params.iter().enumerate() {
-            indices[value] = vertices.len() + i;
+        for &value in precolored {
+            indices[value] = vertices.len();
         }
 
-        MaximumCardinalitySearch {
-            adjacency,
-
-            vertices,
-            buckets,
-            weights,
-            indices,
+        // increment the neighbors of precolored values
+        let mut buckets = Buckets { vertices, buckets, weights, indices };
+        for &value in precolored {
+            for &neighbor in &adjacency[value] {
+                buckets.increment(neighbor);
+            }
         }
+
+        MaximumCardinalitySearch { adjacency, buckets }
     }
 }
 
@@ -135,53 +187,70 @@ impl Interference {
 ///
 /// The MCS algorithm works by assigning a weight to each node in a chordal graph. It then
 /// repeatedly takes the highest-weighted node and increments the weights of its neighbors.
-///
-/// The `vertices` array is split into buckets starting at the indices in `buckets`. Each node also
-/// has its weight (or bucket index) stored in `weights`, and its index in `vertices` stored in
-/// `indices`.
-///
-/// To increment a node's weight, the starting index of the next bucket is decremented, growing it
-/// and shrinking the node's bucket by one. The node is then swapped into the new location. The end
-/// of the `vertices` array thus always has a node from the highest-weighted bucket.
 struct MaximumCardinalitySearch<'a> {
     adjacency: &'a EntityMap<ssa::Value, Vec<ssa::Value>>,
-
-    vertices: Vec<ssa::Value>,
-    buckets: Vec<usize>,
-    weights: EntityMap<ssa::Value, usize>,
-    indices: EntityMap<ssa::Value, usize>,
+    buckets: Buckets,
 }
 
 impl<'a> Iterator for MaximumCardinalitySearch<'a> {
     type Item = ssa::Value;
 
     fn next(&mut self) -> Option<Self::Item> {
+        self.buckets.pop().map(|value| {
+            for &neighbor in &self.adjacency[value] {
+                self.buckets.increment(neighbor);
+            }
+
+            value
+        })
+    }
+}
+
+/// A collection of values sorted into buckets.
+///
+/// The `vertices` array is split into buckets starting at the indices in `buckets`. Each node also
+/// has its weight (or bucket index) stored in `weights`, and its index in `vertices` stored in
+/// `indices`.
+struct Buckets {
+    vertices: Vec<ssa::Value>,
+    buckets: Vec<usize>,
+    weights: EntityMap<ssa::Value, usize>,
+    indices: EntityMap<ssa::Value, usize>,
+}
+
+impl Buckets {
+    fn pop(&mut self) -> Option<ssa::Value> {
         self.vertices.pop().map(|value| {
             let weight = self.weights[value];
             self.buckets[weight] -= 1;
             self.buckets.truncate(weight + 1);
 
-            for &neighbor in &self.adjacency[value] {
-                let weight = self.weights[neighbor];
-                let index = self.indices[neighbor];
-                if index >= self.vertices.len() {
-                    continue;
-                }
-
-                self.buckets[weight] -= 1;
-                let bucket = self.buckets[weight];
-                let other = self.vertices[bucket];
-
-                self.vertices.swap(index, bucket);
-                self.indices.swap(neighbor, other);
-
-                self.weights[neighbor] += 1;
-                if self.weights[neighbor] == self.buckets.len() {
-                    self.buckets.push(self.vertices.len());
-                }
-            }
-
             value
         })
+    }
+
+    /// Increment a node's weight, moving it into the next bucket.
+    ///
+    /// To increment a node's weight, the starting index of the next bucket is decremented, growing
+    /// it and shrinking the node's bucket by one. The node is then swapped into the new location.
+    /// The end of the `vertices` array thus always has a node from the highest-weighted bucket.
+    fn increment(&mut self, value: ssa::Value) {
+        let weight = self.weights[value];
+        let index = self.indices[value];
+        if index >= self.vertices.len() {
+            return;
+        }
+
+        self.buckets[weight] -= 1;
+        let bucket = self.buckets[weight];
+        let other = self.vertices[bucket];
+
+        self.vertices.swap(index, bucket);
+        self.indices.swap(value, other);
+
+        self.weights[value] += 1;
+        if self.weights[value] == self.buckets.len() {
+            self.buckets.push(self.vertices.len());
+        }
     }
 }

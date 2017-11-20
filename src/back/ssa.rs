@@ -7,6 +7,8 @@ use slice::{ref_slice, ref_slice_mut};
 pub struct Function {
     pub blocks: EntityMap<Block, BlockBody>,
     pub values: EntityMap<Value, Inst>,
+
+    pub return_def: Value,
 }
 
 pub const ENTRY: Block = Block(0);
@@ -14,10 +16,11 @@ pub const EXIT: Block = Block(1);
 
 impl Function {
     pub fn new() -> Self {
-        let mut function = Function {
-            blocks: EntityMap::new(),
-            values: EntityMap::new(),
-        };
+        let blocks = EntityMap::new();
+        let mut values = EntityMap::new();
+        let return_def = values.push(Inst::Undef);
+
+        let mut function = Function { blocks, values, return_def };
 
         // entry and exit blocks
         function.make_block();
@@ -59,6 +62,14 @@ impl Function {
             StoreField { .. } | StoreIndex { .. } |
             Return { .. } |
             Jump { .. } | Branch { .. } => None,
+        }
+    }
+
+    pub fn internal_defs(&self, value: Value) -> &[Value] {
+        use self::Inst::*;
+        match self.values[value] {
+            Call { ref parameters, .. } => parameters,
+            _ => &[],
         }
     }
 
@@ -136,7 +147,7 @@ pub enum Inst {
 
     Release { arg: Value },
 
-    Call { symbol: Symbol, args: Vec<Value> },
+    Call { symbol: Symbol, args: Vec<Value>, parameters: Vec<Value> },
     Return { arg: Value },
 
     Jump { target: Block, args: Vec<Value> },

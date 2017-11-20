@@ -28,11 +28,8 @@ enum ZeroOneMany<T> {
 
 impl Builder {
     pub fn new() -> Self {
-        let mut function = ssa::Function::new();
-        function.values.push(ssa::Inst::Undef);
-
         Builder {
-            function: function,
+            function: ssa::Function::new(),
             control_flow: ControlFlow::with_capacity(0),
 
             local: 0,

@@ -4,6 +4,7 @@ use std::collections::hash_map::Entry;
 
 use bitvec::BitVec;
 use symbol::Symbol;
+use slice::ref_slice;
 use entity::{Entity, EntityMap};
 use back::ssa;
 use back::analysis::*;
@@ -209,28 +210,23 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
-                Call { symbol: a, ref args } => {
-                    let target = self.registers[value];
-                    let a = self.emit_string(a);
-                    let b = args.len();
+                Call { symbol, ref args, ref parameters } => {
+                    self.emit_phis(parameters, args);
 
-                    let inst = code::Inst::encode(code::Op::Call, target, a, b);
+                    let symbol = self.emit_string(symbol);
+                    let base = self.registers[parameters[0]];
+                    let len = args.len();
+
+                    let inst = code::Inst::encode(code::Op::Call, symbol, base, len);
                     self.function.instructions.push(inst);
 
-                    for args in args.chunks(3) {
-                        let a = args.get(0).map(|&a| self.registers[a]).unwrap_or(0);
-                        let b = args.get(1).map(|&b| self.registers[b]).unwrap_or(0);
-                        let c = args.get(2).map(|&c| self.registers[c]).unwrap_or(0);
-
-                        let inst = code::Inst::encode(code::Op::Args, a, b, c);
-                        self.function.instructions.push(inst);
-                    }
+                    self.emit_phis(ref_slice(&value), &parameters[..1]);
                 }
 
-                Return { arg: a } => {
-                    let a = self.registers[a];
+                Return { ref arg } => {
+                    self.emit_phis(ref_slice(&program.return_def), ref_slice(arg));
 
-                    let inst = code::Inst::encode(code::Op::Ret, a, 0, 0);
+                    let inst = code::Inst::encode(code::Op::Ret, 0, 0, 0);
                     self.function.instructions.push(inst);
                 }
 
