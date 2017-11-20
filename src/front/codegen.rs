@@ -628,8 +628,8 @@ impl<'e> Codegen<'e> {
 
             Lvalue::Field(scope, field) => {
                 // TODO: this only happens pre-gms
-                let inst = ssa::Inst::WriteField { args: [value, scope], field };
-                let value = self.emit_instruction(inst);
+                let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { scope, field });
+                let value = self.emit_instruction(ssa::Inst::Write { args: [value, array] });
 
                 self.emit_instruction(ssa::Inst::StoreField { args: [value, scope], field });
             }
@@ -656,7 +656,7 @@ impl<'e> Codegen<'e> {
 
             Lvalue::IndexField(scope, field, [i, j]) => {
                 // TODO: this only happens pre-gms; gms does need to handle undef
-                let array = self.emit_instruction(ssa::Inst::ToArrayField { scope, field });
+                let array = self.emit_instruction(ssa::Inst::LoadFieldArray { scope, field });
                 self.emit_instruction(ssa::Inst::StoreField { args: [array, scope], field });
 
                 self.emit_instruction(ssa::Inst::StoreIndex { args: [value, array, i, j] });

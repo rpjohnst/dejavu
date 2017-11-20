@@ -92,13 +92,12 @@ pub enum Op {
     Write,
 
     LoadField,
+    LoadFieldDefault,
+    LoadFieldArray,
     LoadIndex,
 
     StoreField,
     StoreIndex,
-
-    WriteField,
-    ToArrayField,
 
     With,
     Next,

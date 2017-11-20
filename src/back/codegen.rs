@@ -143,6 +143,24 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
+                LoadFieldDefault { scope, field } => {
+                    let target = self.registers[value];
+                    let a = self.registers[scope];
+                    let b = self.emit_string(field);
+
+                    let inst = code::Inst::encode(code::Op::LoadFieldDefault, target, a, b);
+                    self.function.instructions.push(inst);
+                }
+
+                LoadFieldArray { scope, field } => {
+                    let target = self.registers[value];
+                    let a = self.registers[scope];
+                    let b = self.emit_string(field);
+
+                    let inst = code::Inst::encode(code::Op::LoadFieldArray, target, a, b);
+                    self.function.instructions.push(inst);
+                }
+
                 LoadIndex { args: [array, i, j] } => {
                     let target = self.registers[value];
                     let a = self.registers[array];
@@ -177,29 +195,6 @@ impl Codegen {
                     let j = self.registers[j];
 
                     let inst = code::Inst::encode(code::Op::Args, i, j, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                WriteField { args: [scalar, scope], field } => {
-                    let target = self.registers[value];
-                    let source = self.registers[scalar];
-                    let a = self.registers[scope];
-
-                    let inst = code::Inst::encode(code::Op::WriteField, target, source, a);
-                    self.function.instructions.push(inst);
-
-                    let b = self.emit_string(field);
-
-                    let inst = code::Inst::encode(code::Op::Args, b, 0, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                ToArrayField { scope, field } => {
-                    let target = self.registers[value];
-                    let a = self.registers[scope];
-                    let b = self.emit_string(field);
-
-                    let inst = code::Inst::encode(code::Op::ToArrayField, target, a, b);
                     self.function.instructions.push(inst);
                 }
 

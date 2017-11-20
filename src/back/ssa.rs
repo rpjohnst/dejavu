@@ -51,8 +51,7 @@ impl Function {
             Immediate { .. } | Unary { .. } | Binary { .. } |
             Argument | Lookup { .. } |
             Write { .. } |
-            LoadField { .. } | LoadIndex { .. } |
-            WriteField { .. } | ToArrayField { .. } |
+            LoadField { .. } | LoadFieldDefault { .. } | LoadFieldArray { .. } | LoadIndex { .. } |
             Call { .. } => Some(value),
 
             Undef | Alias(_) |
@@ -133,6 +132,8 @@ pub enum Inst {
     Write { args: [Value; 2] },
 
     LoadField { scope: Value, field: Symbol },
+    LoadFieldDefault { scope: Value, field: Symbol },
+    LoadFieldArray { scope: Value, field: Symbol },
     /// `args` contains `[array, i, j]`
     LoadIndex { args: [Value; 3] },
 
@@ -140,10 +141,6 @@ pub enum Inst {
     StoreField { args: [Value; 2], field: Symbol },
     /// `args` contains `[value, array, i, j]`
     StoreIndex { args: [Value; 4] },
-
-    /// `args` contains `[value, scope]`
-    WriteField { args: [Value; 2], field: Symbol },
-    ToArrayField { scope: Value, field: Symbol },
 
     Release { arg: Value },
 
@@ -166,13 +163,12 @@ impl Inst {
             Write { ref args } => args,
 
             LoadField { ref scope, .. } => ref_slice(scope),
+            LoadFieldDefault { ref scope, .. } => ref_slice(scope),
+            LoadFieldArray { ref scope, .. } => ref_slice(scope),
             LoadIndex { ref args, .. } => args,
 
             StoreField { ref args, .. } => args,
             StoreIndex { ref args, .. } => args,
-
-            WriteField { ref args, .. } => args,
-            ToArrayField { ref scope, .. } => ref_slice(scope),
 
             Release { ref arg, .. } => ref_slice(arg),
 
@@ -198,13 +194,12 @@ impl Inst {
             Write { ref mut args, .. } => args,
 
             LoadField { ref mut scope, .. } => ref_slice_mut(scope),
+            LoadFieldDefault { ref mut scope, .. } => ref_slice_mut(scope),
+            LoadFieldArray { ref mut scope, .. } => ref_slice_mut(scope),
             LoadIndex { ref mut args, .. } => args,
 
             StoreField { ref mut args, .. } => args,
             StoreIndex { ref mut args, .. } => args,
-
-            WriteField { ref mut args, .. } => args,
-            ToArrayField { ref mut scope, .. } => ref_slice_mut(scope),
 
             Release { ref mut arg, .. } => ref_slice_mut(arg),
 
