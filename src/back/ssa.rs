@@ -51,7 +51,7 @@ impl Function {
             Immediate { .. } | Unary { .. } | Binary { .. } |
             Argument | Lookup { .. } |
             Write { .. } |
-            LoadField { .. } | LoadFieldDefault { .. } | LoadFieldArray { .. } | LoadIndex { .. } |
+            LoadField { .. } | LoadFieldDefault { .. } | LoadFieldArray { .. } |
             Call { .. } => Some(value),
 
             Undef | Alias(_) |
@@ -134,13 +134,11 @@ pub enum Inst {
     LoadField { scope: Value, field: Symbol },
     LoadFieldDefault { scope: Value, field: Symbol },
     LoadFieldArray { scope: Value, field: Symbol },
-    /// `args` contains `[array, i, j]`
-    LoadIndex { args: [Value; 3] },
 
     /// `args` contains `[value, scope]`
     StoreField { args: [Value; 2], field: Symbol },
-    /// `args` contains `[value, array, i, j]`
-    StoreIndex { args: [Value; 4] },
+    /// `args` contains `[value, row, j]`
+    StoreIndex { args: [Value; 3] },
 
     Release { arg: Value },
 
@@ -165,7 +163,6 @@ impl Inst {
             LoadField { ref scope, .. } => ref_slice(scope),
             LoadFieldDefault { ref scope, .. } => ref_slice(scope),
             LoadFieldArray { ref scope, .. } => ref_slice(scope),
-            LoadIndex { ref args, .. } => args,
 
             StoreField { ref args, .. } => args,
             StoreIndex { ref args, .. } => args,
@@ -196,7 +193,6 @@ impl Inst {
             LoadField { ref mut scope, .. } => ref_slice_mut(scope),
             LoadFieldDefault { ref mut scope, .. } => ref_slice_mut(scope),
             LoadFieldArray { ref mut scope, .. } => ref_slice_mut(scope),
-            LoadIndex { ref mut args, .. } => args,
 
             StoreField { ref mut args, .. } => args,
             StoreIndex { ref mut args, .. } => args,
@@ -260,6 +256,11 @@ pub enum Binary {
     BitXor,
     ShiftLeft,
     ShiftRight,
+
+    LoadRow,
+    LoadIndex,
+
+    StoreRow,
 }
 
 /// Implement Entity for a tuple struct containing a u32

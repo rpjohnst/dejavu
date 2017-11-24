@@ -51,7 +51,6 @@ impl Inst {
 pub enum Op {
     Imm,
     Move,
-    Args,
 
     Neg,
     Not,
@@ -94,9 +93,11 @@ pub enum Op {
     LoadField,
     LoadFieldDefault,
     LoadFieldArray,
+    LoadRow,
     LoadIndex,
 
     StoreField,
+    StoreRow,
     StoreIndex,
 
     With,

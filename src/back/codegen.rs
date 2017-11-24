@@ -161,20 +161,6 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
-                LoadIndex { args: [array, i, j] } => {
-                    let target = self.registers[value];
-                    let a = self.registers[array];
-
-                    let inst = code::Inst::encode(code::Op::LoadIndex, target, a, 2);
-                    self.function.instructions.push(inst);
-
-                    let i = self.registers[i];
-                    let j = self.registers[j];
-
-                    let inst = code::Inst::encode(code::Op::Args, i, j, 0);
-                    self.function.instructions.push(inst);
-                }
-
                 StoreField { args: [value, scope], field } => {
                     let source = self.registers[value];
                     let a = self.registers[scope];
@@ -184,17 +170,12 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
-                StoreIndex { args: [value, array, i, j] } => {
+                StoreIndex { args: [value, row, j] } => {
                     let source = self.registers[value];
-                    let a = self.registers[array];
-
-                    let inst = code::Inst::encode(code::Op::StoreIndex, source, a, 2);
-                    self.function.instructions.push(inst);
-
-                    let i = self.registers[i];
+                    let row = self.registers[row];
                     let j = self.registers[j];
 
-                    let inst = code::Inst::encode(code::Op::Args, i, j, 0);
+                    let inst = code::Inst::encode(code::Op::StoreIndex, source, row, j);
                     self.function.instructions.push(inst);
                 }
 
@@ -449,6 +430,11 @@ impl From<ssa::Binary> for code::Op {
             ssa::Binary::BitXor => code::Op::BitXor,
             ssa::Binary::ShiftLeft => code::Op::ShiftLeft,
             ssa::Binary::ShiftRight => code::Op::ShiftRight,
+
+            ssa::Binary::LoadRow => code::Op::LoadRow,
+            ssa::Binary::LoadIndex => code::Op::LoadIndex,
+
+            ssa::Binary::StoreRow => code::Op::StoreRow,
         }
     }
 }

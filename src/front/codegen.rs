@@ -40,7 +40,6 @@ pub struct Codegen<'e> {
 enum Lvalue {
     Local(Symbol),
     Field(ssa::Value, Symbol),
-    Index(ssa::Value, [ssa::Value; 2]),
     IndexLocal(Symbol, [ssa::Value; 2]),
     IndexField(ssa::Value, Symbol, [ssa::Value; 2]),
 }
@@ -569,8 +568,6 @@ impl<'e> Codegen<'e> {
             }
             Lvalue::Field(scope, field) =>
                 self.emit_instruction(ssa::Inst::LoadField { scope, field }),
-            Lvalue::Index(array, [i, j]) =>
-                self.emit_instruction(ssa::Inst::LoadIndex { args: [array, i, j] }),
 
             Lvalue::IndexLocal(symbol, [i, j]) => {
                 let Local { flag, local } = self.locals[&symbol];
@@ -584,7 +581,10 @@ impl<'e> Codegen<'e> {
                 let op = ssa::Unary::ToArray;
                 let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
 
-                self.emit_instruction(ssa::Inst::LoadIndex { args: [array, i, j] })
+                let op = ssa::Binary::LoadRow;
+                let row = self.emit_instruction(ssa::Inst::Binary { op, args: [array, i] });
+                let op = ssa::Binary::LoadIndex;
+                self.emit_instruction(ssa::Inst::Binary { op, args: [row, j] })
             }
 
             Lvalue::IndexField(scope, field, [i, j]) => {
@@ -594,7 +594,10 @@ impl<'e> Codegen<'e> {
                 let op = ssa::Unary::ToArray;
                 let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
 
-                self.emit_instruction(ssa::Inst::LoadIndex { args: [array, i, j] })
+                let op = ssa::Binary::LoadRow;
+                let row = self.emit_instruction(ssa::Inst::Binary { op, args: [array, i] });
+                let op = ssa::Binary::LoadIndex;
+                self.emit_instruction(ssa::Inst::Binary { op, args: [row, j] })
             }
         };
 
@@ -634,10 +637,6 @@ impl<'e> Codegen<'e> {
                 self.emit_instruction(ssa::Inst::StoreField { args: [value, scope], field });
             }
 
-            Lvalue::Index(array, [i, j]) => {
-                self.emit_instruction(ssa::Inst::StoreIndex { args: [value, array, i, j] });
-            }
-
             Lvalue::IndexLocal(symbol, [i, j]) => {
                 let Local { flag, local } = self.locals[&symbol];
 
@@ -651,7 +650,9 @@ impl<'e> Codegen<'e> {
                 let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
                 self.builder.write_local(self.current_block, local, array);
 
-                self.emit_instruction(ssa::Inst::StoreIndex { args: [value, array, i, j] });
+                let op = ssa::Binary::StoreRow;
+                let row = self.emit_instruction(ssa::Inst::Binary { op, args: [array, i] });
+                self.emit_instruction(ssa::Inst::StoreIndex { args: [value, row, j] });
             }
 
             Lvalue::IndexField(scope, field, [i, j]) => {
@@ -659,7 +660,9 @@ impl<'e> Codegen<'e> {
                 let array = self.emit_instruction(ssa::Inst::LoadFieldArray { scope, field });
                 self.emit_instruction(ssa::Inst::StoreField { args: [array, scope], field });
 
-                self.emit_instruction(ssa::Inst::StoreIndex { args: [value, array, i, j] });
+                let op = ssa::Binary::StoreRow;
+                let row = self.emit_instruction(ssa::Inst::Binary { op, args: [array, i] });
+                self.emit_instruction(ssa::Inst::StoreIndex { args: [value, row, j] });
             }
         }
     }
