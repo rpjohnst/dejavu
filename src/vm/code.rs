@@ -1,4 +1,4 @@
-use std::{u8, mem};
+use std::{u8, mem, fmt};
 
 use vm;
 
@@ -48,6 +48,7 @@ impl Inst {
 }
 
 #[repr(u8)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Op {
     Imm,
     Move,
@@ -108,4 +109,43 @@ pub enum Op {
 
     Jump,
     BranchFalse,
+}
+
+impl fmt::Debug for Function {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(")?;
+        for param in 0..self.params {
+            write!(f, "%{:?}, ", param)?;
+        }
+        writeln!(f, ")[{:?}]", self.locals)?;
+
+        for &inst in &self.instructions {
+            let (op, a, b, c) = inst.decode();
+            match op {
+                Op::Imm | Op::Lookup =>
+                    writeln!(f, "  %{:?} = {:?} {:?}", a, op, self.constants[b])?,
+                Op::Move => writeln!(f, "  %{:?} = %{:?}", a, b)?,
+                Op::DeclareGlobal => writeln!(f, "  {:?} {:?}", op, self.constants[a])?,
+                Op::LoadField | Op::LoadFieldDefault | Op::LoadFieldArray =>
+                    writeln!(f, "  %{:?} = {:?} %{:?}.{:?}", a, op, b, self.constants[c])?,
+                Op::Release => writeln!(f, "  {:?} %{:?}", op, a)?,
+                Op::Read => writeln!(f, "  {:?} {:?}, %{:?}", op, self.constants[a], b)?,
+                Op::StoreField =>
+                    writeln!(f, "  {:?} %{:?}, %{:?}.{:?}", op, a, b, self.constants[c])?,
+                Op::LoadIndex | Op::LoadRow | Op::StoreRow =>
+                    writeln!(f, "  %{:?} = {:?} %{:?}[%{:?}]", a, op, b, c)?,
+                Op::StoreIndex => writeln!(f, "  {:?} %{:?}, %{:?}[%{:?}]", op, a, b, c)?,
+                Op::Call => writeln!(f, "  {:?} {:?}(%{:?} +{:?})", op, self.constants[a], b, c)?,
+                Op::Ret => writeln!(f, "  {:?}", op)?,
+                Op::Jump => writeln!(f, "  {:?} {:?}", op, a)?,
+                Op::BranchFalse => writeln!(f, "  {:?} %{:?}, {:?}", op, a, b)?,
+                Op::Neg | Op::Not | Op::BitNot | Op::ToArray | Op::ToScalar | Op::With | Op::Next =>
+                    writeln!(f, "  %{:?} = {:?} %{:?}", a, op, b)?,
+                _ =>
+                    writeln!(f, "  %{:?} = {:?} %{:?}, %{:?}", a, op, b, c)?,
+            }
+        }
+
+        Ok(())
+    }
 }

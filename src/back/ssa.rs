@@ -1,4 +1,4 @@
-use std::u32;
+use std::{u32, fmt};
 
 use entity::{Entity, EntityMap};
 use symbol::Symbol;
@@ -286,3 +286,29 @@ derive_entity_ref!(Block);
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Value(u32);
 derive_entity_ref!(Value);
+
+impl fmt::Debug for Function {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for block in self.blocks.keys() {
+            write!(f, "{:?}", block)?;
+            {
+                let mut arguments = f.debug_tuple("");
+                for &argument in &self.blocks[block].arguments {
+                    arguments.field(&argument);
+                }
+                arguments.finish()?;
+            }
+            writeln!(f)?;
+
+            for &value in &self.blocks[block].instructions {
+                write!(f, "  ")?;
+                if let Some(def) = self.defs(value) {
+                    write!(f, "{:?} <- ", def)?;
+                }
+                writeln!(f, "{:?}", self.values[value])?;
+            }
+        }
+
+        Ok(())
+    }
+}

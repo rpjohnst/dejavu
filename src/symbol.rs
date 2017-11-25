@@ -56,7 +56,8 @@ impl fmt::Debug for Symbol {
 
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", &self)
+        let string: &str = self;
+        write!(f, "{}", string)
     }
 }
 

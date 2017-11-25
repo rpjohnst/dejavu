@@ -1,4 +1,4 @@
-use std::mem;
+use std::{mem, fmt};
 
 use symbol::Symbol;
 use vm;
@@ -25,6 +25,30 @@ use vm;
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Value(u64);
 
+pub enum Data {
+    Real(f64),
+    String(Symbol),
+    Array(vm::Array),
+}
+
+impl Value {
+    pub fn data(self) -> Data {
+        let Value(value) = self;
+        let tag = value >> 48;
+        let payload = value & ((1 << 48) - 1);
+
+        if tag & !0x7 != 0xfff8 {
+            return Data::Real(unsafe { mem::transmute::<_, f64>(value) });
+        }
+
+        match tag & 0x7 {
+            0x00 => Data::String(Symbol::from_index(payload as u32)),
+            0x01 => Data::Array(unsafe { vm::Array::clone_from_raw(payload as *const _) }),
+            _ => unreachable!("corrupt value"),
+        }
+    }
+}
+
 impl From<f64> for Value {
     fn from(value: f64) -> Value {
         // TODO: check for non-canonical NaNs
@@ -49,5 +73,12 @@ impl From<vm::Array> for Value {
         let value = value.into_raw() as u64;
 
         Value((tag << 48) | value)
+    }
+}
+
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let visited = Default::default();
+        vm::debug::Value(*self, &visited).fmt(f)
     }
 }
