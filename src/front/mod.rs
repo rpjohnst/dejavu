@@ -4,13 +4,13 @@ pub use front::lexer::Lexer;
 pub use front::parser::Parser;
 pub use front::codegen::Codegen;
 
+pub mod token;
+pub mod ast;
+
 mod lexer;
 mod parser;
 mod ssa;
 mod codegen;
-
-mod token;
-mod ast;
 
 pub struct SourceFile {
     pub name: PathBuf,

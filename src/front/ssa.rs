@@ -148,11 +148,11 @@ impl Builder {
                             ref mut args
                         } => {
                             if block == true_block {
-                                args.insert(1 + *true_args, value);
+                                args.insert((1 + *true_args) as usize, value);
                                 *true_args += 1;
                             }
                             if block == false_block {
-                                args.insert(1 + *true_args + *false_args, value);
+                                args.insert((1 + *true_args + *false_args) as usize, value);
                                 *false_args += 1;
                             }
                         }

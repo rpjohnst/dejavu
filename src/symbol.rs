@@ -18,7 +18,8 @@ impl Symbol {
     }
 
     pub fn into_index(self) -> u32 {
-        self.0
+        let Symbol(index) = self;
+        index
     }
 
     pub fn from_index(index: u32) -> Symbol {
@@ -50,7 +51,7 @@ impl cmp::PartialOrd for Symbol {
 
 impl fmt::Debug for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}({})", self, self.0)
+        write!(f, "{}({})", self, self.into_index())
     }
 }
 
@@ -106,7 +107,7 @@ impl Interner {
 
     fn intern(&mut self, string: &str) -> Symbol {
         if let Some(entry) = self.strings.get(string) {
-            return Symbol(entry.id);
+            return Symbol::from_index(entry.id);
         }
 
         let string = String::from(string).into_boxed_str();
@@ -115,11 +116,12 @@ impl Interner {
         self.strings.insert(Entry { string, id });
         self.ids.push(data);
 
-        Symbol(id)
+        Symbol::from_index(id)
     }
 
-    fn get(&self, name: Symbol) -> &str {
-        unsafe { &*self.ids[name.0 as usize] }
+    fn get(&self, symbol: Symbol) -> &str {
+        let index = symbol.into_index();
+        unsafe { &*self.ids[index as usize] }
     }
 
     fn with<T, F: FnOnce(&mut Interner) -> T>(f: F) -> T {
@@ -243,10 +245,10 @@ mod tests {
     fn intern() {
         let mut i = Interner::default();
 
-        assert_eq!(i.intern("dog"), Symbol(0));
-        assert_eq!(i.intern("dog"), Symbol(0));
-        assert_eq!(i.intern("cat"), Symbol(1));
-        assert_eq!(i.intern("cat"), Symbol(1));
-        assert_eq!(i.intern("dog"), Symbol(0));
+        assert_eq!(i.intern("dog"), Symbol::from_index(0));
+        assert_eq!(i.intern("dog"), Symbol::from_index(0));
+        assert_eq!(i.intern("cat"), Symbol::from_index(1));
+        assert_eq!(i.intern("cat"), Symbol::from_index(1));
+        assert_eq!(i.intern("dog"), Symbol::from_index(0));
     }
 }

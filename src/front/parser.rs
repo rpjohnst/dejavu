@@ -52,7 +52,7 @@ impl<'s, 'e> Parser<'s, 'e> {
         (stmt, Span { low: low, high: high })
     }
 
-    pub fn parse_statement(&mut self) -> (ast::Stmt, Span) {
+    fn parse_statement(&mut self) -> (ast::Stmt, Span) {
         let low = self.span.low;
 
         use front::token::Token::*;

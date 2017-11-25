@@ -1,10 +1,9 @@
-use std::u32;
+use std::{u32, slice};
 use std::collections::{HashMap, VecDeque};
 use std::collections::hash_map::Entry;
 
 use bitvec::BitVec;
 use symbol::Symbol;
-use slice::ref_slice;
 use entity::{Entity, EntityMap};
 use back::ssa;
 use back::analysis::*;
@@ -196,11 +195,11 @@ impl Codegen {
                     let inst = code::Inst::encode(code::Op::Call, symbol, base, len);
                     self.function.instructions.push(inst);
 
-                    self.emit_phis(ref_slice(&value), &parameters[..1]);
+                    self.emit_phis(slice::from_ref(&value), &parameters[..1]);
                 }
 
                 Return { ref arg } => {
-                    self.emit_phis(ref_slice(&program.return_def), ref_slice(arg));
+                    self.emit_phis(slice::from_ref(&program.return_def), slice::from_ref(arg));
 
                     let inst = code::Inst::encode(code::Op::Ret, 0, 0, 0);
                     self.function.instructions.push(inst);
@@ -227,13 +226,13 @@ impl Codegen {
                     self.function.instructions.push(inst);
 
                     let true_start = 1;
-                    let true_end = true_start + true_args;
+                    let true_end = true_start + true_args as usize;
                     self.emit_edge(program, true_block, &args[true_start..true_end]);
 
                     self.block_offsets.insert(edge_block, self.function.instructions.len());
 
                     let false_start = true_end;
-                    let false_end = false_start + false_args;
+                    let false_end = false_start + false_args as usize;
                     self.emit_edge(program, false_block, &args[false_start..false_end]);
                 }
             }
@@ -280,7 +279,6 @@ impl Codegen {
     /// into it.
     ///
     /// TODO: tests
-    /// TODO: pass in register indices directly?
     fn emit_phis(&mut self, parameters: &[ssa::Value], arguments: &[ssa::Value]) {
         // the graph representation
         // - `phis` stores the vertices, which are uniquely identified by their targets
@@ -324,7 +322,7 @@ impl Codegen {
                 break;
             }
 
-            // TODO: find temp registers during register allocation?
+            // TODO: find temp registers during register allocation
             let temp = self.register_count;
             self.register_count += 1;
 

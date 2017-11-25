@@ -135,8 +135,7 @@ impl<'e> Codegen<'e> {
                     let right = self.emit_rvalue(rvalue);
 
                     let op = ast::Binary::Op(op).into();
-                    let inst = ssa::Inst::Binary { op, args: [left, right] };
-                    self.emit_instruction(inst)
+                    self.emit_instruction(ssa::Inst::Binary { op, args: [left, right] })
                 } else {
                     self.emit_rvalue(rvalue)
                 };
@@ -385,8 +384,7 @@ impl<'e> Codegen<'e> {
                 let switch = self.current_switch.expect("corrupt switch state");
                 let expr = self.emit_rvalue(expr);
                 let op = ssa::Binary::Eq;
-                let inst = ssa::Inst::Binary { op, args: [switch, expr] };
-                let expr = self.emit_instruction(inst);
+                let expr = self.emit_instruction(ssa::Inst::Binary { op, args: [switch, expr] });
                 self.emit_branch(expr, case_block, expr_block);
                 self.builder.seal_block(case_block);
                 self.builder.seal_block(expr_block);
@@ -508,8 +506,7 @@ impl<'e> Codegen<'e> {
                 if self.locals.contains_key(&symbol) {
                     Ok(Lvalue::Local(symbol))
                 } else {
-                    let inst = ssa::Inst::Lookup { symbol };
-                    let scope = self.emit_instruction(inst);
+                    let scope = self.emit_instruction(ssa::Inst::Lookup { symbol });
                     Ok(Lvalue::Field(scope, symbol))
                 }
             }

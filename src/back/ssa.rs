@@ -1,11 +1,10 @@
-use std::{u32, fmt};
+use std::{u32, slice, fmt};
 
 use entity::{Entity, EntityMap};
 use symbol::Symbol;
-use slice::{ref_slice, ref_slice_mut};
 
 pub struct Function {
-    pub blocks: EntityMap<Block, BlockBody>,
+    pub blocks: EntityMap<Block, BlockData>,
     pub values: EntityMap<Value, Inst>,
 
     pub return_def: Value,
@@ -37,7 +36,7 @@ impl Function {
     pub fn successors(&self, block: Block) -> &[Block] {
         let value = self.terminator(block);
         match self.values[value] {
-            Inst::Jump { ref target, .. } => ref_slice(target),
+            Inst::Jump { ref target, .. } => slice::from_ref(target),
             Inst::Branch { ref targets, .. } => targets,
             Inst::Return { .. } => &[],
 
@@ -89,7 +88,7 @@ impl Function {
     }
 
     pub fn make_block(&mut self) -> Block {
-        let block = BlockBody {
+        let block = BlockData {
             arguments: vec![],
             instructions: vec![],
         };
@@ -98,7 +97,7 @@ impl Function {
     }
 }
 
-pub struct BlockBody {
+pub struct BlockData {
     pub arguments: Vec<Value>,
     pub instructions: Vec<Value>,
 }
@@ -147,30 +146,30 @@ pub enum Inst {
 
     Jump { target: Block, args: Vec<Value> },
     /// `args` contains `[condition, arg_lens[0].., arg_lens[1]..]`
-    Branch { targets: [Block; 2], arg_lens: [usize; 2], args: Vec<Value> },
+    Branch { targets: [Block; 2], arg_lens: [u32; 2], args: Vec<Value> },
 }
 
 impl Inst {
     pub fn arguments(&self) -> &[Value] {
         use self::Inst::*;
         match *self {
-            Unary { ref arg, .. } => ref_slice(arg),
+            Unary { ref arg, .. } => slice::from_ref(arg),
             Binary { ref args, .. } => args,
 
-            Read { ref arg, .. } => ref_slice(arg),
+            Read { ref arg, .. } => slice::from_ref(arg),
             Write { ref args } => args,
 
-            LoadField { ref scope, .. } => ref_slice(scope),
-            LoadFieldDefault { ref scope, .. } => ref_slice(scope),
-            LoadFieldArray { ref scope, .. } => ref_slice(scope),
+            LoadField { ref scope, .. } => slice::from_ref(scope),
+            LoadFieldDefault { ref scope, .. } => slice::from_ref(scope),
+            LoadFieldArray { ref scope, .. } => slice::from_ref(scope),
 
             StoreField { ref args, .. } => args,
             StoreIndex { ref args, .. } => args,
 
-            Release { ref arg, .. } => ref_slice(arg),
+            Release { ref arg, .. } => slice::from_ref(arg),
 
             Call { ref args, .. } => &args[..],
-            Return { ref arg, .. } => ref_slice(arg),
+            Return { ref arg, .. } => slice::from_ref(arg),
 
             Jump { ref args, .. } => &args[..],
             Branch { ref args, .. } => &args[..],
@@ -184,23 +183,23 @@ impl Inst {
     pub fn arguments_mut(&mut self) -> &mut [Value] {
         use self::Inst::*;
         match *self {
-            Unary { ref mut arg, .. } => ref_slice_mut(arg),
+            Unary { ref mut arg, .. } => slice::from_ref_mut(arg),
             Binary { ref mut args, .. } => args,
 
-            Read { ref mut arg, .. } => ref_slice_mut(arg),
+            Read { ref mut arg, .. } => slice::from_ref_mut(arg),
             Write { ref mut args, .. } => args,
 
-            LoadField { ref mut scope, .. } => ref_slice_mut(scope),
-            LoadFieldDefault { ref mut scope, .. } => ref_slice_mut(scope),
-            LoadFieldArray { ref mut scope, .. } => ref_slice_mut(scope),
+            LoadField { ref mut scope, .. } => slice::from_ref_mut(scope),
+            LoadFieldDefault { ref mut scope, .. } => slice::from_ref_mut(scope),
+            LoadFieldArray { ref mut scope, .. } => slice::from_ref_mut(scope),
 
             StoreField { ref mut args, .. } => args,
             StoreIndex { ref mut args, .. } => args,
 
-            Release { ref mut arg, .. } => ref_slice_mut(arg),
+            Release { ref mut arg, .. } => slice::from_ref_mut(arg),
 
             Call { ref mut args, .. } => &mut args[..],
-            Return { ref mut arg, .. } => ref_slice_mut(arg),
+            Return { ref mut arg, .. } => slice::from_ref_mut(arg),
 
             Jump { ref mut args, .. } => &mut args[..],
             Branch { ref mut args, .. } => &mut args[..],
