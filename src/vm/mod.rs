@@ -1,5 +1,6 @@
 pub use vm::interpreter::State;
-pub use vm::value::{Value, Data};
+pub use vm::interpreter::Error;
+pub use vm::value::{Type, Value, Data};
 pub use vm::array::{Array, Row};
 
 pub mod code;

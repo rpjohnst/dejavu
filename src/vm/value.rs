@@ -31,6 +31,13 @@ pub enum Data {
     Array(vm::Array),
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub enum Type {
+    Real,
+    String,
+    Array,
+}
+
 impl Value {
     pub fn data(self) -> Data {
         let Value(value) = self;
@@ -45,6 +52,32 @@ impl Value {
             0x00 => Data::String(Symbol::from_index(payload as u32)),
             0x01 => Data::Array(unsafe { vm::Array::clone_from_raw(payload as *const _) }),
             _ => unreachable!("corrupt value"),
+        }
+    }
+
+    pub unsafe fn release(self) {
+        let Value(value) = self;
+        let tag = value >> 48;
+        let payload = value & ((1 << 48) - 1);
+
+        if tag & !0x7 != 0xfff8 {
+            return;
+        }
+
+        match tag & 0x7 {
+            0x0 => (),
+            0x1 => { vm::Array::from_raw(payload as *const _); },
+            _ => unreachable!("corrupt value"),
+        }
+    }
+}
+
+impl Data {
+    pub fn ty(&self) -> Type {
+        match *self {
+            Data::Real(_) => Type::Real,
+            Data::String(_) => Type::String,
+            Data::Array(_) => Type::Array,
         }
     }
 }
@@ -73,6 +106,18 @@ impl From<vm::Array> for Value {
         let value = value.into_raw() as u64;
 
         Value((tag << 48) | value)
+    }
+}
+
+impl From<i32> for Value {
+    fn from(value: i32) -> Value {
+        Value::from(value as f64)
+    }
+}
+
+impl From<bool> for Value {
+    fn from(value: bool) -> Value {
+        Value::from(value as i32)
     }
 }
 
