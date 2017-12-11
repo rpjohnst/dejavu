@@ -141,7 +141,7 @@ pub enum Inst {
 
     Release { arg: Value },
 
-    Call { symbol: Symbol, args: Vec<Value>, parameters: Vec<Value> },
+    Call { symbol: Symbol, prototype: Prototype, args: Vec<Value>, parameters: Vec<Value> },
     Return { arg: Value },
 
     Jump { target: Block, args: Vec<Value> },
@@ -260,6 +260,12 @@ pub enum Binary {
     LoadIndex,
 
     StoreRow,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Prototype {
+    Script,
+    Function,
 }
 
 /// Implement Entity for a tuple struct containing a u32

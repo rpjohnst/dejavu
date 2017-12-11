@@ -5,8 +5,9 @@ use symbol::{Symbol, keyword};
 use front::{self, ast, Span, ErrorHandler};
 use back::ssa;
 
-pub struct Codegen<'e> {
+pub struct Codegen<'p, 'e> {
     builder: front::ssa::Builder,
+    prototypes: &'p HashMap<Symbol, ssa::Prototype>,
     errors: &'e ErrorHandler,
 
     /// GML `var` declarations are static and independent of control flow. All references to a
@@ -64,14 +65,15 @@ const NOONE: f64 = -4.0;
 const GLOBAL: f64 = -5.0;
 const LOCAL: f64 = -6.0;
 
-impl<'e> Codegen<'e> {
-    pub fn new(errors: &'e ErrorHandler) -> Codegen<'e> {
+impl<'p, 'e> Codegen<'p, 'e> {
+    pub fn new(prototypes: &'p HashMap<Symbol, ssa::Prototype>, errors: &'e ErrorHandler) -> Self {
         let mut builder = front::ssa::Builder::new();
         let return_value = builder.emit_local();
 
         Codegen {
-            builder: builder,
-            errors: errors,
+            builder,
+            prototypes,
+            errors,
 
             locals: HashMap::new(),
             arguments: 0,
@@ -682,7 +684,7 @@ impl<'e> Codegen<'e> {
     }
 
     fn emit_call(&mut self, call: &ast::Call) -> ssa::Value {
-        let ast::Call((symbol, _), box ref args) = *call;
+        let ast::Call((symbol, symbol_span), box ref args) = *call;
 
         let args: Vec<_> = args.iter()
             .map(|argument| self.emit_rvalue(argument))
@@ -695,7 +697,14 @@ impl<'e> Codegen<'e> {
             .map(|_| self.builder.function.values.push(ssa::Inst::Argument))
             .collect();
 
-        self.emit_instruction(ssa::Inst::Call { symbol, args, parameters })
+        let prototype = self.prototypes.get(&symbol)
+            .map(|&prototype| prototype)
+            .unwrap_or_else(|| {
+                self.errors.error(symbol_span, "function does not exist");
+                ssa::Prototype::Script
+            });
+
+        self.emit_instruction(ssa::Inst::Call { symbol, prototype, args, parameters })
     }
 
     fn emit_real(&mut self, real: f64) -> ssa::Value {

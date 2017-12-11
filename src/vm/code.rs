@@ -107,6 +107,8 @@ pub enum Op {
     Call,
     Ret,
 
+    CallNative,
+
     Jump,
     BranchFalse,
 }

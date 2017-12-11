@@ -6,8 +6,6 @@ use vm::{self, code};
 
 /// A single thread of GML execution.
 pub struct State {
-    functions: HashMap<Symbol, code::Function>,
-
     globals: Scope,
     global_declarations: HashSet<Symbol>,
 
@@ -56,8 +54,6 @@ const LOCAL: i32 = -6;
 impl State {
     pub fn new() -> State {
         State {
-            functions: HashMap::new(),
-
             globals: HashMap::new(),
             global_declarations: HashSet::new(),
 
@@ -68,14 +64,18 @@ impl State {
         }
     }
 
-    pub fn add_function(&mut self, symbol: Symbol, function: code::Function) {
-        self.functions.insert(symbol, function);
+    pub fn arguments(&self, arguments: vm::Arguments) -> &[vm::Value] {
+        let vm::Arguments { base, limit } = arguments;
+        let registers = &self.stack[base..limit];
+        unsafe { mem::transmute::<&[Register], &[vm::Value]>(registers) }
     }
 
-    pub fn execute(
-        &mut self, mut symbol: Symbol, arguments: &[vm::Value], self_id: i32, other_id: i32,
+    pub fn execute<C>(
+        &mut self, resources: &vm::Resources<C>, context: &mut C,
+        symbol: Symbol, self_id: i32, other_id: i32, arguments: &[vm::Value],
     ) -> Result<vm::Value, Error> {
-        let mut function = &self.functions[&symbol];
+        let mut symbol = symbol;
+        let mut function = &resources.scripts[&symbol];
         let mut instruction = 0;
         let mut reg_base = self.stack.len();
 
@@ -709,7 +709,7 @@ impl State {
                     self.returns.push((symbol, instruction + 1, reg_base));
 
                     symbol = Self::get_string(function.constants[callee]);
-                    function = &self.functions[&symbol];
+                    function = &resources.scripts[&symbol];
                     instruction = 0;
                     reg_base = reg_base + base;
 
@@ -736,13 +736,27 @@ impl State {
                     };
 
                     symbol = caller;
-                    function = &self.functions[&symbol];
+                    function = &resources.scripts[&symbol];
                     instruction = caller_instruction;
                     reg_base = caller_base;
 
                     self.stack.truncate(reg_base + function.locals as usize);
 
                     continue;
+                }
+
+                (code::Op::CallNative, callee, base, len) => {
+                    let symbol = Self::get_string(function.constants[callee]);
+                    let function = resources.functions[&symbol];
+                    let reg_base = reg_base + base;
+
+                    let limit = reg_base + len;
+
+                    let arguments = vm::Arguments { base, limit };
+                    let value = function(context, self, resources, self_id, other_id, arguments)?;
+
+                    let registers = &mut self.stack[reg_base..];
+                    registers[0].value = value;
                 }
 
                 (code::Op::Jump, t, _, _) => {

@@ -185,14 +185,18 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
-                Call { symbol, ref args, ref parameters } => {
+                Call { symbol, prototype, ref args, ref parameters } => {
                     self.emit_phis(parameters, args);
 
                     let symbol = self.emit_string(symbol);
                     let base = self.registers[parameters[0]];
                     let len = args.len();
 
-                    let inst = code::Inst::encode(code::Op::Call, symbol, base, len);
+                    let op = match prototype {
+                        ssa::Prototype::Script => code::Op::Call,
+                        ssa::Prototype::Function => code::Op::CallNative,
+                    };
+                    let inst = code::Inst::encode(op, symbol, base, len);
                     self.function.instructions.push(inst);
 
                     self.emit_phis(slice::from_ref(&value), &parameters[..1]);
