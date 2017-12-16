@@ -53,12 +53,16 @@ impl<K, V> EntityMap<K, V> where K: Entity {
 }
 
 impl<K, V> EntityMap<K, V> where K: Entity, V: Clone + Default {
-    pub fn with_capacity(n: usize) -> Self {
+    pub fn with_capacity_default(n: usize, default: V) -> Self {
         let map = EntityMap {
             keys: PhantomData,
-            values: vec![V::default(); n],
+            values: vec![default; n],
         };
         map
+    }
+
+    pub fn with_capacity(n: usize) -> Self {
+        Self::with_capacity_default(n, V::default())
     }
 
     pub fn resize(&mut self, n: usize) {

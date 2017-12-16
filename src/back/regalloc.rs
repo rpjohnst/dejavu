@@ -70,16 +70,18 @@ impl Interference {
             }
 
             // arguments to the entry block are precolored
-            if block != ssa::ENTRY {
-                let defs = &program.blocks[block].arguments;
-                vertices.extend(defs);
-                for &def in defs {
-                    let live = live.iter().cloned().filter(|&other| def != other);
+            if block == ssa::ENTRY {
+                continue;
+            }
 
-                    adjacency[def].extend(live.clone());
-                    for used in live {
-                        adjacency[used].push(def);
-                    }
+            let defs = &program.blocks[block].arguments;
+            vertices.extend(defs);
+            for &def in defs {
+                live.remove(&def);
+
+                adjacency[def].extend(live.iter().cloned());
+                for &used in &live {
+                    adjacency[used].push(def);
                 }
             }
         }
@@ -163,12 +165,9 @@ impl Interference {
 
         // construct the buckets with precolored values excluded
         let weights = EntityMap::with_capacity(adjacency.len());
-        let mut indices = EntityMap::with_capacity(adjacency.len());
+        let mut indices = EntityMap::with_capacity_default(adjacency.len(), vertices.len());
         for (i, &value) in vertices.iter().enumerate() {
             indices[value] = i;
-        }
-        for &value in precolored {
-            indices[value] = vertices.len();
         }
 
         // increment the neighbors of precolored values
