@@ -70,6 +70,10 @@ impl State {
         unsafe { mem::transmute::<&[Register], &[vm::Value]>(registers) }
     }
 
+    pub fn create_scope(&mut self, id: i32) {
+        self.scopes.insert(id, Scope::default());
+    }
+
     pub fn execute<C>(
         &mut self, resources: &vm::Resources<C>, context: &mut C,
         symbol: Symbol, self_id: i32, other_id: i32, arguments: &[vm::Value],

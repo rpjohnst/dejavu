@@ -8,224 +8,297 @@ use gml::front::{self, Lexer, Parser, SourceFile, ErrorHandler};
 use gml::back::{self, ssa};
 use gml::vm::{self, code};
 
-fn compile(prototypes: &HashMap<Symbol, ssa::Prototype>, source: &str) -> code::Function {
-    let source = SourceFile {
-        name: PathBuf::from("<test>"),
-        source: String::from(source),
-    };
-    let errors = ErrorHandler;
-    let reader = Lexer::new(&source);
-    let mut parser = Parser::new(reader, &errors);
-    let program = parser.parse_program();
-    let codegen = front::Codegen::new(prototypes, &errors);
-    let program = codegen.compile(&program);
-    let codegen = back::Codegen::new();
-    codegen.compile(&program)
-}
-
+/// Read script arguments.
 #[test]
-fn factorial() {
-    let factorial = Symbol::intern("factorial");
+fn arguments() {
+    let mut functions = HashMap::new();
 
-    let mut prototypes = HashMap::new();
-    prototypes.insert(factorial, ssa::Prototype::Script);
+    let select = Symbol::intern("select");
+    functions.insert(select, Function::Script("{
+        return argument0 + argument1
+    }"));
 
-    let mut resources = vm::Resources::default();
-
-    let program = compile(&prototypes, "{
-        var i, j;
-        j = 1
-        for (i = 1; i <= 4; i += 1)
-            j *= i
-        return j
-    }");
-    resources.scripts.insert(factorial, program);
-
+    let resources = build(functions);
     let mut state = vm::State::new();
 
-    let value = vm::Value::from(24);
-    assert_eq!(state.execute(&resources, &mut (), factorial, 100001, 100001, &[]), Ok(value));
+    let arguments = [vm::Value::from(3), vm::Value::from(5)];
+    let result = Ok(vm::Value::from(8));
+    assert_eq!(state.execute(&resources, &mut (), select, 100001, 100001, &arguments), result);
+
+    let a = Symbol::intern("a");
+    let b = Symbol::intern("b");
+    let ab = Symbol::intern("ab");
+    let arguments = [vm::Value::from(a), vm::Value::from(b)];
+    let result = Ok(vm::Value::from(ab));
+    assert_eq!(state.execute(&resources, &mut (), select, 100001, 100001, &arguments), result);
 }
 
+/// Read and write member variables.
+#[test]
+fn member() {
+    let mut functions = HashMap::new();
+
+    let member = Symbol::intern("member");
+    functions.insert(member, Function::Script("{
+        a = 3
+        b[3] = 5
+        var c;
+        c = self.a + self.b[3]
+        return c
+    }"));
+
+    let resources = build(functions);
+    let mut state = vm::State::new();
+
+    state.create_scope(100001);
+
+    let result = Ok(vm::Value::from(8));
+    assert_eq!(state.execute(&resources, &mut (), member, 100001, 100001, &[]), result);
+}
+
+/// Read and write global variables.
+#[test]
+fn global() {
+    let mut functions = HashMap::new();
+
+    let global = Symbol::intern("global");
+    functions.insert(global, Function::Script("{
+        a = 3
+        global.a = 5
+        globalvar a;
+        return self.a + a
+    }"));
+
+    let resources = build(functions);
+    let mut state = vm::State::new();
+
+    state.create_scope(100001);
+
+    let result = Ok(vm::Value::from(8));
+    assert_eq!(state.execute(&resources, &mut (), global, 100001, 100001, &[]), result);
+}
+
+/// Read and write arrays.
+#[test]
+fn array() {
+    let mut functions = HashMap::new();
+
+    let array = Symbol::intern("array");
+    functions.insert(array, Function::Script("{
+        var a, b, c;
+        a[0] = 3
+        a[1] = 5
+        b = 8
+        b[2] = 13
+        c[1, 1] = 21
+        return a + a[1] + b[0] + b[1] + b[2] + c + c[1, 1]
+    }"));
+
+    let resources = build(functions);
+    let mut state = vm::State::new();
+
+    let result = Ok(vm::Value::from(50));
+    assert_eq!(state.execute(&resources, &mut (), array, 100001, 100001, &[]), result);
+}
+
+/// First write to a local is control-dependent.
+///
+/// Regression test to ensure conditionally-initialized values don't break the compiler.
+#[test]
+fn conditional_initialization() {
+    let mut functions = HashMap::new();
+
+    let fibonacci = Symbol::intern("fibonacci");
+    functions.insert(fibonacci, Function::Script::<()>("{
+        var t;
+        if (true) {
+            t = 1
+        }
+        return t
+    }"));
+
+    build(functions);
+}
+
+/// Use of undef caused by dead code not dominated by entry.
+///
+/// Regression test to ensure uses of undef don't break the register allocator.
+#[test]
+fn dead_undef() {
+    let mut functions = HashMap::new();
+
+    let switch = Symbol::intern("switch");
+    functions.insert(switch, Function::Script::<()>("{
+        var i;
+        return 0
+        return i
+    }"));
+
+    build(functions);
+}
+
+/// For loop working with locals.
+#[test]
+fn for_loop() {
+    let mut functions = HashMap::new();
+
+    let factorial = Symbol::intern("factorial");
+    functions.insert(factorial, Function::Script("{
+        var i, j;
+        j = 1
+        for (i = 1; i <= 4; i += 1) {
+            j *= i
+        }
+        return j
+    }"));
+
+    let resources = build(functions);
+    let mut state = vm::State::new();
+
+    let result = Ok(vm::Value::from(24));
+    assert_eq!(state.execute(&resources, &mut (), factorial, 100001, 100001, &[]), result);
+}
+
+/// Control flow across a switch statement.
 #[test]
 fn switch() {
+    let mut functions = HashMap::new();
+
     let switch = Symbol::intern("switch");
-
-    let mut prototypes = HashMap::new();
-    prototypes.insert(switch, ssa::Prototype::Script);
-
-    let mut resources = vm::Resources::default();
-
-    let program = compile(&prototypes, "{
+    functions.insert(switch, Function::Script("{
         var i;
         switch (argument0) {
         case 3:
             return 5
         case 8:
-            for (i = 0; i < 11; i += 1) {}
+            i = 13
             break
         default:
-            return 15
+            return 21
         }
         return i
-    }");
-    resources.scripts.insert(switch, program);
+    }"));
 
+    let resources = build(functions);
     let mut state = vm::State::new();
 
-    let arguments = &[vm::Value::from(3)];
-    let value = vm::Value::from(5);
-    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, arguments), Ok(value));
+    let arguments = [vm::Value::from(3)];
+    let result = Ok(vm::Value::from(5));
+    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
 
-    let arguments = &[vm::Value::from(8)];
-    let value = vm::Value::from(11);
-    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, arguments), Ok(value));
+    let arguments = [vm::Value::from(8)];
+    let result = Ok(vm::Value::from(13));
+    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
 
-    let arguments = &[vm::Value::from(13)];
-    let value = vm::Value::from(15);
-    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, arguments), Ok(value));
+    let arguments = [vm::Value::from(21)];
+    let result = Ok(vm::Value::from(21));
+    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
+
+    let arguments = [vm::Value::from(34)];
+    let result = Ok(vm::Value::from(21));
+    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
 }
 
+/// An empty switch statement.
 #[test]
-fn call() {
+fn switch_empty() {
+    let mut functions = HashMap::new();
+
+    let switch = Symbol::intern("switch");
+    functions.insert(switch, Function::Script::<()>("{
+        switch (argument0) {
+        }
+    }"));
+
+    build(functions);
+}
+
+/// A switch statement with fallthrough between cases.
+#[test]
+fn switch_fallthrough() {
+    let mut functions = HashMap::new();
+
+    let switch = Symbol::intern("switch");
+    functions.insert(switch, Function::Script::<()>("{
+        var i;
+        i = 0
+        switch (argument0) {
+        case 1:
+            i = 3
+        case 2:
+        case 3:
+            i += 5
+        }
+        return i
+    }"));
+
+    let resources = build(functions);
+    let mut state = vm::State::new();
+
+    let arguments = [vm::Value::from(0)];
+    let result = Ok(vm::Value::from(0));
+    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
+
+    let arguments = [vm::Value::from(1)];
+    let result = Ok(vm::Value::from(8));
+    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
+
+    let arguments = [vm::Value::from(2)];
+    let result = Ok(vm::Value::from(5));
+    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
+
+    let arguments = [vm::Value::from(3)];
+    let result = Ok(vm::Value::from(5));
+    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
+}
+
+/// Call a GML script.
+#[test]
+fn call_script() {
+    let mut functions = HashMap::new();
+
     let id = Symbol::intern("id");
+    functions.insert(id, Function::Script("return argument0"));
+
     let call = Symbol::intern("call");
+    functions.insert(call, Function::Script("return id(3) + 5"));
 
-    let mut prototypes = HashMap::new();
-    prototypes.insert(id, ssa::Prototype::Script);
-    prototypes.insert(call, ssa::Prototype::Script);
-
-    let mut resources = vm::Resources::default();
-
-    let program = compile(&prototypes, "return argument0");
-    resources.scripts.insert(id, program);
-
-    let program = compile(&prototypes, "return id(3) + 5");
-    resources.scripts.insert(call, program);
-
+    let resources = build(functions);
     let mut state = vm::State::new();
 
-    let value = vm::Value::from(8);
-    assert_eq!(state.execute(&resources, &mut (), call, 100001, 100001, &[]), Ok(value));
+    let result = Ok(vm::Value::from(8));
+    assert_eq!(state.execute(&resources, &mut (), call, 100001, 100001, &[]), result);
 }
 
-#[test]
-fn array() {
-    let array = Symbol::intern("array");
-
-    let mut prototypes = HashMap::new();
-    prototypes.insert(array, ssa::Prototype::Script);
-
-    let mut resources = vm::Resources::default();
-
-    let program = compile(&prototypes, "{
-        var a, b;
-        a[0] = 3
-        a[1] = 5
-        b = 8
-        b[2] = 13
-        return a + a[1] + b[0] + b[1] + b[2]
-    }");
-    resources.scripts.insert(array, program);
-
-    let mut state = vm::State::new();
-
-    let value = vm::Value::from(29);
-    assert_eq!(state.execute(&resources, &mut (), array, 100001, 100001, &[]), Ok(value));
-}
-
-#[test]
-fn fibonacci() {
-    let fibonacci = Symbol::intern("fibonacci");
-
-    let mut prototypes = HashMap::new();
-    prototypes.insert(fibonacci, ssa::Prototype::Script);
-
-    let mut resources = vm::Resources::default();
-
-    let program = compile(&prototypes, "{
-        var a, b, t;
-        a = 0
-        b = 1
-        repeat (argument0) {
-            t = a + b
-            a = b
-            b = t
-        }
-        return a
-    }");
-    resources.scripts.insert(fibonacci, program);
-
-    let mut state = vm::State::new();
-
-    let arguments = &[vm::Value::from(100)];
-    let value = vm::Value::from(354224848179262000000.0);
-    assert_eq!(state.execute(&resources, &mut (), fibonacci, 100001, 100001, arguments), Ok(value));
-}
-
-#[test]
-fn memoize() {
-    let fibonacci = Symbol::intern("fibonacci");
-
-    let mut prototypes = HashMap::new();
-    prototypes.insert(fibonacci, ssa::Prototype::Script);
-
-    let mut resources = vm::Resources::default();
-
-    let program = compile(&prototypes, "{
-        var i, fib;
-        fib[0] = 0
-        fib[1] = 1
-        for (i = 2; i <= argument0; i += 1) {
-            fib[i] = fib[i - 1] + fib[i - 2]
-        }
-        return fib[argument0]
-    }");
-    resources.scripts.insert(fibonacci, program);
-
-    let mut state = vm::State::new();
-
-    let arguments = &[vm::Value::from(100)];
-    let value = vm::Value::from(354224848179262000000.0);
-    assert_eq!(state.execute(&resources, &mut (), fibonacci, 100001, 100001, arguments), Ok(value));
-}
-
+/// Recursively call a GML script.
 #[test]
 fn recurse() {
+    let mut functions = HashMap::new();
+
     let fibonacci = Symbol::intern("fibonacci");
-
-    let mut prototypes = HashMap::new();
-    prototypes.insert(fibonacci, ssa::Prototype::Script);
-
-    let mut resources = vm::Resources::default();
-
-    let program = compile(&prototypes, "{
+    functions.insert(fibonacci, Function::Script("{
         if (argument0 < 2) {
             return 1
         } else {
             return fibonacci(argument0 - 1) + fibonacci(argument0 - 2)
         }
-    }");
-    resources.scripts.insert(fibonacci, program);
+    }"));
 
+    let resources = build(functions);
     let mut state = vm::State::new();
 
-    let arguments = &[vm::Value::from(6)];
-    let value = vm::Value::from(13);
-    assert_eq!(state.execute(&resources, &mut (), fibonacci, 100001, 100001, arguments), Ok(value));
+    let arguments = [vm::Value::from(6)];
+    let result = Ok(vm::Value::from(13));
+    assert_eq!(state.execute(&resources, &mut (), fibonacci, 100001, 100001, &arguments), result);
 }
 
+/// Call a native function.
 #[test]
 fn ffi() {
+    let mut functions = HashMap::new();
+
     let add = Symbol::intern("add");
-    let call = Symbol::intern("call");
-
-    let mut prototypes = HashMap::new();
-    prototypes.insert(add, ssa::Prototype::Function);
-    prototypes.insert(call, ssa::Prototype::Script);
-
-    let mut resources = vm::Resources::default();
-
+    functions.insert(add, Function::Native(Context::add));
     struct Context { value: f64 };
     impl Context {
         fn add(
@@ -241,14 +314,57 @@ fn ffi() {
             Ok(value)
         }
     }
-    resources.functions.insert(add, Context::add);
 
-    let program = compile(&prototypes, "return add(3, 5) + 8");
-    resources.scripts.insert(call, program);
+    let call = Symbol::intern("call");
+    functions.insert(call, Function::Script("return add(3, 5) + 8"));
 
-    let mut context = Context { value: 13.0 };
+    let resources = build(functions);
     let mut state = vm::State::new();
 
-    let value = vm::Value::from(29);
-    assert_eq!(state.execute(&resources, &mut context, call, 100001, 100001, &[]), Ok(value));
+    let mut context = Context { value: 13.0 };
+    let result = Ok(vm::Value::from(29));
+    assert_eq!(state.execute(&resources, &mut context, call, 100001, 100001, &[]), result);
+}
+
+enum Function<C> {
+    Script(&'static str),
+    Native(vm::NativeFunction<C>),
+}
+
+fn build<C>(functions: HashMap<Symbol, Function<C>>) -> vm::Resources<C> {
+    let prototypes: HashMap<Symbol, ssa::Prototype> = functions.iter()
+        .map(|(&name, resource)| match *resource {
+            Function::Script(_) => (name, ssa::Prototype::Script),
+            Function::Native(_) => (name, ssa::Prototype::Function),
+        })
+        .collect();
+
+    let mut resources = vm::Resources::default();
+    for (name, resource) in functions.into_iter() {
+        match resource {
+            Function::Script(source) => {
+                resources.scripts.insert(name, compile(&prototypes, source));
+            }
+            Function::Native(function) => {
+                resources.functions.insert(name, function);
+            }
+        }
+    }
+
+    resources
+}
+
+fn compile(prototypes: &HashMap<Symbol, ssa::Prototype>, source: &str) -> code::Function {
+    let source = SourceFile {
+        name: PathBuf::from("<test>"),
+        source: String::from(source),
+    };
+    let errors = ErrorHandler;
+    let reader = Lexer::new(&source);
+    let mut parser = Parser::new(reader, &errors);
+    let program = parser.parse_program();
+    let codegen = front::Codegen::new(prototypes, &errors);
+    let program = codegen.compile(&program);
+    let codegen = back::Codegen::new();
+    codegen.compile(&program)
 }
