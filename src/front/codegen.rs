@@ -352,7 +352,6 @@ impl<'p, 'e> Codegen<'p, 'e> {
             ast::Stmt::Switch(box ref expr, box ref body) => {
                 let expr_block = self.current_block;
                 let dead_block = self.make_block();
-                let default_block = self.make_block();
                 let exit_block = self.make_block();
 
                 self.builder.seal_block(dead_block);
@@ -360,15 +359,19 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 let expr = self.emit_rvalue(expr);
 
                 self.current_block = dead_block;
-                self.with_switch(expr, expr_block, default_block, exit_block, |self_| {
+                self.with_switch(expr, expr_block, exit_block, |self_| {
                     for statement in body {
                         self_.emit_statement(statement);
                     }
                     self_.emit_jump(exit_block);
 
-                    self_.current_block = self_.current_expr.expect("corrupt switch state");
+                    let default_block = self_.current_default.unwrap_or(exit_block);
+                    self_.current_block = self_.current_expr.unwrap();
+                    self_.current_expr = None;
                     self_.emit_jump(default_block);
-                    self_.builder.seal_block(default_block);
+                    if let Some(default_block) = self_.current_default {
+                        self_.builder.seal_block(default_block);
+                    }
                 });
                 self.builder.seal_block(exit_block);
 
@@ -394,8 +397,9 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.current_block = case_block;
             }
 
-            ast::Stmt::Case(None) if self.current_default.is_some() => {
-                let default_block = self.current_default.unwrap();
+            ast::Stmt::Case(None) if self.current_expr.is_some() => {
+                let default_block = self.make_block();
+                self.current_default = Some(default_block);
 
                 self.emit_jump(default_block);
 
@@ -771,12 +775,12 @@ impl<'p, 'e> Codegen<'p, 'e> {
     }
 
     fn with_switch<F>(
-        &mut self, switch: ssa::Value, expr: ssa::Block, default: ssa::Block, exit: ssa::Block,
+        &mut self, switch: ssa::Value, expr: ssa::Block, exit: ssa::Block,
         f: F
     ) where F: FnOnce(&mut Codegen) {
         let old_switch = mem::replace(&mut self.current_switch, Some(switch));
         let old_expr = mem::replace(&mut self.current_expr, Some(expr));
-        let old_default = mem::replace(&mut self.current_default, Some(default));
+        let old_default = mem::replace(&mut self.current_default, None);
         let old_exit = mem::replace(&mut self.current_exit, Some(exit));
 
         f(self);
