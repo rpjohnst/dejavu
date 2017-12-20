@@ -151,15 +151,6 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
-                LoadFieldArray { scope, field } => {
-                    let target = self.registers[value];
-                    let a = self.registers[scope];
-                    let b = self.emit_string(field);
-
-                    let inst = code::Inst::encode(code::Op::LoadFieldArray, target, a, b);
-                    self.function.instructions.push(inst);
-                }
-
                 StoreField { args: [value, scope], field } => {
                     let source = self.registers[value];
                     let a = self.registers[scope];

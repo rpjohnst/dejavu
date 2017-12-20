@@ -50,7 +50,7 @@ impl Function {
             Immediate { .. } | Unary { .. } | Binary { .. } |
             Argument | Lookup { .. } |
             Write { .. } |
-            LoadField { .. } | LoadFieldDefault { .. } | LoadFieldArray { .. } |
+            LoadField { .. } | LoadFieldDefault { .. } |
             Call { .. } => Some(value),
 
             Undef | Alias(_) |
@@ -132,7 +132,6 @@ pub enum Inst {
 
     LoadField { scope: Value, field: Symbol },
     LoadFieldDefault { scope: Value, field: Symbol },
-    LoadFieldArray { scope: Value, field: Symbol },
 
     /// `args` contains `[value, scope]`
     StoreField { args: [Value; 2], field: Symbol },
@@ -161,7 +160,6 @@ impl Inst {
 
             LoadField { ref scope, .. } => slice::from_ref(scope),
             LoadFieldDefault { ref scope, .. } => slice::from_ref(scope),
-            LoadFieldArray { ref scope, .. } => slice::from_ref(scope),
 
             StoreField { ref args, .. } => args,
             StoreIndex { ref args, .. } => args,
@@ -191,7 +189,6 @@ impl Inst {
 
             LoadField { ref mut scope, .. } => slice::from_ref_mut(scope),
             LoadFieldDefault { ref mut scope, .. } => slice::from_ref_mut(scope),
-            LoadFieldArray { ref mut scope, .. } => slice::from_ref_mut(scope),
 
             StoreField { ref mut args, .. } => args,
             StoreIndex { ref mut args, .. } => args,

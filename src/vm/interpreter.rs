@@ -581,31 +581,6 @@ impl State {
                     };
                 }
 
-                (code::Op::LoadFieldArray, t, scope, field) => {
-                    let registers = &mut self.stack[reg_base..];
-
-                    let scope = unsafe { registers[scope].value };
-                    let field = Self::get_string(function.constants[field]);
-                    let scope = Self::lookup(
-                        &mut self.scopes, &mut self.globals, self_id, other_id, scope
-                    )
-                        .ok_or_else(|| {
-                            let kind = ErrorKind::Name(field);
-                            Error { symbol, instruction, kind }
-                        })?;
-
-                    registers[t].value = match scope.get(&field) {
-                        Some(&value) => match value.data() {
-                            vm::Data::Array(_) => value,
-                            _ => vm::Value::from(vm::Array::from_scalar(value)),
-                        }
-                        None => {
-                            let value = vm::Value::from(0.0);
-                            vm::Value::from(vm::Array::from_scalar(value))
-                        }
-                    };
-                }
-
                 (op @ code::Op::LoadRow, t, a, i) => {
                     let registers = &mut self.stack[reg_base..];
 

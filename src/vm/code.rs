@@ -93,7 +93,6 @@ pub enum Op {
 
     LoadField,
     LoadFieldDefault,
-    LoadFieldArray,
     LoadRow,
     LoadIndex,
 
@@ -128,7 +127,7 @@ impl fmt::Debug for Function {
                     writeln!(f, "  %{:?} = {:?} {:?}", a, op, self.constants[b])?,
                 Op::Move => writeln!(f, "  %{:?} = %{:?}", a, b)?,
                 Op::DeclareGlobal => writeln!(f, "  {:?} {:?}", op, self.constants[a])?,
-                Op::LoadField | Op::LoadFieldDefault | Op::LoadFieldArray =>
+                Op::LoadField | Op::LoadFieldDefault =>
                     writeln!(f, "  %{:?} = {:?} %{:?}.{:?}", a, op, b, self.constants[c])?,
                 Op::Release => writeln!(f, "  {:?} %{:?}", op, a)?,
                 Op::Read => writeln!(f, "  {:?} {:?}, %{:?}", op, self.constants[a], b)?,

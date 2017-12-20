@@ -659,8 +659,11 @@ impl<'p, 'e> Codegen<'p, 'e> {
             }
 
             Lvalue::IndexField(scope, field, [i, j]) => {
+                let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { scope, field });
+
                 // TODO: this only happens pre-gms; gms does need to handle undef
-                let array = self.emit_instruction(ssa::Inst::LoadFieldArray { scope, field });
+                let op = ssa::Unary::ToArray;
+                let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
                 self.emit_instruction(ssa::Inst::StoreField { args: [array, scope], field });
 
                 let op = ssa::Binary::StoreRow;
