@@ -84,12 +84,13 @@ pub enum Op {
     DeclareGlobal,
     Lookup,
 
-    ToArray,
-    ToScalar,
-    Release,
 
     Read,
     Write,
+
+    ToArray,
+    ToScalar,
+    Release,
 
     LoadField,
     LoadFieldDefault,
@@ -104,9 +105,8 @@ pub enum Op {
     Next,
 
     Call,
-    Ret,
-
     CallNative,
+    Ret,
 
     Jump,
     BranchFalse,

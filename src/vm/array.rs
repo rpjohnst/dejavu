@@ -1,7 +1,7 @@
 use std::mem;
 use std::rc::Rc;
 use std::cell::UnsafeCell;
-use std::ptr::Shared;
+use std::ptr::NonNull;
 use vm;
 
 #[derive(Clone)]
@@ -11,7 +11,7 @@ pub struct Array {
 
 #[derive(Copy, Clone)]
 pub struct Row {
-    pub(in vm) data: Shared<Vec<vm::Value>>,
+    pub(in vm) data: NonNull<Vec<vm::Value>>,
 }
 
 #[derive(Copy, Clone)]

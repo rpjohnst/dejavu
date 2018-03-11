@@ -73,6 +73,6 @@ mod tests {
         array.store(0, 2, vm::Value::from(3.0));
 
         let array = vm::Value::from(unsafe { vm::Array::from_raw(raw) });
-        assert_eq!(format!("{:?}", array), "{{1, {...}, 3}}");
+        assert_eq!(format!("{:?}", array), "{{1.0, {...}, 3.0}}");
     }
 }

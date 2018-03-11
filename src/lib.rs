@@ -1,4 +1,9 @@
-#![feature(optin_builtin_traits, box_patterns, box_syntax, slice_patterns, from_ref, clone_closures, shared)]
+#![feature(optin_builtin_traits)]
+#![feature(box_patterns)]
+#![feature(box_syntax)]
+#![feature(slice_patterns)]
+#![feature(from_ref)]
+#![feature(clone_closures)]
 
 pub mod front;
 pub mod back;

@@ -55,9 +55,9 @@ impl Function {
 
             Undef | Alias(_) |
             DeclareGlobal { .. } |
-            Release { .. } |
             Read { .. } |
             StoreField { .. } | StoreIndex { .. } |
+            Release { .. } |
             Return { .. } |
             Jump { .. } | Branch { .. } => None,
         }
@@ -106,6 +106,9 @@ pub struct BlockData {
 ///
 /// Some of these instructions have less-than-ideal field grouping- this is so that all "used
 /// values" are stored in contiguous arrays, which enables more uniform interfaces elsewhere.
+///
+/// TODO: Give instructions types- value, row, iterator, pointer.
+///       Recombine some/all shapes; combine some `Binary` variants.
 #[derive(PartialEq, Debug)]
 pub enum Inst {
     /// A placeholder for an undefined value.
@@ -113,7 +116,7 @@ pub enum Inst {
     /// A placeholder for a value that has been replaced.
     ///
     /// Aliases must not exist in blocks, and must be removed before codegen. They should also be
-    /// removed between or as part of optimization passes that generate them.
+    /// removed between or as part of the passes that generate them.
     Alias(Value),
 
     Immediate { value: Constant },
@@ -125,7 +128,7 @@ pub enum Inst {
     DeclareGlobal { symbol: Symbol },
     Lookup { symbol: Symbol },
 
-    /// Mark a value as read at this point, error on `Undef`.
+    /// Mark a value as read at this point, error on arg == false.
     Read { symbol: Symbol, arg: Value },
     /// `args` contains `[value, array]`. If array is a scalar, return `value`.
     Write { args: [Value; 2] },

@@ -49,7 +49,8 @@ const OTHER: i32 = -2;
 const ALL: i32 = -3;
 const NOONE: i32 = -4;
 const GLOBAL: i32 = -5;
-const LOCAL: i32 = -6;
+// -6?
+const LOCAL: i32 = -7;
 
 impl State {
     pub fn new() -> State {
@@ -480,39 +481,6 @@ impl State {
                     };
                 }
 
-                (code::Op::ToArray, t, a, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
-                    let a = unsafe { registers[a].value };
-                    registers[t].value = match a.data() {
-                        vm::Data::Array(_) => Ok(a),
-                        _ => Ok(vm::Value::from(vm::Array::from_scalar(a))),
-                    }?;
-                }
-
-                (code::Op::ToScalar, t, a, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
-                    let a = unsafe { registers[a].value };
-                    registers[t].value = match a.data() {
-                        vm::Data::Array(array) => {
-                             array.load(0, 0)
-                                .map_err(|_| {
-                                    let kind = ErrorKind::Bounds(0);
-                                    Error { symbol, instruction, kind }
-                                })?
-                        }
-                        _ => a,
-                    };
-                }
-
-                (code::Op::Release, a, _, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
-                    let a = unsafe { registers[a].value };
-                    unsafe { a.release() };
-                }
-
                 (op @ code::Op::Read, local, a, _) => {
                     let registers = &mut self.stack[reg_base..];
 
@@ -545,6 +513,39 @@ impl State {
                         }
                         _ => a
                     };
+                }
+
+                (code::Op::ToArray, t, a, _) => {
+                    let registers = &mut self.stack[reg_base..];
+
+                    let a = unsafe { registers[a].value };
+                    registers[t].value = match a.data() {
+                        vm::Data::Array(_) => Ok(a),
+                        _ => Ok(vm::Value::from(vm::Array::from_scalar(a))),
+                    }?;
+                }
+
+                (code::Op::ToScalar, t, a, _) => {
+                    let registers = &mut self.stack[reg_base..];
+
+                    let a = unsafe { registers[a].value };
+                    registers[t].value = match a.data() {
+                        vm::Data::Array(array) => {
+                             array.load(0, 0)
+                                .map_err(|_| {
+                                    let kind = ErrorKind::Bounds(0);
+                                    Error { symbol, instruction, kind }
+                                })?
+                        }
+                        _ => a,
+                    };
+                }
+
+                (code::Op::Release, a, _, _) => {
+                    let registers = &mut self.stack[reg_base..];
+
+                    let a = unsafe { registers[a].value };
+                    unsafe { a.release() };
                 }
 
                 (code::Op::LoadField, t, scope, field) => {
@@ -704,6 +705,20 @@ impl State {
                     continue;
                 }
 
+                (code::Op::CallNative, callee, base, len) => {
+                    let symbol = Self::get_string(function.constants[callee]);
+                    let function = resources.functions[&symbol];
+                    let reg_base = reg_base + base;
+
+                    let limit = reg_base + len;
+
+                    let arguments = vm::Arguments { base, limit };
+                    let value = function(context, self, resources, self_id, other_id, arguments)?;
+
+                    let registers = &mut self.stack[reg_base..];
+                    registers[0].value = value;
+                }
+
                 (code::Op::Ret, _, _, _) => {
                     let (caller, caller_instruction, caller_base) = match self.returns.pop() {
                         Some(frame) => frame,
@@ -722,20 +737,6 @@ impl State {
                     self.stack.truncate(reg_base + function.locals as usize);
 
                     continue;
-                }
-
-                (code::Op::CallNative, callee, base, len) => {
-                    let symbol = Self::get_string(function.constants[callee]);
-                    let function = resources.functions[&symbol];
-                    let reg_base = reg_base + base;
-
-                    let limit = reg_base + len;
-
-                    let arguments = vm::Arguments { base, limit };
-                    let value = function(context, self, resources, self_id, other_id, arguments)?;
-
-                    let registers = &mut self.stack[reg_base..];
-                    registers[0].value = value;
                 }
 
                 (code::Op::Jump, t, _, _) => {

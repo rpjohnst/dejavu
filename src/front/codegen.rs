@@ -63,7 +63,8 @@ const OTHER: f64 = -2.0;
 const ALL: f64 = -3.0;
 const NOONE: f64 = -4.0;
 const GLOBAL: f64 = -5.0;
-const LOCAL: f64 = -6.0;
+// -6?
+const LOCAL: f64 = -7.0;
 
 impl<'p, 'e> Codegen<'p, 'e> {
     pub fn new(prototypes: &'p HashMap<Symbol, ssa::Prototype>, errors: &'e ErrorHandler) -> Self {

@@ -68,6 +68,9 @@ impl Codegen {
         for &value in &program.blocks[block].instructions {
             use back::ssa::Inst::*;
             match program.values[value] {
+                // these should not be used as instructions
+                Undef | Alias(_) | Argument => unreachable!("corrupt function"),
+
                 Immediate { value: constant } => {
                     let target = self.registers[value];
                     let a = match constant {
@@ -98,8 +101,20 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
-                // these should not be used as instructions
-                Undef | Alias(_) | Argument => unreachable!("corrupt function"),
+                DeclareGlobal { symbol } => {
+                    let a = self.emit_string(symbol);
+
+                    let inst = code::Inst::encode(code::Op::DeclareGlobal, a, 0, 0);
+                    self.function.instructions.push(inst);
+                }
+
+                Lookup { symbol } => {
+                    let target = self.registers[value];
+                    let a = self.emit_string(symbol);
+
+                    let inst = code::Inst::encode(code::Op::Lookup, target, a, 0);
+                    self.function.instructions.push(inst);
+                }
 
                 Read { symbol, arg } => {
                     let a = self.emit_string(symbol);
@@ -115,21 +130,6 @@ impl Codegen {
                     let b = self.registers[array];
 
                     let inst = code::Inst::encode(code::Op::Write, target, a, b);
-                    self.function.instructions.push(inst);
-                }
-
-                DeclareGlobal { symbol } => {
-                    let a = self.emit_string(symbol);
-
-                    let inst = code::Inst::encode(code::Op::DeclareGlobal, a, 0, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                Lookup { symbol } => {
-                    let target = self.registers[value];
-                    let a = self.emit_string(symbol);
-
-                    let inst = code::Inst::encode(code::Op::Lookup, target, a, 0);
                     self.function.instructions.push(inst);
                 }
 
