@@ -85,9 +85,9 @@ impl<'s, 'e> Parser<'s, 'e> {
 
     fn parse_assign_or_invoke(&mut self) -> (ast::Stmt, Span) {
         let low = self.span.low;
-        let (lvalue, left_span) = self.parse_term();
+        let (place, left_span) = self.parse_term();
 
-        match lvalue {
+        match place {
             ast::Expr::Call(call) => return (ast::Stmt::Invoke(call), left_span),
             _ => (),
         }
@@ -112,11 +112,11 @@ impl<'s, 'e> Parser<'s, 'e> {
         };
         self.advance_token();
 
-        let (rvalue, right_span) = self.parse_expression(0);
+        let (value, right_span) = self.parse_expression(0);
         let high = right_span.high;
 
         let span = Span { low: low, high: high };
-        (ast::Stmt::Assign(op, Box::new((lvalue, left_span)), Box::new((rvalue, right_span))), span)
+        (ast::Stmt::Assign(op, Box::new((place, left_span)), Box::new((value, right_span))), span)
     }
 
     fn parse_declare(&mut self) -> (ast::Stmt, Span) {

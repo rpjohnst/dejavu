@@ -34,19 +34,26 @@ pub struct Codegen<'p, 'e> {
 
 /// A location that can be read from or written to.
 ///
-/// GML arrays are not first class values, and are instead tied to variable bindings. To accomodate
-/// this, `Lvalue::Index` is replaced with `Lvalue::IndexLocal` and `Lvalue::IndexField`. In the
-/// future, `Index` can be used to implement first-class arrays and data structure accessors.
+/// Pre-studio GML arrays are not first class values, and are instead tied to variable bindings.
+/// To accomodate this, `Place` uses a `Path` rather than an `ssa::Value`. To support GMS arrays
+/// and data structure accessors, `Path` might gain a `Value` variant.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-enum Lvalue {
+struct Place {
+    path: Path,
+    index: Option<[ssa::Value; 2]>,
+}
+
+/// A "path" to a variable. See `Place`.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+enum Path {
+    /// A variable declared with `var`.
     Local(Symbol),
+    /// An unprefixed variable referencing either `self` or `global`.
     Field(ssa::Value, Symbol),
-    IndexLocal(Symbol, [ssa::Value; 2]),
-    IndexField(ssa::Value, Symbol, [ssa::Value; 2]),
 }
 
 #[derive(Debug)]
-struct LvalueError;
+struct PlaceError;
 
 /// A GML-level local variable.
 #[derive(Copy, Clone)]
@@ -126,24 +133,24 @@ impl<'p, 'e> Codegen<'p, 'e> {
     fn emit_statement(&mut self, statement: &(ast::Stmt, Span)) {
         let (ref statement, statement_span) = *statement;
         match *statement {
-            ast::Stmt::Assign(op, box ref lvalue, box ref rvalue) => {
-                let lvalue = match self.emit_lvalue(lvalue) {
-                    Ok(lvalue) => lvalue,
-                    Err(LvalueError) => return,
+            ast::Stmt::Assign(op, box ref place, box ref value) => {
+                let place = match self.emit_place(place) {
+                    Ok(place) => place,
+                    Err(PlaceError) => return,
                 };
 
-                let rvalue = if let Some(op) = op {
-                    let lvalue = lvalue.clone();
-                    let left = self.emit_load(lvalue);
-                    let right = self.emit_rvalue(rvalue);
+                let value = if let Some(op) = op {
+                    let place = place.clone();
+                    let left = self.emit_load(place);
+                    let right = self.emit_value(value);
 
                     let op = ast::Binary::Op(op).into();
                     self.emit_instruction(ssa::Inst::Binary { op, args: [left, right] })
                 } else {
-                    self.emit_rvalue(rvalue)
+                    self.emit_value(value)
                 };
 
-                self.emit_store(lvalue, rvalue);
+                self.emit_store(place, value);
             }
 
             ast::Stmt::Invoke(ref call) => {
@@ -191,7 +198,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                     false_block
                 };
 
-                let expr = self.emit_rvalue(expr);
+                let expr = self.emit_value(expr);
                 self.emit_branch(expr, true_block, false_block);
                 self.builder.seal_block(true_block);
                 self.builder.seal_block(false_block);
@@ -218,7 +225,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
                 let iter = self.builder.emit_local();
 
-                let count = self.emit_rvalue(expr);
+                let count = self.emit_value(expr);
                 self.builder.write_local(self.current_block, iter, count);
                 self.emit_jump(next_block);
 
@@ -250,7 +257,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.emit_jump(next_block);
 
                 self.current_block = next_block;
-                let expr = self.emit_rvalue(expr);
+                let expr = self.emit_value(expr);
                 self.emit_branch(expr, body_block, exit_block);
                 self.builder.seal_block(body_block);
 
@@ -280,7 +287,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.builder.seal_block(next_block);
 
                 self.current_block = next_block;
-                let expr = self.emit_rvalue(expr);
+                let expr = self.emit_value(expr);
                 self.emit_branch(expr, exit_block, body_block);
                 self.builder.seal_block(body_block);
                 self.builder.seal_block(exit_block);
@@ -298,7 +305,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.emit_jump(expr_block);
 
                 self.current_block = expr_block;
-                let expr = self.emit_rvalue(expr);
+                let expr = self.emit_value(expr);
                 self.emit_branch(expr, body_block, exit_block);
                 self.builder.seal_block(body_block);
 
@@ -325,7 +332,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
                 let iter = self.builder.emit_local();
 
-                let expr = self.emit_rvalue(expr);
+                let expr = self.emit_value(expr);
                 let op = ssa::Unary::With;
                 let with = self.emit_instruction(ssa::Inst::Unary { op, arg: expr });
                 self.builder.write_local(self.current_block, iter, with);
@@ -357,7 +364,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
                 self.builder.seal_block(dead_block);
 
-                let expr = self.emit_rvalue(expr);
+                let expr = self.emit_value(expr);
 
                 self.current_block = dead_block;
                 self.with_switch(expr, expr_block, exit_block, |self_| {
@@ -388,7 +395,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.current_block = self.current_expr.unwrap();
                 self.current_expr = Some(expr_block);
                 let switch = self.current_switch.expect("corrupt switch state");
-                let expr = self.emit_rvalue(expr);
+                let expr = self.emit_value(expr);
                 let op = ssa::Binary::Eq;
                 let expr = self.emit_instruction(ssa::Inst::Binary { op, args: [switch, expr] });
                 self.emit_branch(expr, case_block, expr_block);
@@ -436,7 +443,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
             }
 
             ast::Stmt::Return(box ref expr) => {
-                let expr = self.emit_rvalue(expr);
+                let expr = self.emit_value(expr);
                 self.builder.write_local(self.current_block, self.return_value, expr);
                 self.emit_jump(ssa::EXIT);
 
@@ -448,7 +455,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
         }
     }
 
-    fn emit_rvalue(&mut self, expression: &(ast::Expr, Span)) -> ssa::Value {
+    fn emit_value(&mut self, expression: &(ast::Expr, Span)) -> ssa::Value {
         let (ref expr, _expr_span) = *expression;
         match *expr {
             ast::Expr::Value(ast::Value::Real(real)) => self.emit_real(real),
@@ -463,7 +470,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
             ast::Expr::Value(ast::Value::Ident(keyword::Global)) => self.emit_real(GLOBAL),
             ast::Expr::Value(ast::Value::Ident(keyword::Local)) => self.emit_real(LOCAL),
 
-            ast::Expr::Unary(ast::Unary::Positive, box ref expr) => self.emit_rvalue(expr),
+            ast::Expr::Unary(ast::Unary::Positive, box ref expr) => self.emit_value(expr),
             ast::Expr::Unary(op, box ref expr) => {
                 let op = match op {
                     ast::Unary::Negate => ssa::Unary::Negate,
@@ -471,30 +478,28 @@ impl<'p, 'e> Codegen<'p, 'e> {
                     ast::Unary::BitInvert => ssa::Unary::BitInvert,
                     _ => unreachable!(),
                 };
-                let expr = self.emit_rvalue(expr);
+                let expr = self.emit_value(expr);
                 self.emit_instruction(ssa::Inst::Unary { op, arg: expr })
             }
 
             ast::Expr::Binary(op, box ref left, box ref right) => {
-                let left = self.emit_rvalue(left);
-                let right = self.emit_rvalue(right);
+                let left = self.emit_value(left);
+                let right = self.emit_value(right);
                 let op = op.into();
                 self.emit_instruction(ssa::Inst::Binary { op, args: [left, right] })
             }
 
-            ast::Expr::Call(ref call) => {
-                self.emit_call(call)
-            }
+            ast::Expr::Call(ref call) => self.emit_call(call),
 
             _ => {
-                let lvalue = self.emit_lvalue(expression)
+                let place = self.emit_place(expression)
                     .expect("_ is not a valid expression");
-                self.emit_load(lvalue)
+                self.emit_load(place)
             }
         }
     }
 
-    fn emit_lvalue(&mut self, expression: &(ast::Expr, Span)) -> Result<Lvalue, LvalueError> {
+    fn emit_place(&mut self, expression: &(ast::Expr, Span)) -> Result<Place, PlaceError> {
         let (ref expression, expression_span) = *expression;
         match *expression {
             ast::Expr::Value(ast::Value::Ident(symbol)) if !symbol.is_keyword() => {
@@ -511,16 +516,16 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 }
 
                 if self.locals.contains_key(&symbol) {
-                    Ok(Lvalue::Local(symbol))
+                    Ok(Place { path: Path::Local(symbol), index: None })
                 } else {
                     let scope = self.emit_instruction(ssa::Inst::Lookup { symbol });
-                    Ok(Lvalue::Field(scope, symbol))
+                    Ok(Place { path: Path::Field(scope, symbol), index: None })
                 }
             }
 
             ast::Expr::Field(box ref expr, (field, _field_span)) => {
-                let scope = self.emit_rvalue(expr);
-                Ok(Lvalue::Field(scope, field))
+                let scope = self.emit_value(expr);
+                Ok(Place { path: Path::Field(scope, field), index: None })
             }
 
             ast::Expr::Index(box ref expr, box ref indices) => {
@@ -528,29 +533,28 @@ impl<'p, 'e> Codegen<'p, 'e> {
                     self.errors.error(expression_span, "invalid number of array indices");
                 }
 
-                let array = self.emit_lvalue(expr)?;
+                let array = self.emit_place(expr)?;
                 let zero = self.emit_real(0.0);
                 let mut indices = indices.iter().rev()
-                    .map(|index| self.emit_rvalue(index))
+                    .map(|index| self.emit_value(index))
                     .chain(iter::repeat(zero));
 
                 let j = indices.next().unwrap();
                 let i = indices.next().unwrap();
 
                 match array {
-                    Lvalue::Local(symbol) => Ok(Lvalue::IndexLocal(symbol, [i, j])),
-                    Lvalue::Field(scope, field) => Ok(Lvalue::IndexField(scope, field, [i, j])),
-                    _ => {
+                    Place { path, index: None } => Ok(Place { path, index: Some([i, j]) }),
+                    Place { index: Some(_), .. } => {
                         let (_, expr_span) = *expr;
                         self.errors.error(expr_span, "expected a variable");
-                        Err(LvalueError)
+                        Err(PlaceError)
                     }
                 }
             }
 
             _ => {
                 self.errors.error(expression_span, "expected a variable");
-                Err(LvalueError)
+                Err(PlaceError)
             }
         }
     }
@@ -560,9 +564,9 @@ impl<'p, 'e> Codegen<'p, 'e> {
     /// This handles GML's odd behavior around arrays. Before GMS:
     /// - all loads produce scalars; if the variable holds an array it loads `a[0, 0]`
     /// - indexed loads from scalar variables treat the variable as a 1x1 array
-    fn emit_load(&mut self, lvalue: Lvalue) -> ssa::Value {
-        let value = match lvalue {
-            Lvalue::Local(symbol) => {
+    fn emit_load(&mut self, place: Place) -> ssa::Value {
+        let value = match place.path {
+            Path::Local(symbol) => {
                 let Local { flag, local } = self.locals[&symbol];
 
                 let flag = self.builder.read_local(self.current_block, flag);
@@ -570,33 +574,20 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
                 self.builder.read_local(self.current_block, local)
             }
-            Lvalue::Field(scope, field) =>
-                self.emit_instruction(ssa::Inst::LoadField { scope, field }),
 
-            Lvalue::IndexLocal(symbol, [i, j]) => {
-                let Local { flag, local } = self.locals[&symbol];
+            Path::Field(scope, field) => {
+                self.emit_instruction(ssa::Inst::LoadField { scope, field })
 
-                let flag = self.builder.read_local(self.current_block, flag);
-                self.emit_instruction(ssa::Inst::Read { symbol, arg: flag });
-
-                let array = self.builder.read_local(self.current_block, local);
-
-                // TODO: this only happens pre-gms
-                let op = ssa::Unary::ToArray;
-                let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
-
-                let op = ssa::Binary::LoadRow;
-                let row = self.emit_instruction(ssa::Inst::Binary { op, args: [array, i] });
-                let op = ssa::Binary::LoadIndex;
-                self.emit_instruction(ssa::Inst::Binary { op, args: [row, j] })
             }
+        };
 
-            Lvalue::IndexField(scope, field, [i, j]) => {
-                let array = self.emit_instruction(ssa::Inst::LoadField { scope, field });
+        let value = match place.index {
+            None => value,
 
+            Some([i, j]) => {
                 // TODO: this only happens pre-gms
                 let op = ssa::Unary::ToArray;
-                let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
+                let array = self.emit_instruction(ssa::Inst::Unary { op, arg: value });
 
                 let op = ssa::Binary::LoadRow;
                 let row = self.emit_instruction(ssa::Inst::Binary { op, args: [array, i] });
@@ -618,9 +609,9 @@ impl<'p, 'e> Codegen<'p, 'e> {
     /// Before GMS:
     /// - stores to array variables do *not* overwrite the whole array, only `a[0, 0]`
     /// - indexed stores to scalar (or undefined) variables leave the scalar (or `0`) at `a[0, 0]`
-    fn emit_store(&mut self, lvalue: Lvalue, value: ssa::Value) {
-        match lvalue {
-            Lvalue::Local(symbol) => {
+    fn emit_store(&mut self, place: Place, value: ssa::Value) {
+        match place {
+            Place { path: Path::Local(symbol), index: None } => {
                 let Local { flag, local } = self.locals[&symbol];
 
                 let one = self.emit_real(1.0);
@@ -633,7 +624,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.builder.write_local(self.current_block, local, value);
             }
 
-            Lvalue::Field(scope, field) => {
+            Place { path: Path::Field(scope, field), index: None } => {
                 // TODO: this only happens pre-gms
                 let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { scope, field });
                 let value = self.emit_instruction(ssa::Inst::Write { args: [value, array] });
@@ -641,7 +632,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.emit_instruction(ssa::Inst::StoreField { args: [value, scope], field });
             }
 
-            Lvalue::IndexLocal(symbol, [i, j]) => {
+            Place { path: Path::Local(symbol), index: Some([i, j]) } => {
                 let Local { flag, local } = self.locals[&symbol];
 
                 let one = self.emit_real(1.0);
@@ -659,7 +650,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.emit_instruction(ssa::Inst::StoreIndex { args: [value, row, j] });
             }
 
-            Lvalue::IndexField(scope, field, [i, j]) => {
+            Place { path: Path::Field(scope, field), index: Some([i, j]) } => {
                 let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { scope, field });
 
                 // TODO: this only happens pre-gms; gms does need to handle undef
@@ -695,7 +686,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
         let ast::Call((symbol, symbol_span), box ref args) = *call;
 
         let args: Vec<_> = args.iter()
-            .map(|argument| self.emit_rvalue(argument))
+            .map(|argument| self.emit_value(argument))
             .collect();
 
         // TODO: remove this from the frontend and SSA
