@@ -64,6 +64,17 @@ struct Local {
     local: front::ssa::Local,
 }
 
+/// The header of a `with` loop.
+///
+/// This is extracted into a struct because it is used not only for literal `with` statements, but
+/// also for loads and stores of fields.
+struct With {
+    cond_block: ssa::Block,
+    body_block: ssa::Block,
+    exit_block: ssa::Block,
+    next: ssa::Value,
+}
+
 // TODO: deduplicate these with the ones from vm::interpreter?
 const SELF: f64 = -1.0;
 const OTHER: f64 = -2.0;
@@ -219,17 +230,16 @@ impl<'p, 'e> Codegen<'p, 'e> {
             }
 
             ast::Stmt::Repeat(box ref expr, box ref body) => {
-                let next_block = self.make_block();
+                let cond_block = self.make_block();
                 let body_block = self.make_block();
                 let exit_block = self.make_block();
 
                 let iter = self.builder.emit_local();
-
                 let count = self.emit_value(expr);
                 self.builder.write_local(self.current_block, iter, count);
-                self.emit_jump(next_block);
+                self.emit_jump(cond_block);
 
-                self.current_block = next_block;
+                self.current_block = cond_block;
                 let count = self.builder.read_local(self.current_block, iter);
                 let one = self.emit_real(1.0);
                 let op = ssa::Binary::Subtract;
@@ -239,34 +249,34 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.builder.seal_block(body_block);
 
                 self.current_block = body_block;
-                self.with_loop(next_block, exit_block, |self_| {
+                self.with_loop(cond_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block);
-                self.builder.seal_block(next_block);
+                self.emit_jump(cond_block);
+                self.builder.seal_block(cond_block);
                 self.builder.seal_block(exit_block);
 
                 self.current_block = exit_block;
             }
 
             ast::Stmt::While(box ref expr, box ref body) => {
-                let next_block = self.make_block();
+                let cond_block = self.make_block();
                 let body_block = self.make_block();
                 let exit_block = self.make_block();
 
-                self.emit_jump(next_block);
+                self.emit_jump(cond_block);
 
-                self.current_block = next_block;
+                self.current_block = cond_block;
                 let expr = self.emit_value(expr);
                 self.emit_branch(expr, body_block, exit_block);
                 self.builder.seal_block(body_block);
 
                 self.current_block = body_block;
-                self.with_loop(next_block, exit_block, |self_| {
+                self.with_loop(cond_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block);
-                self.builder.seal_block(next_block);
+                self.emit_jump(cond_block);
+                self.builder.seal_block(cond_block);
                 self.builder.seal_block(exit_block);
 
                 self.current_block = exit_block;
@@ -274,19 +284,19 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
             ast::Stmt::Do(box ref body, box ref expr) => {
                 let body_block = self.make_block();
-                let next_block = self.make_block();
+                let cond_block = self.make_block();
                 let exit_block = self.make_block();
 
                 self.emit_jump(body_block);
 
                 self.current_block = body_block;
-                self.with_loop(next_block, exit_block, |self_| {
+                self.with_loop(cond_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block);
-                self.builder.seal_block(next_block);
+                self.emit_jump(cond_block);
+                self.builder.seal_block(cond_block);
 
-                self.current_block = next_block;
+                self.current_block = cond_block;
                 let expr = self.emit_value(expr);
                 self.emit_branch(expr, exit_block, body_block);
                 self.builder.seal_block(body_block);
@@ -296,15 +306,15 @@ impl<'p, 'e> Codegen<'p, 'e> {
             }
 
             ast::Stmt::For(box ref init, box ref expr, box ref next, box ref body) => {
-                let expr_block = self.make_block();
+                let cond_block = self.make_block();
                 let body_block = self.make_block();
                 let next_block = self.make_block();
                 let exit_block = self.make_block();
 
                 self.emit_statement(init);
-                self.emit_jump(expr_block);
+                self.emit_jump(cond_block);
 
-                self.current_block = expr_block;
+                self.current_block = cond_block;
                 let expr = self.emit_value(expr);
                 self.emit_branch(expr, body_block, exit_block);
                 self.builder.seal_block(body_block);
@@ -319,39 +329,23 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
                 self.current_block = next_block;
                 self.emit_statement(next);
-                self.emit_jump(expr_block);
-                self.builder.seal_block(expr_block);
+                self.emit_jump(cond_block);
+                self.builder.seal_block(cond_block);
 
                 self.current_block = exit_block;
             }
 
             ast::Stmt::With(box ref expr, box ref body) => {
-                let next_block = self.make_block();
-                let body_block = self.make_block();
-                let exit_block = self.make_block();
-
-                let iter = self.builder.emit_local();
-
                 let expr = self.emit_value(expr);
-                let op = ssa::Unary::With;
-                let with = self.emit_instruction(ssa::Inst::Unary { op, arg: expr });
-                self.builder.write_local(self.current_block, iter, with);
-                self.emit_jump(next_block);
-
-                self.current_block = next_block;
-                let with = self.builder.read_local(self.current_block, iter);
-                let op = ssa::Unary::Next;
-                let next = self.emit_instruction(ssa::Inst::Unary { op, arg: with });
-                self.builder.write_local(self.current_block, iter, next);
-                self.emit_branch(with, body_block, exit_block);
+                let With { cond_block, body_block, exit_block, next } = self.emit_with(expr);
                 self.builder.seal_block(body_block);
 
                 self.current_block = body_block;
-                self.with_loop(next_block, exit_block, |self_| {
+                self.with_loop(cond_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(next_block);
-                self.builder.seal_block(next_block);
+                self.emit_jump(cond_block);
+                self.builder.seal_block(cond_block);
                 self.builder.seal_block(exit_block);
 
                 self.current_block = exit_block;
@@ -663,6 +657,30 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.emit_instruction(ssa::Inst::StoreIndex { args: [value, row, j] });
             }
         }
+    }
+
+    /// Loop header for instance iteration.
+    fn emit_with(&mut self, scope: ssa::Value) -> With {
+        let cond_block = self.make_block();
+        let body_block = self.make_block();
+        let exit_block = self.make_block();
+
+        let iter = self.builder.emit_local();
+
+        let op = ssa::Unary::With;
+        let with = self.emit_instruction(ssa::Inst::Unary { op, arg: scope });
+        self.builder.write_local(self.current_block, iter, with);
+        self.emit_jump(cond_block);
+
+        self.current_block = cond_block;
+        let with = self.builder.read_local(self.current_block, iter);
+        let op = ssa::Unary::Next;
+        let next = self.emit_instruction(ssa::Inst::Unary { op, arg: with });
+        self.builder.write_local(self.current_block, iter, next);
+        self.emit_branch(with, body_block, exit_block);
+        self.builder.seal_block(body_block);
+
+        With { cond_block, body_block, exit_block, next }
     }
 
     fn emit_jump(&mut self, target: ssa::Block) {
