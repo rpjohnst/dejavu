@@ -49,12 +49,14 @@ impl Function {
         match self.values[value] {
             Immediate { .. } | Unary { .. } | Binary { .. } |
             Argument | Lookup { .. } |
+            LoadScope { .. } |
             Write { .. } |
             LoadField { .. } | LoadFieldDefault { .. } |
             Call { .. } => Some(value),
 
             Undef | Alias(_) |
             DeclareGlobal { .. } |
+            StoreScope { .. } |
             Read { .. } |
             StoreField { .. } | StoreIndex { .. } |
             Release { .. } |
@@ -128,6 +130,8 @@ pub enum Inst {
     DeclareGlobal { symbol: Symbol },
     Lookup { symbol: Symbol },
 
+    LoadScope { scope: f64 },
+    StoreScope { scope: f64, arg: Value },
     /// Mark a value as read at this point, error on arg == false.
     Read { symbol: Symbol, arg: Value },
     /// `args` contains `[value, array]`. If array is a scalar, return `value`.
@@ -158,6 +162,8 @@ impl Inst {
             Unary { ref arg, .. } => slice::from_ref(arg),
             Binary { ref args, .. } => args,
 
+            StoreScope { ref arg, .. } => slice::from_ref(arg),
+
             Read { ref arg, .. } => slice::from_ref(arg),
             Write { ref args } => args,
 
@@ -177,7 +183,8 @@ impl Inst {
 
             Undef | Alias(..) |
             Immediate { .. } |
-            Argument | DeclareGlobal { .. } | Lookup { .. } => &[],
+            Argument | DeclareGlobal { .. } | Lookup { .. } |
+            LoadScope { .. } => &[],
         }
     }
 
@@ -186,6 +193,8 @@ impl Inst {
         match *self {
             Unary { ref mut arg, .. } => slice::from_ref_mut(arg),
             Binary { ref mut args, .. } => args,
+
+            StoreScope { ref mut arg, .. } => slice::from_ref_mut(arg),
 
             Read { ref mut arg, .. } => slice::from_ref_mut(arg),
             Write { ref mut args, .. } => args,
@@ -206,7 +215,8 @@ impl Inst {
 
             Undef | Alias(..) |
             Immediate { .. } |
-            Argument | DeclareGlobal { .. } | Lookup { .. } => &mut [],
+            Argument | DeclareGlobal { .. } | Lookup { .. } |
+            LoadScope { .. } => &mut [],
         }
     }
 }

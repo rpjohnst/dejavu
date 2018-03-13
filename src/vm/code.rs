@@ -29,10 +29,6 @@ pub struct Inst(u32);
 
 impl Inst {
     pub fn encode(op: Op, dst: usize, a: usize, b: usize) -> Self {
-        assert!(dst <= u8::MAX as usize);
-        assert!(a <= u8::MAX as usize);
-        assert!(b <= u8::MAX as usize);
-
         Inst((op as usize | dst << 8 | a << 16 | b << 24) as u32)
     }
 
@@ -83,7 +79,8 @@ pub enum Op {
 
     DeclareGlobal,
     Lookup,
-
+    LoadScope,
+    StoreScope,
 
     Read,
     Write,
@@ -127,6 +124,8 @@ impl fmt::Debug for Function {
                     writeln!(f, "  %{:?} = {:?} {:?}", a, op, self.constants[b])?,
                 Op::Move => writeln!(f, "  %{:?} = %{:?}", a, b)?,
                 Op::DeclareGlobal => writeln!(f, "  {:?} {:?}", op, self.constants[a])?,
+                Op::LoadScope => writeln!(f, "  %{:?} = {:?} {:?}", a, op, b as i32)?,
+                Op::StoreScope => writeln!(f, "  {:?} %{:?}, {:?}", op, a, b as i32)?,
                 Op::LoadField | Op::LoadFieldDefault =>
                     writeln!(f, "  %{:?} = {:?} %{:?}.{:?}", a, op, b, self.constants[c])?,
                 Op::Release => writeln!(f, "  {:?} %{:?}", op, a)?,

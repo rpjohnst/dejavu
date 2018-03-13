@@ -116,6 +116,22 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
+                LoadScope { scope } => {
+                    let target = self.registers[value];
+                    let scope = scope as usize;
+
+                    let inst = code::Inst::encode(code::Op::LoadScope, target, scope, 0);
+                    self.function.instructions.push(inst);
+                }
+
+                StoreScope { scope, arg } => {
+                    let scope = scope as usize;
+                    let arg = self.registers[arg];
+
+                    let inst = code::Inst::encode(code::Op::StoreScope, arg, scope, 0);
+                    self.function.instructions.push(inst);
+                }
+
                 Read { symbol, arg } => {
                     let a = self.emit_string(symbol);
                     let b = self.registers[arg];

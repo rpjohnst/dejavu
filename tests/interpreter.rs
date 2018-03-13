@@ -23,14 +23,14 @@ fn arguments() {
 
     let arguments = [vm::Value::from(3), vm::Value::from(5)];
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), select, 100001, 100001, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), select, &arguments), result);
 
     let a = Symbol::intern("a");
     let b = Symbol::intern("b");
     let ab = Symbol::intern("ab");
     let arguments = [vm::Value::from(a), vm::Value::from(b)];
     let result = Ok(vm::Value::from(ab));
-    assert_eq!(state.execute(&resources, &mut (), select, 100001, 100001, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), select, &arguments), result);
 }
 
 /// Read and write member variables.
@@ -51,9 +51,10 @@ fn member() {
     let mut state = vm::State::new();
 
     state.create_scope(100001);
+    state.set_self(100001);
 
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), member, 100001, 100001, &[]), result);
+    assert_eq!(state.execute(&resources, &mut (), member, &[]), result);
 }
 
 /// Read and write global variables.
@@ -73,9 +74,10 @@ fn global() {
     let mut state = vm::State::new();
 
     state.create_scope(100001);
+    state.set_self(100001);
 
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), global, 100001, 100001, &[]), result);
+    assert_eq!(state.execute(&resources, &mut (), global, &[]), result);
 }
 
 /// Read and write arrays.
@@ -98,7 +100,7 @@ fn array() {
     let mut state = vm::State::new();
 
     let result = Ok(vm::Value::from(50));
-    assert_eq!(state.execute(&resources, &mut (), array, 100001, 100001, &[]), result);
+    assert_eq!(state.execute(&resources, &mut (), array, &[]), result);
 }
 
 /// First write to a local is control-dependent.
@@ -156,7 +158,7 @@ fn for_loop() {
     let mut state = vm::State::new();
 
     let result = Ok(vm::Value::from(24));
-    assert_eq!(state.execute(&resources, &mut (), factorial, 100001, 100001, &[]), result);
+    assert_eq!(state.execute(&resources, &mut (), factorial, &[]), result);
 }
 
 /// Control flow across a switch statement.
@@ -184,19 +186,19 @@ fn switch() {
 
     let arguments = [vm::Value::from(3)];
     let result = Ok(vm::Value::from(5));
-    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 
     let arguments = [vm::Value::from(8)];
     let result = Ok(vm::Value::from(13));
-    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 
     let arguments = [vm::Value::from(21)];
     let result = Ok(vm::Value::from(21));
-    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 
     let arguments = [vm::Value::from(34)];
     let result = Ok(vm::Value::from(21));
-    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 }
 
 /// An empty switch statement.
@@ -237,19 +239,19 @@ fn switch_fallthrough() {
 
     let arguments = [vm::Value::from(0)];
     let result = Ok(vm::Value::from(0));
-    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 
     let arguments = [vm::Value::from(1)];
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 
     let arguments = [vm::Value::from(2)];
     let result = Ok(vm::Value::from(5));
-    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 
     let arguments = [vm::Value::from(3)];
     let result = Ok(vm::Value::from(5));
-    assert_eq!(state.execute(&resources, &mut (), switch, 100001, 100001, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 }
 
 /// Call a GML script.
@@ -267,7 +269,7 @@ fn call_script() {
     let mut state = vm::State::new();
 
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), call, 100001, 100001, &[]), result);
+    assert_eq!(state.execute(&resources, &mut (), call, &[]), result);
 }
 
 /// Recursively call a GML script.
@@ -289,7 +291,7 @@ fn recurse() {
 
     let arguments = [vm::Value::from(6)];
     let result = Ok(vm::Value::from(13));
-    assert_eq!(state.execute(&resources, &mut (), fibonacci, 100001, 100001, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), fibonacci, &arguments), result);
 }
 
 /// Call a native function.
@@ -303,7 +305,7 @@ fn ffi() {
     impl Context {
         fn add(
             &mut self, state: &mut vm::State, _resources: &vm::Resources<Self>,
-            _self_id: i32, _other_id: i32, arguments: vm::Arguments
+            arguments: vm::Arguments
         ) -> Result<vm::Value, vm::Error> {
             let arguments = state.arguments(arguments);
             let value = match (arguments[0].data(), arguments[1].data()) {
@@ -323,7 +325,7 @@ fn ffi() {
 
     let mut context = Context { value: 13.0 };
     let result = Ok(vm::Value::from(29));
-    assert_eq!(state.execute(&resources, &mut context, call, 100001, 100001, &[]), result);
+    assert_eq!(state.execute(&resources, &mut context, call, &[]), result);
 }
 
 enum Function<C> {

@@ -6,6 +6,9 @@ use vm::{self, code};
 
 /// A single thread of GML execution.
 pub struct State {
+    self_scope: i32,
+    other_scope: i32,
+
     globals: Scope,
     global_declarations: HashSet<Symbol>,
 
@@ -34,6 +37,7 @@ pub struct Error {
 pub enum ErrorKind {
     TypeUnary(code::Op, vm::Type),
     TypeBinary(code::Op, vm::Type, vm::Type),
+    Scope(i32),
     Name(Symbol),
     Bounds(usize),
 }
@@ -55,6 +59,9 @@ const LOCAL: i32 = -7;
 impl State {
     pub fn new() -> State {
         State {
+            self_scope: 0,
+            other_scope: 0,
+
             globals: HashMap::new(),
             global_declarations: HashSet::new(),
 
@@ -74,10 +81,16 @@ impl State {
     pub fn create_scope(&mut self, id: i32) {
         self.scopes.insert(id, Scope::default());
     }
+    pub fn set_self(&mut self, id: i32) {
+        self.self_scope = id;
+    }
+    pub fn set_other(&mut self, id: i32) {
+        self.other_scope = id;
+    }
 
     pub fn execute<C>(
         &mut self, resources: &vm::Resources<C>, context: &mut C,
-        symbol: Symbol, self_id: i32, other_id: i32, arguments: &[vm::Value],
+        symbol: Symbol, arguments: &[vm::Value],
     ) -> Result<vm::Value, Error> {
         let mut symbol = symbol;
         let mut function = &resources.scripts[&symbol];
@@ -477,8 +490,42 @@ impl State {
                     registers[t].value = if self.global_declarations.contains(&name) {
                         vm::Value::from(GLOBAL)
                     } else {
-                        vm::Value::from(SELF)
+                        vm::Value::from(self.self_scope)
                     };
+                }
+
+                (code::Op::LoadScope, t, scope, _) => {
+                    let registers = &mut self.stack[reg_base..];
+
+                    registers[t].value = match scope as i32 {
+                        SELF => vm::Value::from(self.self_scope),
+                        OTHER => vm::Value::from(self.other_scope),
+                        scope => {
+                            let kind = ErrorKind::Scope(scope);
+                            return Err(Error { symbol, instruction, kind });
+                        }
+                    };
+                }
+
+                (op @ code::Op::StoreScope, s, scope, _) => {
+                    let registers = &self.stack[reg_base..];
+
+                    let s = unsafe { registers[s].value };
+                    let s = match s.data() {
+                        vm::Data::Real(scope) => Ok(Self::to_i32(scope)),
+                        s => {
+                            let kind = ErrorKind::TypeUnary(op, s.ty());
+                            Err(Error { symbol, instruction, kind })
+                        }
+                    }?;
+                    match scope as i32 {
+                        SELF => self.self_scope = s,
+                        OTHER => self.other_scope = s,
+                        scope => {
+                            let kind = ErrorKind::Scope(scope);
+                            return Err(Error { symbol, instruction, kind });
+                        }
+                    }
                 }
 
                 (op @ code::Op::Read, local, a, _) => {
@@ -554,7 +601,7 @@ impl State {
                     let scope = unsafe { registers[scope].value };
                     let field = Self::get_string(function.constants[field]);
                     registers[t].value = *Self::lookup(
-                        &mut self.scopes, &mut self.globals, self_id, other_id, scope
+                        &mut self.scopes, &mut self.globals, self.self_scope, self.other_scope, scope
                     )
                         .and_then(|scope| scope.get(&field))
                         .ok_or_else(|| {
@@ -569,7 +616,7 @@ impl State {
                     let scope = unsafe { registers[scope].value };
                     let field = Self::get_string(function.constants[field]);
                     let scope = Self::lookup(
-                        &mut self.scopes, &mut self.globals, self_id, other_id, scope
+                        &mut self.scopes, &mut self.globals, self.self_scope, self.other_scope, scope
                     )
                         .ok_or_else(|| {
                             let kind = ErrorKind::Name(field);
@@ -633,7 +680,7 @@ impl State {
                     let scope = unsafe { registers[scope].value };
                     let field = Self::get_string(function.constants[field]);
                     let scope = Self::lookup(
-                        &mut self.scopes, &mut self.globals, self_id, other_id, scope
+                        &mut self.scopes, &mut self.globals, self.self_scope, self.other_scope, scope
                     )
                         .ok_or_else(|| {
                             let kind = ErrorKind::Name(field);
@@ -713,7 +760,7 @@ impl State {
                     let limit = reg_base + len;
 
                     let arguments = vm::Arguments { base, limit };
-                    let value = function(context, self, resources, self_id, other_id, arguments)?;
+                    let value = function(context, self, resources, arguments)?;
 
                     let registers = &mut self.stack[reg_base..];
                     registers[0].value = value;

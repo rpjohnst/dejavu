@@ -336,11 +336,16 @@ impl<'p, 'e> Codegen<'p, 'e> {
             }
 
             ast::Stmt::With(box ref expr, box ref body) => {
+                let self_value = self.emit_instruction(ssa::Inst::LoadScope { scope: SELF });
+                let other_value = self.emit_instruction(ssa::Inst::LoadScope { scope: OTHER });
+                self.emit_instruction(ssa::Inst::StoreScope { scope: OTHER, arg: self_value });
+
                 let expr = self.emit_value(expr);
                 let With { cond_block, body_block, exit_block, next } = self.emit_with(expr);
                 self.builder.seal_block(body_block);
 
                 self.current_block = body_block;
+                self.emit_instruction(ssa::Inst::StoreScope { scope: SELF, arg: next });
                 self.with_loop(cond_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
@@ -349,6 +354,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.builder.seal_block(exit_block);
 
                 self.current_block = exit_block;
+                self.emit_instruction(ssa::Inst::StoreScope { scope: SELF, arg: self_value });
+                self.emit_instruction(ssa::Inst::StoreScope { scope: OTHER, arg: other_value });
             }
 
             ast::Stmt::Switch(box ref expr, box ref body) => {

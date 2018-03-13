@@ -28,7 +28,7 @@ impl<C> Default for Resources<C> {
 }
 
 pub type NativeFunction<C> = fn(
-    &mut C, &mut State, &Resources<C>, i32, i32, Arguments
+    &mut C, &mut State, &Resources<C>, Arguments
 ) -> Result<Value, Error>;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
