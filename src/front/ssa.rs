@@ -118,8 +118,9 @@ impl Builder {
                     .expect("corrupt function");
                 args.remove(index);
 
-                // backend codegen will emit an error on use of this value
-                self.function.values[argument] = ssa::Inst::Undef;
+                // this is a garbage value; uninitialized variables are checked elsewhere
+                let value = ssa::Constant::Real(0.0);
+                self.function.values[argument] = ssa::Inst::Immediate { value };
                 argument
             }
 

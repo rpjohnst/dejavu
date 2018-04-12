@@ -17,7 +17,9 @@ impl Function {
     pub fn new() -> Self {
         let blocks = HandleMap::new();
         let mut values = HandleMap::new();
-        let return_def = values.push(Inst::Undef);
+
+        let value = Constant::Real(0.0);
+        let return_def = values.push(Inst::Immediate { value });
 
         let mut function = Function { blocks, values, return_def };
 
@@ -54,7 +56,7 @@ impl Function {
             LoadField { .. } | LoadFieldDefault { .. } |
             Call { .. } => Some(value),
 
-            Undef | Alias(_) |
+            Alias(_) |
             DeclareGlobal { .. } |
             StoreScope { .. } |
             Read { .. } |
@@ -113,8 +115,6 @@ pub struct BlockData {
 ///       Recombine some/all shapes; combine some `Binary` variants.
 #[derive(PartialEq, Debug)]
 pub enum Inst {
-    /// A placeholder for an undefined value.
-    Undef,
     /// A placeholder for a value that has been replaced.
     ///
     /// Aliases must not exist in blocks, and must be removed before codegen. They should also be
@@ -181,7 +181,7 @@ impl Inst {
             Jump { ref args, .. } => &args[..],
             Branch { ref args, .. } => &args[..],
 
-            Undef | Alias(..) |
+            Alias(..) |
             Immediate { .. } |
             Argument | DeclareGlobal { .. } | Lookup { .. } |
             LoadScope { .. } => &[],
@@ -213,7 +213,7 @@ impl Inst {
             Jump { ref mut args, .. } => &mut args[..],
             Branch { ref mut args, .. } => &mut args[..],
 
-            Undef | Alias(..) |
+            Alias(..) |
             Immediate { .. } |
             Argument | DeclareGlobal { .. } | Lookup { .. } |
             LoadScope { .. } => &mut [],

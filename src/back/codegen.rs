@@ -66,7 +66,7 @@ impl Codegen {
             use back::ssa::Inst::*;
             match program.values[value] {
                 // these should not be used as instructions
-                Undef | Alias(_) | Argument => unreachable!("corrupt function"),
+                Alias(_) | Argument => unreachable!("corrupt function"),
 
                 Immediate { value: constant } => {
                     let target = self.registers[value];

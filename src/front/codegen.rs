@@ -115,7 +115,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
         let entry_block = self.current_block;
         self.builder.seal_block(entry_block);
 
-        let zero = self.emit_real(0.0);
+        let value = ssa::Constant::Real(0.0);
+        let zero = self.emit_initializer(ssa::Inst::Immediate { value });
         self.builder.write_local(self.current_block, self.return_value, zero);
 
         self.emit_statement(program);
