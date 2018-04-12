@@ -1,19 +1,16 @@
 use std::{u32, slice};
-use std::collections::{HashMap, VecDeque};
-use std::collections::hash_map::Entry;
+use std::collections::{hash_map::Entry, HashMap, VecDeque};
 
-use bitvec::BitVec;
+use bit_vec::BitVec;
+use handle_map::{Handle, HandleMap};
 use symbol::Symbol;
-use entity::{Entity, EntityMap};
-use back::ssa;
-use back::analysis::*;
-use back::regalloc::*;
+use back::{ssa, analysis::*, regalloc::*};
 use vm::{self, code};
 
 pub struct Codegen {
     function: code::Function,
 
-    registers: EntityMap<ssa::Value, usize>,
+    registers: HandleMap<ssa::Value, usize>,
     register_count: usize,
 
     visited: BitVec,
@@ -29,7 +26,7 @@ impl Codegen {
         Codegen {
             function: code::Function::new(),
 
-            registers: EntityMap::new(),
+            registers: HandleMap::new(),
             register_count: 0,
 
             visited: BitVec::new(),

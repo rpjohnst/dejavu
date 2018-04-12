@@ -10,5 +10,5 @@ pub mod back;
 pub mod vm;
 
 pub mod symbol;
-mod entity;
-mod bitvec;
+mod handle_map;
+mod bit_vec;

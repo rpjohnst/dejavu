@@ -1,8 +1,8 @@
 use std::mem;
 use std::collections::HashMap;
 
-use bitvec::BitVec;
-use entity::{Entity, EntityMap};
+use handle_map::{Handle, HandleMap};
+use bit_vec::BitVec;
 use back::{ssa, ControlFlow};
 
 pub struct Builder {
@@ -11,8 +11,8 @@ pub struct Builder {
 
     local: u32,
 
-    current_defs: EntityMap<ssa::Block, HashMap<Local, ssa::Value>>,
-    current_args: EntityMap<ssa::Block, Vec<(Local, ssa::Value)>>,
+    current_defs: HandleMap<ssa::Block, HashMap<Local, ssa::Value>>,
+    current_args: HandleMap<ssa::Block, Vec<(Local, ssa::Value)>>,
     sealed: BitVec,
 }
 
@@ -34,8 +34,8 @@ impl Builder {
 
             local: 0,
 
-            current_defs: EntityMap::new(),
-            current_args: EntityMap::new(),
+            current_defs: HandleMap::new(),
+            current_args: HandleMap::new(),
             sealed: BitVec::new(),
         }
     }
@@ -186,7 +186,7 @@ impl Builder {
         self.function
     }
 
-    fn replace_aliases(values: &mut EntityMap<ssa::Value, ssa::Inst>, value: ssa::Value) {
+    fn replace_aliases(values: &mut HandleMap<ssa::Value, ssa::Inst>, value: ssa::Value) {
         // TODO: Cretonne doesn't run afoul of the borrow checker here because it happens to store
         // values and instructions separately. This also enables multi-value instructions, and
         // keeps aliases out of the instruction store.
@@ -201,7 +201,7 @@ impl Builder {
         }
     }
 
-    fn resolve_alias(values: &EntityMap<ssa::Value, ssa::Inst>, value: ssa::Value) -> ssa::Value {
+    fn resolve_alias(values: &HandleMap<ssa::Value, ssa::Inst>, value: ssa::Value) -> ssa::Value {
         let mut v = value;
         let mut i = values.len();
         while let ssa::Inst::Alias(original) = values[v] {

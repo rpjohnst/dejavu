@@ -1,9 +1,8 @@
 use std::cmp;
 use std::collections::HashSet;
 
-use entity::EntityMap;
-use back::ssa;
-use back::analysis::*;
+use handle_map::HandleMap;
+use back::{ssa, analysis::*};
 
 /// A value interference graph.
 ///
@@ -11,7 +10,7 @@ use back::analysis::*;
 /// means that values can be assigned non-interfering storage locations by coloring the graph so
 /// that no two adjacent nodes share the same color.
 pub struct Interference {
-    adjacency: EntityMap<ssa::Value, Vec<ssa::Value>>,
+    adjacency: HandleMap<ssa::Value, Vec<ssa::Value>>,
     vertices: Vec<ssa::Value>,
 
     precolored: Vec<ssa::Value>,
@@ -24,7 +23,7 @@ impl Interference {
     /// Using a function's live value analysis, this algorithm determines which values are live at
     /// each definition point and marks them as interfering with the defined value.
     pub fn build(program: &ssa::Function, liveness: &Liveness) -> Interference {
-        let mut adjacency: EntityMap<_, Vec<_>> = EntityMap::with_capacity(program.values.len());
+        let mut adjacency: HandleMap<_, Vec<_>> = HandleMap::with_capacity(program.values.len());
         let mut vertices = Vec::with_capacity(program.values.len());
 
         let mut precolored = Vec::new();
@@ -99,8 +98,8 @@ impl Interference {
     ///
     /// It also precolors program arguments and call parameters to match the VM's calling
     /// convention, with arguments at the start of the frame and parameters at the end.
-    pub fn color(self) -> (EntityMap<ssa::Value, usize>, usize, usize) {
-        let mut colors = EntityMap::with_capacity(self.adjacency.len());
+    pub fn color(self) -> (HandleMap<ssa::Value, usize>, usize, usize) {
+        let mut colors = HandleMap::with_capacity(self.adjacency.len());
         for &value in Iterator::chain(self.vertices.iter(), self.precolored.iter()) {
             colors[value] = usize::max_value();
         }
@@ -157,15 +156,15 @@ impl Interference {
     ///
     /// See the `MaximumCardinalitySearch` iterator for details.
     fn perfect_elimination_order<'a>(
-        adjacency: &'a EntityMap<ssa::Value, Vec<ssa::Value>>,
+        adjacency: &'a HandleMap<ssa::Value, Vec<ssa::Value>>,
         vertices: Vec<ssa::Value>, precolored: &[ssa::Value]
     ) -> MaximumCardinalitySearch<'a> {
         let mut buckets = Vec::with_capacity(vertices.len());
         buckets.push(vertices.len());
 
         // construct the buckets with precolored values excluded
-        let weights = EntityMap::with_capacity(adjacency.len());
-        let mut indices = EntityMap::with_capacity_default(adjacency.len(), vertices.len());
+        let weights = HandleMap::with_capacity(adjacency.len());
+        let mut indices = HandleMap::with_capacity_default(adjacency.len(), vertices.len());
         for (i, &value) in vertices.iter().enumerate() {
             indices[value] = i;
         }
@@ -187,7 +186,7 @@ impl Interference {
 /// The MCS algorithm works by assigning a weight to each node in a chordal graph. It then
 /// repeatedly takes the highest-weighted node and increments the weights of its neighbors.
 struct MaximumCardinalitySearch<'a> {
-    adjacency: &'a EntityMap<ssa::Value, Vec<ssa::Value>>,
+    adjacency: &'a HandleMap<ssa::Value, Vec<ssa::Value>>,
     buckets: Buckets,
 }
 
@@ -213,8 +212,8 @@ impl<'a> Iterator for MaximumCardinalitySearch<'a> {
 struct Buckets {
     vertices: Vec<ssa::Value>,
     buckets: Vec<usize>,
-    weights: EntityMap<ssa::Value, usize>,
-    indices: EntityMap<ssa::Value, usize>,
+    weights: HandleMap<ssa::Value, usize>,
+    indices: HandleMap<ssa::Value, usize>,
 }
 
 impl Buckets {

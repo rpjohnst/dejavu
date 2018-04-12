@@ -1,20 +1,29 @@
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
-/// An Entity is a typed index into a table of some sort of data
-pub trait Entity: Copy + Eq {
+/// An Handle is a typed index into a table of some sort of data
+pub trait Handle: Copy + Eq {
     fn new(usize) -> Self;
     fn index(self) -> usize;
 }
 
-pub struct EntityMap<K, V> {
+pub struct HandleMap<K, V> where K: Handle {
     keys: PhantomData<K>,
     values: Vec<V>,
 }
 
-impl<K, V> EntityMap<K, V> where K: Entity {
+impl<K, V> Default for HandleMap<K, V> where K: Handle {
+    fn default() -> Self {
+        HandleMap {
+            keys: PhantomData,
+            values: Vec::default(),
+        }
+    }
+}
+
+impl<K, V> HandleMap<K, V> where K: Handle {
     pub fn new() -> Self {
-        EntityMap { keys: PhantomData, values: Vec::new() }
+        Self::default()
     }
 
     pub fn len(&self) -> usize {
@@ -52,9 +61,9 @@ impl<K, V> EntityMap<K, V> where K: Entity {
     }
 }
 
-impl<K, V> EntityMap<K, V> where K: Entity, V: Clone + Default {
+impl<K, V> HandleMap<K, V> where K: Handle, V: Clone + Default {
     pub fn with_capacity_default(n: usize, default: V) -> Self {
-        let map = EntityMap {
+        let map = HandleMap {
             keys: PhantomData,
             values: vec![default; n],
         };
@@ -77,7 +86,7 @@ impl<K, V> EntityMap<K, V> where K: Entity, V: Clone + Default {
     }
 }
 
-impl<K, V> Index<K> for EntityMap<K, V> where K: Entity {
+impl<K, V> Index<K> for HandleMap<K, V> where K: Handle {
     type Output = V;
 
     fn index(&self, k: K) -> &V {
@@ -85,7 +94,7 @@ impl<K, V> Index<K> for EntityMap<K, V> where K: Entity {
     }
 }
 
-impl<K, V> IndexMut<K> for EntityMap<K, V> where K: Entity {
+impl<K, V> IndexMut<K> for HandleMap<K, V> where K: Handle {
     fn index_mut(&mut self, k: K) -> &mut V {
         &mut self.values[k.index()]
     }
@@ -97,7 +106,7 @@ pub struct Keys<K> {
     key: PhantomData<K>,
 }
 
-impl<K> Iterator for Keys<K> where K: Entity {
+impl<K> Iterator for Keys<K> where K: Handle {
     type Item = K;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -116,7 +125,7 @@ impl<K> Iterator for Keys<K> where K: Entity {
     }
 }
 
-impl<K> DoubleEndedIterator for Keys<K> where K: Entity {
+impl<K> DoubleEndedIterator for Keys<K> where K: Handle {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.pos < self.len {
             self.len -= 1;
@@ -128,7 +137,7 @@ impl<K> DoubleEndedIterator for Keys<K> where K: Entity {
     }
 }
 
-impl<K> ExactSizeIterator for Keys<K> where K: Entity {}
+impl<K> ExactSizeIterator for Keys<K> where K: Handle {}
 
 #[cfg(test)]
 mod tests {
@@ -137,14 +146,14 @@ mod tests {
     #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
     struct Ref(u32);
 
-    impl Entity for Ref {
+    impl Handle for Ref {
         fn new(index: usize) -> Self { Ref(index as u32) }
         fn index(self) -> usize { self.0 as usize }
     }
 
     #[test]
     fn map() {
-        let mut map: EntityMap<Ref, _> = EntityMap::new();
+        let mut map: HandleMap<Ref, _> = HandleMap::new();
         let k1 = map.push(12);
         let k2 = map.push(34);
 

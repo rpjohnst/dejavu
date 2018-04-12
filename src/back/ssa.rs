@@ -1,11 +1,11 @@
 use std::{u32, slice, fmt};
 
-use entity::{Entity, EntityMap};
+use handle_map::{Handle, HandleMap};
 use symbol::Symbol;
 
 pub struct Function {
-    pub blocks: EntityMap<Block, BlockData>,
-    pub values: EntityMap<Value, Inst>,
+    pub blocks: HandleMap<Block, BlockData>,
+    pub values: HandleMap<Value, Inst>,
 
     pub return_def: Value,
 }
@@ -15,8 +15,8 @@ pub const EXIT: Block = Block(1);
 
 impl Function {
     pub fn new() -> Self {
-        let blocks = EntityMap::new();
-        let mut values = EntityMap::new();
+        let blocks = HandleMap::new();
+        let mut values = HandleMap::new();
         let return_def = values.push(Inst::Undef);
 
         let mut function = Function { blocks, values, return_def };
@@ -278,13 +278,13 @@ pub enum Prototype {
     Function,
 }
 
-/// Implement Entity for a tuple struct containing a u32
-macro_rules! derive_entity_ref {
-    ($entity: ident) => {
-        impl Entity for $entity {
+/// Implement Handle for a tuple struct containing a u32
+macro_rules! derive_handle {
+    ($handle: ident) => {
+        impl Handle for $handle {
             fn new(index: usize) -> Self {
                 assert!(index < u32::MAX as usize);
-                $entity(index as u32)
+                $handle(index as u32)
             }
 
             fn index(self) -> usize {
@@ -296,11 +296,11 @@ macro_rules! derive_entity_ref {
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Block(u32);
-derive_entity_ref!(Block);
+derive_handle!(Block);
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Value(u32);
-derive_entity_ref!(Value);
+derive_handle!(Value);
 
 impl fmt::Debug for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

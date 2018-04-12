@@ -1,10 +1,11 @@
+#[derive(Default)]
 pub struct BitVec {
     data: Vec<u64>,
 }
 
 impl BitVec {
     pub fn new() -> BitVec {
-        BitVec { data: Vec::new() }
+        Self::default()
     }
 
     pub fn get(&self, bit: usize) -> bool {
