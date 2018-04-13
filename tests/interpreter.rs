@@ -23,14 +23,14 @@ fn arguments() {
 
     let arguments = [vm::Value::from(3), vm::Value::from(5)];
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), select, &arguments), result);
+    assert_eq!(state.execute(&resources, select, &arguments), result);
 
     let a = Symbol::intern("a");
     let b = Symbol::intern("b");
     let ab = Symbol::intern("ab");
     let arguments = [vm::Value::from(a), vm::Value::from(b)];
     let result = Ok(vm::Value::from(ab));
-    assert_eq!(state.execute(&resources, &mut (), select, &arguments), result);
+    assert_eq!(state.execute(&resources, select, &arguments), result);
 }
 
 /// Read and write member variables.
@@ -50,11 +50,11 @@ fn member() {
     let resources = build(functions);
     let mut state = vm::State::new();
 
-    state.create_scope(100001);
+    state.create_instance(100001);
     state.set_self(100001);
 
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), member, &[]), result);
+    assert_eq!(state.execute(&resources, member, &[]), result);
 }
 
 /// Read and write global variables.
@@ -73,11 +73,45 @@ fn global() {
     let resources = build(functions);
     let mut state = vm::State::new();
 
-    state.create_scope(100001);
+    state.create_instance(100001);
     state.set_self(100001);
 
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), global, &[]), result);
+    assert_eq!(state.execute(&resources, global, &[]), result);
+}
+
+#[test]
+fn with() {
+    let mut functions = HashMap::new();
+
+    let with = Symbol::intern("with");
+    functions.insert(with, Function::Script("{
+        var a, b;
+        a = 100001
+        b = 100002
+        c = 3
+        with (all) {
+            n = other.c
+            m = other.c
+        }
+        with (a) {
+            n = 5
+        }
+        with (b) {
+            m = 13
+        }
+        return a.n + b.n + a.m + b.m
+    }"));
+
+    let resources = build(functions);
+    let mut state = vm::State::new();
+
+    state.create_instance(100001);
+    state.create_instance(100002);
+    state.set_self(100001);
+
+    let result = Ok(vm::Value::from(24.0));
+    assert_eq!(state.execute(&resources, with, &[]), result);
 }
 
 /// Read and write arrays.
@@ -100,7 +134,7 @@ fn array() {
     let mut state = vm::State::new();
 
     let result = Ok(vm::Value::from(50));
-    assert_eq!(state.execute(&resources, &mut (), array, &[]), result);
+    assert_eq!(state.execute(&resources, array, &[]), result);
 }
 
 /// First write to a local is control-dependent.
@@ -111,7 +145,7 @@ fn conditional_initialization() {
     let mut functions = HashMap::new();
 
     let fibonacci = Symbol::intern("fibonacci");
-    functions.insert(fibonacci, Function::Script::<()>("{
+    functions.insert(fibonacci, Function::Script("{
         var t;
         if (true) {
             t = 1
@@ -130,7 +164,7 @@ fn dead_undef() {
     let mut functions = HashMap::new();
 
     let switch = Symbol::intern("switch");
-    functions.insert(switch, Function::Script::<()>("{
+    functions.insert(switch, Function::Script("{
         var i;
         return 0
         return i
@@ -158,7 +192,7 @@ fn for_loop() {
     let mut state = vm::State::new();
 
     let result = Ok(vm::Value::from(24));
-    assert_eq!(state.execute(&resources, &mut (), factorial, &[]), result);
+    assert_eq!(state.execute(&resources, factorial, &[]), result);
 }
 
 /// Control flow across a switch statement.
@@ -186,19 +220,19 @@ fn switch() {
 
     let arguments = [vm::Value::from(3)];
     let result = Ok(vm::Value::from(5));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(state.execute(&resources, switch, &arguments), result);
 
     let arguments = [vm::Value::from(8)];
     let result = Ok(vm::Value::from(13));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(state.execute(&resources, switch, &arguments), result);
 
     let arguments = [vm::Value::from(21)];
     let result = Ok(vm::Value::from(21));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(state.execute(&resources, switch, &arguments), result);
 
     let arguments = [vm::Value::from(34)];
     let result = Ok(vm::Value::from(21));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(state.execute(&resources, switch, &arguments), result);
 }
 
 /// An empty switch statement.
@@ -207,7 +241,7 @@ fn switch_empty() {
     let mut functions = HashMap::new();
 
     let switch = Symbol::intern("switch");
-    functions.insert(switch, Function::Script::<()>("{
+    functions.insert(switch, Function::Script("{
         switch (argument0) {
         }
     }"));
@@ -221,7 +255,7 @@ fn switch_fallthrough() {
     let mut functions = HashMap::new();
 
     let switch = Symbol::intern("switch");
-    functions.insert(switch, Function::Script::<()>("{
+    functions.insert(switch, Function::Script("{
         var i;
         i = 0
         switch (argument0) {
@@ -239,19 +273,19 @@ fn switch_fallthrough() {
 
     let arguments = [vm::Value::from(0)];
     let result = Ok(vm::Value::from(0));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(state.execute(&resources, switch, &arguments), result);
 
     let arguments = [vm::Value::from(1)];
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(state.execute(&resources, switch, &arguments), result);
 
     let arguments = [vm::Value::from(2)];
     let result = Ok(vm::Value::from(5));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(state.execute(&resources, switch, &arguments), result);
 
     let arguments = [vm::Value::from(3)];
     let result = Ok(vm::Value::from(5));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(state.execute(&resources, switch, &arguments), result);
 }
 
 /// Call a GML script.
@@ -269,7 +303,7 @@ fn call_script() {
     let mut state = vm::State::new();
 
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), call, &[]), result);
+    assert_eq!(state.execute(&resources, call, &[]), result);
 }
 
 /// Recursively call a GML script.
@@ -291,7 +325,7 @@ fn recurse() {
 
     let arguments = [vm::Value::from(6)];
     let result = Ok(vm::Value::from(13));
-    assert_eq!(state.execute(&resources, &mut (), fibonacci, &arguments), result);
+    assert_eq!(state.execute(&resources, fibonacci, &arguments), result);
 }
 
 /// Call a native function.
@@ -300,21 +334,17 @@ fn ffi() {
     let mut functions = HashMap::new();
 
     let add = Symbol::intern("add");
-    functions.insert(add, Function::Native(Context::add));
-    struct Context { value: f64 };
-    impl Context {
-        fn add(
-            &mut self, state: &mut vm::State, _resources: &vm::Resources<Self>,
-            arguments: vm::Arguments
-        ) -> Result<vm::Value, vm::Error> {
-            let arguments = state.arguments(arguments);
-            let value = match (arguments[0].data(), arguments[1].data()) {
-                (vm::Data::Real(a), vm::Data::Real(b)) => vm::Value::from(self.value + a + b),
-                _ => vm::Value::from(0),
-            };
+    functions.insert(add, Function::Native(native_add));
+    fn native_add(
+        state: &mut vm::State, _resources: &vm::Resources, arguments: vm::Arguments
+    ) -> Result<vm::Value, vm::Error> {
+        let arguments = state.arguments(arguments);
+        let value = match (arguments[0].data(), arguments[1].data()) {
+            (vm::Data::Real(a), vm::Data::Real(b)) => vm::Value::from(a + b),
+            _ => vm::Value::from(0),
+        };
 
-            Ok(value)
-        }
+        Ok(value)
     }
 
     let call = Symbol::intern("call");
@@ -323,17 +353,16 @@ fn ffi() {
     let resources = build(functions);
     let mut state = vm::State::new();
 
-    let mut context = Context { value: 13.0 };
-    let result = Ok(vm::Value::from(29));
-    assert_eq!(state.execute(&resources, &mut context, call, &[]), result);
+    let result = Ok(vm::Value::from(16.0));
+    assert_eq!(state.execute(&resources, call, &[]), result);
 }
 
-enum Function<C> {
+enum Function {
     Script(&'static str),
-    Native(vm::NativeFunction<C>),
+    Native(vm::NativeFunction),
 }
 
-fn build<C>(functions: HashMap<Symbol, Function<C>>) -> vm::Resources<C> {
+fn build(functions: HashMap<Symbol, Function>) -> vm::Resources {
     let prototypes: HashMap<Symbol, ssa::Prototype> = functions.iter()
         .map(|(&name, resource)| match *resource {
             Function::Script(_) => (name, ssa::Prototype::Script),

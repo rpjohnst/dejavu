@@ -40,7 +40,7 @@ impl Function {
         match self.values[value] {
             Inst::Jump { ref target, .. } => slice::from_ref(target),
             Inst::Branch { ref targets, .. } => targets,
-            Inst::Return { .. } => &[],
+            Inst::Return { .. } | Inst::ScopeError { .. } => &[],
 
             _ => panic!("corrupt block"),
         }
@@ -51,6 +51,7 @@ impl Function {
         match self.values[value] {
             Immediate { .. } | Unary { .. } | Binary { .. } |
             Argument | Lookup { .. } |
+            Project { .. } |
             LoadScope { .. } |
             Write { .. } |
             LoadField { .. } | LoadFieldDefault { .. } |
@@ -58,8 +59,11 @@ impl Function {
 
             Alias(_) |
             DeclareGlobal { .. } |
+            // With instruction results are aggregates which can't be register allocated.
+            With { .. } |
             StoreScope { .. } |
             Read { .. } |
+            ScopeError { .. } |
             StoreField { .. } | StoreIndex { .. } |
             Release { .. } |
             Return { .. } |
@@ -130,15 +134,22 @@ pub enum Inst {
     DeclareGlobal { symbol: Symbol },
     Lookup { symbol: Symbol },
 
+    /// Build an iterator over a scope, producing an aggregate.
+    With { arg: Value },
+    /// Obtain a scalar value from an aggregate.
+    Project { arg: Value, index: u8 },
     LoadScope { scope: f64 },
     StoreScope { scope: f64, arg: Value },
+
     /// Mark a value as read at this point, error on arg == false.
     Read { symbol: Symbol, arg: Value },
     /// `args` contains `[value, array]`. If array is a scalar, return `value`.
     Write { args: [Value; 2] },
+    /// Error that the scope `arg` does not exist.
+    ScopeError { arg: Value },
 
-    LoadField { scope: Value, field: Symbol },
-    LoadFieldDefault { scope: Value, field: Symbol },
+    LoadField { entity: Value, field: Symbol },
+    LoadFieldDefault { entity: Value, field: Symbol },
 
     /// `args` contains `[value, scope]`
     StoreField { args: [Value; 2], field: Symbol },
@@ -162,13 +173,16 @@ impl Inst {
             Unary { ref arg, .. } => slice::from_ref(arg),
             Binary { ref args, .. } => args,
 
+            With { ref arg } => slice::from_ref(arg),
+
             StoreScope { ref arg, .. } => slice::from_ref(arg),
 
             Read { ref arg, .. } => slice::from_ref(arg),
             Write { ref args } => args,
+            ScopeError { ref arg } => slice::from_ref(arg),
 
-            LoadField { ref scope, .. } => slice::from_ref(scope),
-            LoadFieldDefault { ref scope, .. } => slice::from_ref(scope),
+            LoadField { ref entity, .. } => slice::from_ref(entity),
+            LoadFieldDefault { ref entity, .. } => slice::from_ref(entity),
 
             StoreField { ref args, .. } => args,
             StoreIndex { ref args, .. } => args,
@@ -184,6 +198,8 @@ impl Inst {
             Alias(..) |
             Immediate { .. } |
             Argument | DeclareGlobal { .. } | Lookup { .. } |
+            // Project instruction arguments are aggregates that can't be register allocated.
+            Project { .. } |
             LoadScope { .. } => &[],
         }
     }
@@ -194,13 +210,16 @@ impl Inst {
             Unary { ref mut arg, .. } => slice::from_ref_mut(arg),
             Binary { ref mut args, .. } => args,
 
+            With { ref mut arg } => slice::from_ref_mut(arg),
+
             StoreScope { ref mut arg, .. } => slice::from_ref_mut(arg),
 
             Read { ref mut arg, .. } => slice::from_ref_mut(arg),
             Write { ref mut args, .. } => args,
+            ScopeError { ref mut arg, .. } => slice::from_ref_mut(arg),
 
-            LoadField { ref mut scope, .. } => slice::from_ref_mut(scope),
-            LoadFieldDefault { ref mut scope, .. } => slice::from_ref_mut(scope),
+            LoadField { ref mut entity, .. } => slice::from_ref_mut(entity),
+            LoadFieldDefault { ref mut entity, .. } => slice::from_ref_mut(entity),
 
             StoreField { ref mut args, .. } => args,
             StoreIndex { ref mut args, .. } => args,
@@ -216,6 +235,8 @@ impl Inst {
             Alias(..) |
             Immediate { .. } |
             Argument | DeclareGlobal { .. } | Lookup { .. } |
+            // Project instruction arguments are aggregates that can't be register allocated.
+            Project { .. } |
             LoadScope { .. } => &mut [],
         }
     }
@@ -233,8 +254,9 @@ pub enum Unary {
     Invert,
     BitInvert,
 
-    With,
-    Next,
+    LoadPointer,
+    NextPointer,
+    ExistsEntity,
 
     ToArray,
     ToScalar,
@@ -270,6 +292,8 @@ pub enum Binary {
     LoadIndex,
 
     StoreRow,
+
+    NePointer,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]

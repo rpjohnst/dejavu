@@ -5,31 +5,22 @@ use symbol::Symbol;
 pub use vm::interpreter::{State, Error};
 pub use vm::value::{Type, Value, Data};
 pub use vm::array::{Array, Row};
+pub use vm::world::{Entity, Scope, World};
 
 pub mod code;
 pub mod debug;
 mod value;
 mod array;
+mod world;
 mod interpreter;
 
-pub struct Resources<C> {
+#[derive(Default)]
+pub struct Resources {
     pub scripts: HashMap<Symbol, code::Function>,
-    pub functions: HashMap<Symbol, NativeFunction<C>>,
+    pub functions: HashMap<Symbol, NativeFunction>,
 }
 
-// we can't #[derive(Default)] because of rust-lang/rust#26935
-impl<C> Default for Resources<C> {
-    fn default() -> Self {
-        Resources {
-            scripts: HashMap::default(),
-            functions: HashMap::default(),
-        }
-    }
-}
-
-pub type NativeFunction<C> = fn(
-    &mut C, &mut State, &Resources<C>, Arguments
-) -> Result<Value, Error>;
+pub type NativeFunction = fn(&mut State, &Resources, Arguments) -> Result<Value, Error>;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Arguments {

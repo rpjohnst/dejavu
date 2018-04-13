@@ -82,8 +82,15 @@ pub enum Op {
     LoadScope,
     StoreScope,
 
+    With,
+    LoadPointer,
+    NextPointer,
+    NePointer,
+    ExistsEntity,
+
     Read,
     Write,
+    ScopeError,
 
     ToArray,
     ToScalar,
@@ -97,9 +104,6 @@ pub enum Op {
     StoreField,
     StoreRow,
     StoreIndex,
-
-    With,
-    Next,
 
     Call,
     CallNative,
@@ -139,10 +143,11 @@ impl fmt::Debug for Function {
                 Op::Ret => writeln!(f, "  {:?}", op)?,
                 Op::Jump => writeln!(f, "  {:?} {:?}", op, a)?,
                 Op::BranchFalse => writeln!(f, "  {:?} %{:?}, {:?}", op, a, b)?,
-                Op::Neg | Op::Not | Op::BitNot | Op::ToArray | Op::ToScalar | Op::With | Op::Next =>
+                Op::Neg | Op::Not | Op::BitNot | Op::ToArray | Op::ToScalar |
+                Op::LoadPointer | Op::NextPointer | Op::ExistsEntity =>
                     writeln!(f, "  %{:?} = {:?} %{:?}", a, op, b)?,
-                _ =>
-                    writeln!(f, "  %{:?} = {:?} %{:?}, %{:?}", a, op, b, c)?,
+                Op::With => writeln!(f, "  %{:?}, %{:?} = {:?} %{:?}", a, b, op, c)?,
+                _ => writeln!(f, "  %{:?} = {:?} %{:?}, %{:?}", a, op, b, c)?,
             }
         }
 

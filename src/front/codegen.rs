@@ -50,6 +50,8 @@ enum Path {
     Local(Symbol),
     /// An unprefixed variable referencing either `self` or `global`.
     Field(ssa::Value, Symbol),
+    /// A prefixed variable dynamically referencing an instance or object.
+    Scope(ssa::Value, Symbol),
 }
 
 #[derive(Debug)]
@@ -72,7 +74,7 @@ struct With {
     cond_block: ssa::Block,
     body_block: ssa::Block,
     exit_block: ssa::Block,
-    next: ssa::Value,
+    entity: ssa::Value,
 }
 
 // TODO: deduplicate these with the ones from vm::interpreter?
@@ -342,11 +344,11 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.emit_instruction(ssa::Inst::StoreScope { scope: OTHER, arg: self_value });
 
                 let expr = self.emit_value(expr);
-                let With { cond_block, body_block, exit_block, next } = self.emit_with(expr);
+                let With { cond_block, body_block, exit_block, entity } = self.emit_with(expr);
                 self.builder.seal_block(body_block);
 
                 self.current_block = body_block;
-                self.emit_instruction(ssa::Inst::StoreScope { scope: SELF, arg: next });
+                self.emit_instruction(ssa::Inst::StoreScope { scope: SELF, arg: entity });
                 self.with_loop(cond_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
@@ -520,14 +522,37 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 if self.locals.contains_key(&symbol) {
                     Ok(Place { path: Path::Local(symbol), index: None })
                 } else {
-                    let scope = self.emit_instruction(ssa::Inst::Lookup { symbol });
-                    Ok(Place { path: Path::Field(scope, symbol), index: None })
+                    let entity = self.emit_instruction(ssa::Inst::Lookup { symbol });
+                    Ok(Place { path: Path::Field(entity, symbol), index: None })
                 }
+            }
+
+            // TODO: do this as constant propagation instead? or keep as a peephole optimization?
+            ast::Expr::Field(
+                box (ast::Expr::Value(ast::Value::Ident(keyword::Self_)), _expr_span),
+                (field, _field_span)
+            ) => {
+                let entity = self.emit_instruction(ssa::Inst::LoadScope { scope: SELF });
+                Ok(Place { path: Path::Field(entity, field), index: None })
+            }
+            ast::Expr::Field(
+                box (ast::Expr::Value(ast::Value::Ident(keyword::Other)), _expr_span),
+                (field, _field_span)
+            ) => {
+                let entity = self.emit_instruction(ssa::Inst::LoadScope { scope: OTHER });
+                Ok(Place { path: Path::Field(entity, field), index: None })
+            }
+            ast::Expr::Field(
+                box (ast::Expr::Value(ast::Value::Ident(keyword::Global)), _expr_span),
+                (field, _field_span)
+            ) => {
+                let entity = self.emit_instruction(ssa::Inst::LoadScope { scope: GLOBAL });
+                Ok(Place { path: Path::Field(entity, field), index: None })
             }
 
             ast::Expr::Field(box ref expr, (field, _field_span)) => {
                 let scope = self.emit_value(expr);
-                Ok(Place { path: Path::Field(scope, field), index: None })
+                Ok(Place { path: Path::Scope(scope, field), index: None })
             }
 
             ast::Expr::Index(box ref expr, box ref indices) => {
@@ -577,9 +602,21 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.builder.read_local(self.current_block, local)
             }
 
-            Path::Field(scope, field) => {
-                self.emit_instruction(ssa::Inst::LoadField { scope, field })
+            Path::Field(entity, field) => {
+                self.emit_instruction(ssa::Inst::LoadField { entity, field })
+            }
 
+            Path::Scope(scope, field) => {
+                let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope);
+                self.builder.seal_block(cond_block);
+                self.builder.seal_block(body_block);
+                self.builder.seal_block(exit_block);
+
+                self.current_block = exit_block;
+                self.emit_instruction(ssa::Inst::ScopeError { arg: scope });
+
+                self.current_block = body_block;
+                self.emit_instruction(ssa::Inst::LoadField { entity, field })
             }
         };
 
@@ -626,12 +663,30 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.builder.write_local(self.current_block, local, value);
             }
 
-            Place { path: Path::Field(scope, field), index: None } => {
+            Place { path: Path::Field(entity, field), index: None } => {
                 // TODO: this only happens pre-gms
-                let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { scope, field });
+                let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { entity, field });
                 let value = self.emit_instruction(ssa::Inst::Write { args: [value, array] });
 
-                self.emit_instruction(ssa::Inst::StoreField { args: [value, scope], field });
+                self.emit_instruction(ssa::Inst::StoreField { args: [value, entity], field });
+            }
+
+            Place { path: Path::Scope(scope, field), index: None } => {
+                // TODO: gms errors on empty iteration
+                let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope);
+                self.builder.seal_block(body_block);
+                self.builder.seal_block(exit_block);
+                self.current_block = body_block;
+
+                // TODO: this only happens pre-gms
+                let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { entity, field });
+                let value = self.emit_instruction(ssa::Inst::Write { args: [value, array] });
+
+                self.emit_instruction(ssa::Inst::StoreField { args: [value, entity], field });
+
+                self.emit_jump(cond_block);
+                self.builder.seal_block(cond_block);
+                self.current_block = exit_block;
             }
 
             Place { path: Path::Local(symbol), index: Some([i, j]) } => {
@@ -652,17 +707,40 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.emit_instruction(ssa::Inst::StoreIndex { args: [value, row, j] });
             }
 
-            Place { path: Path::Field(scope, field), index: Some([i, j]) } => {
-                let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { scope, field });
+            Place { path: Path::Field(entity, field), index: Some([i, j]) } => {
+                let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { entity, field });
 
                 // TODO: this only happens pre-gms; gms does need to handle undef
                 let op = ssa::Unary::ToArray;
                 let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
-                self.emit_instruction(ssa::Inst::StoreField { args: [array, scope], field });
+                self.emit_instruction(ssa::Inst::StoreField { args: [array, entity], field });
 
                 let op = ssa::Binary::StoreRow;
                 let row = self.emit_instruction(ssa::Inst::Binary { op, args: [array, i] });
                 self.emit_instruction(ssa::Inst::StoreIndex { args: [value, row, j] });
+            }
+
+            Place { path: Path::Scope(scope, field), index: Some([i, j]) } => {
+                // TODO: gms errors on empty iteration
+                let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope);
+                self.builder.seal_block(body_block);
+                self.builder.seal_block(exit_block);
+                self.current_block = body_block;
+
+                let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { entity, field });
+
+                // TODO: this only happens pre-gms; gms does need to handle undef
+                let op = ssa::Unary::ToArray;
+                let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
+                self.emit_instruction(ssa::Inst::StoreField { args: [array, entity], field });
+
+                let op = ssa::Binary::StoreRow;
+                let row = self.emit_instruction(ssa::Inst::Binary { op, args: [array, i] });
+                self.emit_instruction(ssa::Inst::StoreIndex { args: [value, row, j] });
+
+                self.emit_jump(cond_block);
+                self.builder.seal_block(cond_block);
+                self.current_block = exit_block;
             }
         }
     }
@@ -670,25 +748,35 @@ impl<'p, 'e> Codegen<'p, 'e> {
     /// Loop header for instance iteration.
     fn emit_with(&mut self, scope: ssa::Value) -> With {
         let cond_block = self.make_block();
+        let scan_block = self.make_block();
         let body_block = self.make_block();
         let exit_block = self.make_block();
 
         let iter = self.builder.emit_local();
-
-        let op = ssa::Unary::With;
-        let with = self.emit_instruction(ssa::Inst::Unary { op, arg: scope });
-        self.builder.write_local(self.current_block, iter, with);
+        let with = self.emit_instruction(ssa::Inst::With { arg: scope });
+        let ptr = self.emit_instruction(ssa::Inst::Project { arg: with, index: 0 });
+        let end = self.emit_instruction(ssa::Inst::Project { arg: with, index: 1 });
+        self.builder.write_local(self.current_block, iter, ptr);
         self.emit_jump(cond_block);
 
         self.current_block = cond_block;
-        let with = self.builder.read_local(self.current_block, iter);
-        let op = ssa::Unary::Next;
-        let next = self.emit_instruction(ssa::Inst::Unary { op, arg: with });
-        self.builder.write_local(self.current_block, iter, next);
-        self.emit_branch(with, body_block, exit_block);
-        self.builder.seal_block(body_block);
+        let ptr = self.builder.read_local(self.current_block, iter);
+        let op = ssa::Binary::NePointer;
+        let expr = self.emit_instruction(ssa::Inst::Binary { op, args: [ptr, end] });
+        self.emit_branch(expr, scan_block, exit_block);
+        self.builder.seal_block(scan_block);
 
-        With { cond_block, body_block, exit_block, next }
+        self.current_block = scan_block;
+        let op = ssa::Unary::LoadPointer;
+        let entity = self.emit_instruction(ssa::Inst::Unary { op, arg: ptr });
+        let op = ssa::Unary::NextPointer;
+        let ptr = self.emit_instruction(ssa::Inst::Unary { op, arg: ptr });
+        self.builder.write_local(self.current_block, iter, ptr);
+        let op = ssa::Unary::ExistsEntity;
+        let exists = self.emit_instruction(ssa::Inst::Unary { op, arg: entity });
+        self.emit_branch(exists, body_block, cond_block);
+
+        With { cond_block, body_block, exit_block, entity }
     }
 
     fn emit_jump(&mut self, target: ssa::Block) {

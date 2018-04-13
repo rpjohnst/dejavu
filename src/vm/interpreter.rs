@@ -1,29 +1,25 @@
-use std::{mem, cmp, iter, fmt};
-use std::collections::{HashMap, HashSet};
+use std::{mem, ptr, slice, cmp, iter, fmt};
 
 use symbol::Symbol;
 use vm::{self, code};
 
 /// A single thread of GML execution.
 pub struct State {
-    self_scope: i32,
-    other_scope: i32,
+    world: vm::World,
 
-    globals: Scope,
-    global_declarations: HashSet<Symbol>,
-
-    scopes: HashMap<i32, Scope>,
+    self_entity: vm::Entity,
+    other_entity: vm::Entity,
 
     returns: Vec<(Symbol, usize, usize)>,
     stack: Vec<Register>,
 }
 
-type Scope = HashMap<Symbol, vm::Value>;
-
 #[derive(Copy, Clone)]
 union Register {
     value: vm::Value,
     row: vm::Row,
+    iterator: ptr::NonNull<vm::Entity>,
+    entity: vm::Entity,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -38,6 +34,7 @@ pub enum ErrorKind {
     TypeUnary(code::Op, vm::Type),
     TypeBinary(code::Op, vm::Type, vm::Type),
     Scope(i32),
+    Entity(vm::Entity),
     Name(Symbol),
     Bounds(usize),
 }
@@ -59,17 +56,27 @@ const LOCAL: i32 = -7;
 impl State {
     pub fn new() -> State {
         State {
-            self_scope: 0,
-            other_scope: 0,
+            world: vm::World::new(),
 
-            globals: HashMap::new(),
-            global_declarations: HashSet::new(),
-
-            scopes: HashMap::new(),
+            self_entity: vm::Entity::default(),
+            other_entity: vm::Entity::default(),
 
             returns: vec![],
             stack: vec![],
         }
+    }
+
+    pub fn create_instance(&mut self, id: i32) {
+        let entity = self.world.create_entity();
+        self.world.create_instance(id, entity);
+    }
+
+    pub fn set_self(&mut self, id: i32) {
+        self.self_entity = self.world.instances[id];
+    }
+
+    pub fn set_other(&mut self, id: i32) {
+        self.other_entity = self.world.instances[id];
     }
 
     pub fn arguments(&self, arguments: vm::Arguments) -> &[vm::Value] {
@@ -78,19 +85,8 @@ impl State {
         unsafe { mem::transmute::<&[Register], &[vm::Value]>(registers) }
     }
 
-    pub fn create_scope(&mut self, id: i32) {
-        self.scopes.insert(id, Scope::default());
-    }
-    pub fn set_self(&mut self, id: i32) {
-        self.self_scope = id;
-    }
-    pub fn set_other(&mut self, id: i32) {
-        self.other_scope = id;
-    }
-
-    pub fn execute<C>(
-        &mut self, resources: &vm::Resources<C>, context: &mut C,
-        symbol: Symbol, arguments: &[vm::Value],
+    pub fn execute(
+        &mut self, resources: &vm::Resources, symbol: Symbol, arguments: &[vm::Value]
     ) -> Result<vm::Value, Error> {
         let mut symbol = symbol;
         let mut function = &resources.scripts[&symbol];
@@ -479,27 +475,35 @@ impl State {
 
                 (code::Op::DeclareGlobal, name, _, _) => {
                     let name = Self::get_string(function.constants[name]);
-                    self.globals.entry(name).or_insert(vm::Value::from(0.0));
-                    self.global_declarations.insert(name);
+                    self.world.globals.insert(name);
+
+                    let entity = vm::world::GLOBAL;
+                    let component = self.world.hash_components.get_mut(&entity)
+                        .ok_or_else(|| {
+                            let kind = ErrorKind::Entity(entity);
+                            Error { symbol, instruction, kind }
+                        })?;
+                    component.entry(name).or_insert(vm::Value::from(0.0));
                 }
 
                 (code::Op::Lookup, t, name, _) => {
                     let registers = &mut self.stack[reg_base..];
 
                     let name = Self::get_string(function.constants[name]);
-                    registers[t].value = if self.global_declarations.contains(&name) {
-                        vm::Value::from(GLOBAL)
+                    registers[t].entity = if self.world.globals.contains(&name) {
+                        vm::world::GLOBAL
                     } else {
-                        vm::Value::from(self.self_scope)
+                        self.self_entity
                     };
                 }
 
                 (code::Op::LoadScope, t, scope, _) => {
                     let registers = &mut self.stack[reg_base..];
 
-                    registers[t].value = match scope as i32 {
-                        SELF => vm::Value::from(self.self_scope),
-                        OTHER => vm::Value::from(self.other_scope),
+                    registers[t].entity = match scope as i8 as i32 {
+                        SELF => self.self_entity,
+                        OTHER => self.other_entity,
+                        GLOBAL => vm::world::GLOBAL,
                         scope => {
                             let kind = ErrorKind::Scope(scope);
                             return Err(Error { symbol, instruction, kind });
@@ -507,25 +511,83 @@ impl State {
                     };
                 }
 
-                (op @ code::Op::StoreScope, s, scope, _) => {
+                (code::Op::StoreScope, s, scope, _) => {
                     let registers = &self.stack[reg_base..];
 
-                    let s = unsafe { registers[s].value };
-                    let s = match s.data() {
-                        vm::Data::Real(scope) => Ok(Self::to_i32(scope)),
-                        s => {
-                            let kind = ErrorKind::TypeUnary(op, s.ty());
-                            Err(Error { symbol, instruction, kind })
-                        }
-                    }?;
-                    match scope as i32 {
-                        SELF => self.self_scope = s,
-                        OTHER => self.other_scope = s,
+                    let s = unsafe { registers[s].entity };
+                    match scope as i8 as i32 {
+                        SELF => self.self_entity = s,
+                        OTHER => self.other_entity = s,
                         scope => {
                             let kind = ErrorKind::Scope(scope);
                             return Err(Error { symbol, instruction, kind });
                         }
                     }
+                }
+
+                (op @ code::Op::With, ptr, end, scope) => {
+                    let registers = &mut self.stack[reg_base..];
+
+                    let scope = unsafe { registers[scope].value };
+                    let scope = match scope.data() {
+                        vm::Data::Real(scope) => Ok(Self::to_i32(scope)),
+                        scope => {
+                            let kind = ErrorKind::TypeUnary(op, scope.ty());
+                            Err(Error { symbol, instruction, kind })
+                        }
+                    }?;
+
+                    let slice = match scope {
+                        SELF => slice::from_ref(&self.self_entity),
+                        OTHER => slice::from_ref(&self.other_entity),
+                        ALL => self.world.instances.values(),
+                        NOONE => &[],
+                        GLOBAL => slice::from_ref(&vm::world::GLOBAL),
+                        LOCAL => &[], // TODO: error
+                        object if (0..=100_000).contains(object) =>
+                            &self.world.objects[&object][..],
+                        instance if (100_001..).contains(instance) =>
+                            slice::from_ref(&self.world.instances[instance]),
+                        _ => &[], // TODO: error
+                    };
+                    unsafe {
+                        let first = slice.as_ptr() as *mut vm::Entity;
+                        let last = first.offset(slice.len() as isize);
+                        registers[ptr].iterator = ptr::NonNull::new_unchecked(first);
+                        registers[end].iterator = ptr::NonNull::new_unchecked(last);
+                    }
+                }
+
+                (code::Op::LoadPointer, t, ptr, _) => {
+                    let registers = &mut self.stack[reg_base..];
+
+                    let ptr = unsafe { registers[ptr].iterator };
+                    registers[t].entity = unsafe { *ptr.as_ptr() };
+                }
+
+                (code::Op::NextPointer, t, ptr, _) => {
+                    let registers = &mut self.stack[reg_base..];
+
+                    let ptr = unsafe { registers[ptr].iterator };
+                    registers[t].iterator = unsafe {
+                        ptr::NonNull::new_unchecked(ptr.as_ptr().offset(1))
+                    };
+                }
+
+                (code::Op::NePointer, t, a, b) => {
+                    let registers = &mut self.stack[reg_base..];
+
+                    let a = unsafe { registers[a].iterator };
+                    let b = unsafe { registers[b].iterator };
+                    registers[t].value = vm::Value::from(a != b);
+                }
+
+                (code::Op::ExistsEntity, t, entity, _) => {
+                    let registers = &mut self.stack[reg_base..];
+
+                    let entity = unsafe { registers[entity].entity };
+                    let exists = self.world.hash_components.contains_key(&entity);
+                    registers[t].value = vm::Value::from(exists);
                 }
 
                 (op @ code::Op::Read, local, a, _) => {
@@ -560,6 +622,23 @@ impl State {
                         }
                         _ => a
                     };
+                }
+
+                (op @ code::Op::ScopeError, scope, _, _) => {
+                    let registers = &self.stack[reg_base..];
+
+                    let scope = unsafe { registers[scope].value };
+                    match scope.data() {
+                        vm::Data::Real(scope) => {
+                            let scope = Self::to_i32(scope);
+                            let kind = ErrorKind::Scope(scope);
+                            return Err(Error { symbol, instruction, kind });
+                        }
+                        scope => {
+                            let kind = ErrorKind::TypeUnary(op, scope.ty());
+                            return Err(Error { symbol, instruction, kind });
+                        }
+                    }
                 }
 
                 (code::Op::ToArray, t, a, _) => {
@@ -598,12 +677,14 @@ impl State {
                 (code::Op::LoadField, t, scope, field) => {
                     let registers = &mut self.stack[reg_base..];
 
-                    let scope = unsafe { registers[scope].value };
+                    let entity = unsafe { registers[scope].entity };
                     let field = Self::get_string(function.constants[field]);
-                    registers[t].value = *Self::lookup(
-                        &mut self.scopes, &mut self.globals, self.self_scope, self.other_scope, scope
-                    )
-                        .and_then(|scope| scope.get(&field))
+                    let component = self.world.hash_components.get(&entity)
+                        .ok_or_else(|| {
+                            let kind = ErrorKind::Entity(entity);
+                            Error { symbol, instruction, kind }
+                        })?;
+                    registers[t].value = *component.get(&field)
                         .ok_or_else(|| {
                             let kind = ErrorKind::Name(field);
                             Error { symbol, instruction, kind }
@@ -613,20 +694,15 @@ impl State {
                 (code::Op::LoadFieldDefault, t, scope, field) => {
                     let registers = &mut self.stack[reg_base..];
 
-                    let scope = unsafe { registers[scope].value };
+                    let entity = unsafe { registers[scope].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let scope = Self::lookup(
-                        &mut self.scopes, &mut self.globals, self.self_scope, self.other_scope, scope
-                    )
+                    let component = self.world.hash_components.get(&entity)
                         .ok_or_else(|| {
-                            let kind = ErrorKind::Name(field);
+                            let kind = ErrorKind::Entity(entity);
                             Error { symbol, instruction, kind }
                         })?;
-
-                    registers[t].value = match scope.get(&field) {
-                        Some(&value) => value,
-                        None => vm::Value::from(0.0)
-                    };
+                    registers[t].value = *component.get(&field)
+                        .unwrap_or(&vm::Value::from(0.0));
                 }
 
                 (op @ code::Op::LoadRow, t, a, i) => {
@@ -677,16 +753,14 @@ impl State {
                     let registers = &self.stack[reg_base..];
 
                     let s = unsafe { registers[s].value };
-                    let scope = unsafe { registers[scope].value };
+                    let entity = unsafe { registers[scope].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let scope = Self::lookup(
-                        &mut self.scopes, &mut self.globals, self.self_scope, self.other_scope, scope
-                    )
+                    let component = self.world.hash_components.get_mut(&entity)
                         .ok_or_else(|| {
-                            let kind = ErrorKind::Name(field);
+                            let kind = ErrorKind::Entity(entity);
                             Error { symbol, instruction, kind }
                         })?;
-                    scope.insert(field, s);
+                    component.insert(field, s);
                 }
 
                 (op @ code::Op::StoreRow, t, a, i) => {
@@ -724,14 +798,6 @@ impl State {
                     }?;
                 }
 
-                (code::Op::With, _t, _scope, _) => {
-                    unimplemented!()
-                }
-
-                (code::Op::Next, _t, _iter, _) => {
-                    unimplemented!()
-                }
-
                 (code::Op::Call, callee, base, len) => {
                     self.returns.push((symbol, instruction + 1, reg_base));
 
@@ -760,7 +826,7 @@ impl State {
                     let limit = reg_base + len;
 
                     let arguments = vm::Arguments { base, limit };
-                    let value = function(context, self, resources, arguments)?;
+                    let value = function(self, resources, arguments)?;
 
                     let registers = &mut self.stack[reg_base..];
                     registers[0].value = value;
@@ -813,27 +879,6 @@ impl State {
 
             instruction += 1;
         }
-    }
-
-    fn lookup<'a>(
-        scopes: &'a mut HashMap<i32, Scope>, globals: &'a mut Scope, self_id: i32, other_id: i32,
-        scope: vm::Value
-    ) -> Option<&'a mut Scope> {
-        let scope = match scope.data() {
-            vm::Data::Real(scope) => Some(Self::to_i32(scope)),
-            _ => None,
-        }?;
-        let scope = match scope {
-            SELF => scopes.get_mut(&self_id),
-            OTHER => scopes.get_mut(&other_id),
-            ALL => None,
-            NOONE => None,
-            GLOBAL => Some(globals),
-            LOCAL => unimplemented!(),
-            scope => scopes.get_mut(&scope),
-        }?;
-
-        Some(scope)
     }
 
     // TODO: round-to-nearest instead of truncate

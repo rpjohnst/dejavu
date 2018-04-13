@@ -129,6 +129,28 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
+                // TODO: propagate projection registers more robustly
+                With { arg } => {
+                    let ptr = ssa::Value::new(value.index() + 1);
+                    assert!(match program.values[ptr] {
+                        Project { arg, index: 0 } if arg == value => true,
+                        _ => false
+                    });
+                    let end = ssa::Value::new(value.index() + 2);
+                    assert!(match program.values[end] {
+                        Project { arg, index: 1 } if arg == value => true,
+                        _ => false
+                    });
+
+                    let ptr = self.registers[ptr];
+                    let end = self.registers[end];
+                    let scope = self.registers[arg];
+
+                    let inst = code::Inst::encode(code::Op::With, ptr, end, scope);
+                    self.function.instructions.push(inst);
+                }
+                Project { .. } => {}
+
                 Read { symbol, arg } => {
                     let a = self.emit_string(symbol);
                     let b = self.registers[arg];
@@ -146,27 +168,34 @@ impl Codegen {
                     self.function.instructions.push(inst);
                 }
 
-                LoadField { scope, field } => {
+                ScopeError { arg } => {
+                    let arg = self.registers[arg];
+
+                    let inst = code::Inst::encode(code::Op::ScopeError, arg, 0, 0);
+                    self.function.instructions.push(inst);
+                }
+
+                LoadField { entity, field } => {
                     let target = self.registers[value];
-                    let a = self.registers[scope];
+                    let a = self.registers[entity];
                     let b = self.emit_string(field);
 
                     let inst = code::Inst::encode(code::Op::LoadField, target, a, b);
                     self.function.instructions.push(inst);
                 }
 
-                LoadFieldDefault { scope, field } => {
+                LoadFieldDefault { entity, field } => {
                     let target = self.registers[value];
-                    let a = self.registers[scope];
+                    let a = self.registers[entity];
                     let b = self.emit_string(field);
 
                     let inst = code::Inst::encode(code::Op::LoadFieldDefault, target, a, b);
                     self.function.instructions.push(inst);
                 }
 
-                StoreField { args: [value, scope], field } => {
+                StoreField { args: [value, entity], field } => {
                     let source = self.registers[value];
-                    let a = self.registers[scope];
+                    let a = self.registers[entity];
                     let b = self.emit_string(field);
 
                     let inst = code::Inst::encode(code::Op::StoreField, source, a, b);
@@ -401,8 +430,9 @@ impl From<ssa::Unary> for code::Op {
             ssa::Unary::Invert => code::Op::Not,
             ssa::Unary::BitInvert => code::Op::BitNot,
 
-            ssa::Unary::With => code::Op::With,
-            ssa::Unary::Next => code::Op::Next,
+            ssa::Unary::LoadPointer => code::Op::LoadPointer,
+            ssa::Unary::NextPointer => code::Op::NextPointer,
+            ssa::Unary::ExistsEntity => code::Op::ExistsEntity,
 
             ssa::Unary::ToArray => code::Op::ToArray,
             ssa::Unary::ToScalar => code::Op::ToScalar,
@@ -441,6 +471,8 @@ impl From<ssa::Binary> for code::Op {
             ssa::Binary::LoadIndex => code::Op::LoadIndex,
 
             ssa::Binary::StoreRow => code::Op::StoreRow,
+
+            ssa::Binary::NePointer => code::Op::NePointer,
         }
     }
 }
