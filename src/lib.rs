@@ -3,14 +3,14 @@
 #![feature(box_syntax)]
 #![feature(slice_patterns)]
 #![feature(from_ref)]
-#![feature(clone_closures)]
 #![feature(range_contains)]
+
+#[macro_use]
+mod handle_map;
+mod index_map;
+mod bit_vec;
+pub mod symbol;
 
 pub mod front;
 pub mod back;
 pub mod vm;
-
-pub mod symbol;
-mod handle_map;
-mod bit_vec;
-mod index_map;

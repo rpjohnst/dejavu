@@ -11,8 +11,8 @@ pub struct Builder {
 
     local: u32,
 
-    current_defs: HandleMap<ssa::Block, HashMap<Local, ssa::Value>>,
-    current_args: HandleMap<ssa::Block, Vec<(Local, ssa::Value)>>,
+    current_defs: HandleMap<ssa::Label, HashMap<Local, ssa::Value>>,
+    current_args: HandleMap<ssa::Label, Vec<(Local, ssa::Value)>>,
     sealed: BitVec,
 }
 
@@ -40,7 +40,7 @@ impl Builder {
         }
     }
 
-    pub fn insert_edge(&mut self, pred: ssa::Block, succ: ssa::Block) {
+    pub fn insert_edge(&mut self, pred: ssa::Label, succ: ssa::Label) {
         self.control_flow.insert(pred, succ)
     }
 
@@ -50,7 +50,7 @@ impl Builder {
         local
     }
 
-    pub fn read_local(&mut self, block: ssa::Block, local: Local) -> ssa::Value {
+    pub fn read_local(&mut self, block: ssa::Label, local: Local) -> ssa::Value {
         // TODO: factor out `ensure` call with NLL
         if let Some(&def) = self.current_defs.ensure(block).get(&local) {
             return def;
@@ -61,7 +61,7 @@ impl Builder {
 
         let value;
         if !self.sealed.get(block.index()) {
-            value = self.function.emit_argument(block);
+            value = self.function.emit_parameter(block);
 
             let args = self.current_args.ensure(block);
             args.push((local, value));
@@ -71,22 +71,22 @@ impl Builder {
             let pred = self.control_flow.pred[block][0];
             value = self.read_local(pred, local);
         } else {
-            let argument = self.function.emit_argument(block);
-            self.write_local(block, local, argument);
-            value = self.read_predecessors(block, local, argument);
+            let parameter = self.function.emit_parameter(block);
+            self.write_local(block, local, parameter);
+            value = self.read_predecessors(block, parameter, local);
         }
 
         self.write_local(block, local, value);
         value
     }
 
-    pub fn write_local(&mut self, block: ssa::Block, local: Local, value: ssa::Value) {
+    pub fn write_local(&mut self, block: ssa::Label, local: Local, value: ssa::Value) {
         let defs = self.current_defs.ensure(block);
         defs.insert(local, value);
     }
 
     pub fn read_predecessors(
-        &mut self, block: ssa::Block, local: Local, argument: ssa::Value
+        &mut self, block: ssa::Label, parameter: ssa::Value, local: Local
     ) -> ssa::Value {
         use self::ZeroOneMany::*;
 
@@ -100,10 +100,10 @@ impl Builder {
             let value = self.read_local(pred, local);
 
             unique = match unique {
-                Zero if value == argument => Zero,
+                Zero if value == parameter => Zero,
                 Zero => One(value),
 
-                One(unique) if value == argument || value == unique => One(unique),
+                One(unique) if value == parameter || value == unique => One(unique),
                 One(_) => Many,
 
                 Many => Many,
@@ -113,25 +113,23 @@ impl Builder {
 
         match unique {
             Zero => {
-                let args = &mut self.function.blocks[block].arguments;
-                let index = args.iter().position(|&arg| arg == argument)
-                    .expect("corrupt function");
-                args.remove(index);
+                let parameters = &mut self.function.blocks[block].parameters;
+                let param = parameters.pop();
+                assert_eq!(param, Some(parameter));
 
                 // this is a garbage value; uninitialized variables are checked elsewhere
                 let value = ssa::Constant::Real(0.0);
-                self.function.values[argument] = ssa::Inst::Immediate { value };
-                argument
+                self.function.values[parameter] = ssa::Inst::Immediate { value };
+                parameter
             }
 
             One(unique) => {
-                let args = &mut self.function.blocks[block].arguments;
-                let index = args.iter().position(|&arg| arg == argument)
-                    .expect("corrupt function");
-                args.remove(index);
+                let parameters = &mut self.function.blocks[block].parameters;
+                let param = parameters.pop();
+                assert_eq!(param, Some(parameter));
 
-                // pre-existing uses of this argument will be updated after SSA is complete
-                self.function.values[argument] = ssa::Inst::Alias(unique);
+                // pre-existing uses of this parameter will be updated after SSA is complete
+                self.function.values[parameter] = ssa::Inst::Alias(unique);
                 unique
             }
 
@@ -162,16 +160,16 @@ impl Builder {
                     }
                 }
 
-                argument
+                parameter
             }
         }
     }
 
-    pub fn seal_block(&mut self, block: ssa::Block) {
+    pub fn seal_block(&mut self, block: ssa::Label) {
         // TODO: factor out `ensure` call with NLL
-        let arguments = mem::replace(self.current_args.ensure(block), Vec::default());
-        for (local, argument) in arguments {
-            self.read_predecessors(block, local, argument);
+        let parameters = mem::replace(self.current_args.ensure(block), Vec::default());
+        for (local, parameter) in parameters {
+            self.read_predecessors(block, parameter, local);
         }
         self.sealed.set(block.index());
     }

@@ -544,9 +544,9 @@ impl State {
                         NOONE => &[],
                         GLOBAL => slice::from_ref(&vm::world::GLOBAL),
                         LOCAL => &[], // TODO: error
-                        object if (0..=100_000).contains(object) =>
+                        object if (0..=100_000).contains(&object) =>
                             &self.world.objects[&object][..],
-                        instance if (100_001..).contains(instance) =>
+                        instance if (100_001..).contains(&instance) =>
                             slice::from_ref(&self.world.instances[instance]),
                         _ => &[], // TODO: error
                     };

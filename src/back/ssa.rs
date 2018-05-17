@@ -4,14 +4,28 @@ use handle_map::{Handle, HandleMap};
 use symbol::Symbol;
 
 pub struct Function {
-    pub blocks: HandleMap<Block, BlockData>,
+    pub blocks: HandleMap<Label, Block>,
     pub values: HandleMap<Value, Inst>,
 
     pub return_def: Value,
 }
 
-pub const ENTRY: Block = Block(0);
-pub const EXIT: Block = Block(1);
+/// A handle to a basic block.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Label(u32);
+derive_handle!(Label);
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Value(u32);
+derive_handle!(Value);
+
+pub const ENTRY: Label = Label(0);
+pub const EXIT: Label = Label(1);
+
+pub struct Block {
+    pub parameters: Vec<Value>,
+    pub instructions: Vec<Value>,
+}
 
 impl Function {
     pub fn new() -> Self {
@@ -30,12 +44,33 @@ impl Function {
         function
     }
 
-    pub fn terminator(&self, block: Block) -> Value {
+    pub fn make_block(&mut self) -> Label {
+        let block = Block {
+            parameters: vec![],
+            instructions: vec![],
+        };
+
+        self.blocks.push(block)
+    }
+
+    pub fn emit_parameter(&mut self, block: Label) -> Value {
+        let value = self.values.push(Inst::Parameter);
+        self.blocks[block].parameters.push(value);
+        value
+    }
+
+    pub fn emit_instruction(&mut self, block: Label, instruction: Inst) -> Value {
+        let value = self.values.push(instruction);
+        self.blocks[block].instructions.push(value);
+        value
+    }
+
+    pub fn terminator(&self, block: Label) -> Value {
         *self.blocks[block].instructions.last()
             .expect("empty block")
     }
 
-    pub fn successors(&self, block: Block) -> &[Block] {
+    pub fn successors(&self, block: Label) -> &[Label] {
         let value = self.terminator(block);
         match self.values[value] {
             Inst::Jump { ref target, .. } => slice::from_ref(target),
@@ -50,7 +85,7 @@ impl Function {
         use self::Inst::*;
         match self.values[value] {
             Immediate { .. } | Unary { .. } | Binary { .. } |
-            Argument | Lookup { .. } |
+            Parameter | Lookup { .. } |
             Project { .. } |
             LoadScope { .. } |
             Write { .. } |
@@ -82,32 +117,6 @@ impl Function {
     pub fn uses(&self, value: Value) -> &[Value] {
         self.values[value].arguments()
     }
-
-    pub fn emit_instruction(&mut self, block: Block, inst: Inst) -> Value {
-        let value = self.values.push(inst);
-        self.blocks[block].instructions.push(value);
-        value
-    }
-
-    pub fn emit_argument(&mut self, block: Block) -> Value {
-        let value = self.values.push(Inst::Argument);
-        self.blocks[block].arguments.push(value);
-        value
-    }
-
-    pub fn make_block(&mut self) -> Block {
-        let block = BlockData {
-            arguments: vec![],
-            instructions: vec![],
-        };
-
-        self.blocks.push(block)
-    }
-}
-
-pub struct BlockData {
-    pub arguments: Vec<Value>,
-    pub instructions: Vec<Value>,
 }
 
 /// An SSA instruction.
@@ -130,7 +139,7 @@ pub enum Inst {
     Binary { op: Binary, args: [Value; 2] },
 
     /// A placeholder for an argument to a basic block.
-    Argument,
+    Parameter,
     DeclareGlobal { symbol: Symbol },
     Lookup { symbol: Symbol },
 
@@ -161,9 +170,9 @@ pub enum Inst {
     Call { symbol: Symbol, prototype: Prototype, args: Vec<Value>, parameters: Vec<Value> },
     Return { arg: Value },
 
-    Jump { target: Block, args: Vec<Value> },
+    Jump { target: Label, args: Vec<Value> },
     /// `args` contains `[condition, arg_lens[0].., arg_lens[1]..]`
-    Branch { targets: [Block; 2], arg_lens: [u32; 2], args: Vec<Value> },
+    Branch { targets: [Label; 2], arg_lens: [u32; 2], args: Vec<Value> },
 }
 
 impl Inst {
@@ -197,7 +206,7 @@ impl Inst {
 
             Alias(..) |
             Immediate { .. } |
-            Argument | DeclareGlobal { .. } | Lookup { .. } |
+            Parameter | DeclareGlobal { .. } | Lookup { .. } |
             // Project instruction arguments are aggregates that can't be register allocated.
             Project { .. } |
             LoadScope { .. } => &[],
@@ -234,7 +243,7 @@ impl Inst {
 
             Alias(..) |
             Immediate { .. } |
-            Argument | DeclareGlobal { .. } | Lookup { .. } |
+            Parameter | DeclareGlobal { .. } | Lookup { .. } |
             // Project instruction arguments are aggregates that can't be register allocated.
             Project { .. } |
             LoadScope { .. } => &mut [],
@@ -302,29 +311,6 @@ pub enum Prototype {
     Function,
 }
 
-/// Implement Handle for a tuple struct containing a u32
-macro_rules! derive_handle {
-    ($handle: ident) => {
-        impl Handle for $handle {
-            fn new(index: usize) -> Self {
-                assert!(index < u32::MAX as usize);
-                $handle(index as u32)
-            }
-
-            fn index(self) -> usize {
-                self.0 as usize
-            }
-        }
-    }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-pub struct Block(u32);
-derive_handle!(Block);
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-pub struct Value(u32);
-derive_handle!(Value);
 
 impl fmt::Debug for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -332,7 +318,7 @@ impl fmt::Debug for Function {
             write!(f, "{:?}", block)?;
             {
                 let mut arguments = f.debug_tuple("");
-                for &argument in &self.blocks[block].arguments {
+                for &argument in &self.blocks[block].parameters {
                     arguments.field(&argument);
                 }
                 arguments.finish()?;

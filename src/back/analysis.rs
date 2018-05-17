@@ -6,8 +6,8 @@ use back::ssa;
 
 /// A control flow graph for a function, as the successors and predecessors of each basic block.
 pub struct ControlFlow {
-    pub succ: HandleMap<ssa::Block, Vec<ssa::Block>>,
-    pub pred: HandleMap<ssa::Block, Vec<ssa::Block>>,
+    pub succ: HandleMap<ssa::Label, Vec<ssa::Label>>,
+    pub pred: HandleMap<ssa::Label, Vec<ssa::Label>>,
 }
 
 impl ControlFlow {
@@ -18,7 +18,7 @@ impl ControlFlow {
         ControlFlow { succ, pred }
     }
 
-    pub fn insert(&mut self, pred: ssa::Block, succ: ssa::Block) {
+    pub fn insert(&mut self, pred: ssa::Label, succ: ssa::Label) {
         self.succ.ensure(pred).push(succ);
         self.pred.ensure(succ).push(pred);
     }
@@ -46,8 +46,8 @@ impl ControlFlow {
 /// that live across basic block boundaries. A block can either be dominated by a live definition,
 /// or it can contain a definition that dominates later blocks.
 pub struct Liveness {
-    pub in_: HandleMap<ssa::Block, HashSet<ssa::Value>>,
-    pub out: HandleMap<ssa::Block, HashSet<ssa::Value>>,
+    pub in_: HandleMap<ssa::Label, HashSet<ssa::Value>>,
+    pub out: HandleMap<ssa::Label, HashSet<ssa::Value>>,
 }
 
 impl Liveness {
@@ -80,7 +80,7 @@ impl Liveness {
                     live.remove(&value);
                     live.extend(program.uses(value));
                 }
-                for &value in program.blocks[block].arguments.iter() {
+                for &value in program.blocks[block].parameters.iter() {
                     live.remove(&value);
                 }
                 for &value in in_[block].iter() {

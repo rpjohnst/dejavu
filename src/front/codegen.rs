@@ -22,14 +22,14 @@ pub struct Codegen<'p, 'e> {
     /// insertion point so more can be inserted.
     initializers: u32,
 
-    current_block: ssa::Block,
+    current_block: ssa::Label,
 
-    current_next: Option<ssa::Block>,
-    current_exit: Option<ssa::Block>,
+    current_next: Option<ssa::Label>,
+    current_exit: Option<ssa::Label>,
 
     current_switch: Option<ssa::Value>,
-    current_expr: Option<ssa::Block>,
-    current_default: Option<ssa::Block>,
+    current_expr: Option<ssa::Label>,
+    current_default: Option<ssa::Label>,
 }
 
 /// A location that can be read from or written to.
@@ -71,9 +71,9 @@ struct Local {
 /// This is extracted into a struct because it is used not only for literal `with` statements, but
 /// also for loads and stores of fields.
 struct With {
-    cond_block: ssa::Block,
-    body_block: ssa::Block,
-    exit_block: ssa::Block,
+    cond_block: ssa::Label,
+    body_block: ssa::Label,
+    exit_block: ssa::Label,
     entity: ssa::Value,
 }
 
@@ -136,9 +136,9 @@ impl<'p, 'e> Codegen<'p, 'e> {
         self.emit_instruction(ssa::Inst::Return { arg: return_value });
 
         let mut function = self.builder.finish();
-        function.return_def = match function.blocks[ssa::ENTRY].arguments.get(0) {
+        function.return_def = match function.blocks[ssa::ENTRY].parameters.get(0) {
             Some(&def) => def,
-            None => function.values.push(ssa::Inst::Argument),
+            None => function.values.push(ssa::Inst::Parameter),
         };
 
         function
@@ -511,9 +511,9 @@ impl<'p, 'e> Codegen<'p, 'e> {
                     for argument in self.arguments..argument + 1 {
                         let symbol = Symbol::from_argument(argument);
 
-                        let argument = self.builder.function.emit_argument(ssa::ENTRY);
+                        let parameter = self.builder.function.emit_parameter(ssa::ENTRY);
 
-                        let local = self.emit_local(Some(argument));
+                        let local = self.emit_local(Some(parameter));
                         self.locals.insert(symbol, local);
                     }
                     self.arguments = cmp::max(self.arguments, argument + 1);
@@ -779,13 +779,13 @@ impl<'p, 'e> Codegen<'p, 'e> {
         With { cond_block, body_block, exit_block, entity }
     }
 
-    fn emit_jump(&mut self, target: ssa::Block) {
+    fn emit_jump(&mut self, target: ssa::Label) {
         self.emit_instruction(ssa::Inst::Jump { target, args: vec![] });
 
         self.builder.insert_edge(self.current_block, target);
     }
 
-    fn emit_branch(&mut self, expr: ssa::Value, true_block: ssa::Block, false_block: ssa::Block) {
+    fn emit_branch(&mut self, expr: ssa::Value, true_block: ssa::Label, false_block: ssa::Label) {
         self.emit_instruction(ssa::Inst::Branch {
             targets: [true_block, false_block],
             arg_lens: [0, 0],
@@ -807,7 +807,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
         //  - generate param/ret defs during regalloc?
         //  - unconditionally precolor argument values and rely on live range splitting?
         let parameters: Vec<_> = (0..cmp::max(1, args.len()))
-            .map(|_| self.builder.function.values.push(ssa::Inst::Argument))
+            .map(|_| self.builder.function.values.push(ssa::Inst::Parameter))
             .collect();
 
         let prototype = self.prototypes.get(&symbol)
@@ -867,11 +867,11 @@ impl<'p, 'e> Codegen<'p, 'e> {
         Local { flag, local }
     }
 
-    fn make_block(&mut self) -> ssa::Block {
+    fn make_block(&mut self) -> ssa::Label {
         self.builder.function.make_block()
     }
 
-    fn with_loop<F>(&mut self, next: ssa::Block, exit: ssa::Block, f: F) where
+    fn with_loop<F>(&mut self, next: ssa::Label, exit: ssa::Label, f: F) where
         F: FnOnce(&mut Codegen)
     {
         let old_next = mem::replace(&mut self.current_next, Some(next));
@@ -884,7 +884,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
     }
 
     fn with_switch<F>(
-        &mut self, switch: ssa::Value, expr: ssa::Block, exit: ssa::Block,
+        &mut self, switch: ssa::Value, expr: ssa::Label, exit: ssa::Label,
         f: F
     ) where F: FnOnce(&mut Codegen) {
         let old_switch = mem::replace(&mut self.current_switch, Some(switch));

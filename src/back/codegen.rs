@@ -14,8 +14,8 @@ pub struct Codegen {
     register_count: usize,
 
     visited: BitVec,
-    block_offsets: HashMap<ssa::Block, usize>,
-    jump_offsets: HashMap<usize, ssa::Block>,
+    block_offsets: HashMap<ssa::Label, usize>,
+    jump_offsets: HashMap<usize, ssa::Label>,
     edge_block: usize,
 
     constants: HashMap<vm::Value, usize>,
@@ -58,7 +58,7 @@ impl Codegen {
         self.function
     }
 
-    fn emit_blocks(&mut self, program: &ssa::Function, block: ssa::Block) {
+    fn emit_blocks(&mut self, program: &ssa::Function, block: ssa::Label) {
         self.visited.set(block.index());
         self.block_offsets.insert(block, self.function.instructions.len());
 
@@ -66,7 +66,7 @@ impl Codegen {
             use back::ssa::Inst::*;
             match program.values[value] {
                 // these should not be used as instructions
-                Alias(_) | Argument => unreachable!("corrupt function"),
+                Alias(_) | Parameter => unreachable!("corrupt function"),
 
                 Immediate { value: constant } => {
                     let target = self.registers[value];
@@ -253,7 +253,7 @@ impl Codegen {
                     ref args
                 } => {
                     // split the false CFG edge to make room for the phi moves
-                    let edge_block = ssa::Block::new(self.edge_block);
+                    let edge_block = ssa::Label::new(self.edge_block);
                     self.edge_block += 1;
 
                     let a = self.registers[args[0]];
@@ -276,13 +276,13 @@ impl Codegen {
         }
     }
 
-    /// Fall through or jump to the unvisited CFG nodes starting with `block`.
-    fn emit_edge(&mut self, program: &ssa::Function, block: ssa::Block, arguments: &[ssa::Value]) {
-        let parameters = &program.blocks[block].arguments;
+    /// Fall through or jump to the unvisited CFG nodes starting with `target`.
+    fn emit_edge(&mut self, program: &ssa::Function, target: ssa::Label, arguments: &[ssa::Value]) {
+        let parameters = &program.blocks[target].parameters;
         self.emit_phis(parameters, arguments);
 
-        if self.visited.get(block.index()) {
-            self.jump_offsets.insert(self.function.instructions.len(), block);
+        if self.visited.get(target.index()) {
+            self.jump_offsets.insert(self.function.instructions.len(), target);
 
             let inst = code::Inst::encode(code::Op::Jump, 0, 0, 0);
             self.function.instructions.push(inst);
@@ -290,7 +290,7 @@ impl Codegen {
             return;
         }
 
-        self.emit_blocks(program, block);
+        self.emit_blocks(program, target);
     }
 
     /// Move the values in `arguments` into `parameters`.

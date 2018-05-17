@@ -29,7 +29,7 @@ impl Interference {
         let mut precolored = Vec::new();
         let mut groups = Vec::new();
 
-        let defs = &program.blocks[ssa::ENTRY].arguments;
+        let defs = &program.blocks[ssa::ENTRY].parameters;
         groups.push(precolored.len());
         precolored.extend(defs);
         if precolored.len() == 0 {
@@ -68,12 +68,12 @@ impl Interference {
                 live.extend(program.uses(value));
             }
 
-            // arguments to the entry block are precolored
+            // parameters to the entry block are precolored
             if block == ssa::ENTRY {
                 continue;
             }
 
-            let defs = &program.blocks[block].arguments;
+            let defs = &program.blocks[block].parameters;
             vertices.extend(defs);
             for &def in defs {
                 live.remove(&def);
@@ -96,8 +96,8 @@ impl Interference {
     /// a perfect elimination order, and assigns it the lowest color not used by any of its
     /// neighbors.
     ///
-    /// It also precolors program arguments and call parameters to match the VM's calling
-    /// convention, with arguments at the start of the frame and parameters at the end.
+    /// It also precolors program parameters and call arguments to match the VM's calling
+    /// convention, with parameters at the start of the frame and arguments at the end.
     pub fn color(self) -> (HandleMap<ssa::Value, usize>, usize, usize) {
         let mut colors = HandleMap::with_capacity(self.adjacency.len());
         for &value in Iterator::chain(self.vertices.iter(), self.precolored.iter()) {
@@ -107,13 +107,13 @@ impl Interference {
         let mut color_count;
         let param_count;
 
-        // Program arguments must be in order at the start of the stack frame.
+        // Program parameters must be in order at the start of the stack frame.
         let (start, end) = (self.groups[0], self.groups[1]);
-        let arguments = &self.precolored[start..end];
-        for (color, &value) in Iterator::zip(0.., arguments) {
+        let parameters = &self.precolored[start..end];
+        for (color, &value) in Iterator::zip(0.., parameters) {
             colors[value] = color;
         }
-        color_count = arguments.len();
+        color_count = parameters.len();
         param_count = color_count;
 
         // Regular values are allocated greedily in perfect/simplical elimination order

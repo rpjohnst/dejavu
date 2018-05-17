@@ -139,6 +139,22 @@ impl<K> DoubleEndedIterator for Keys<K> where K: Handle {
 
 impl<K> ExactSizeIterator for Keys<K> where K: Handle {}
 
+/// Implement Handle for a tuple struct containing a u32
+macro_rules! derive_handle {
+    ($handle: ident) => {
+        impl Handle for $handle {
+            fn new(index: usize) -> Self {
+                assert!(index < u32::MAX as usize);
+                $handle(index as u32)
+            }
+
+            fn index(self) -> usize {
+                self.0 as usize
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
