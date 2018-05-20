@@ -6,7 +6,6 @@ use bit_vec::BitVec;
 use back::{ssa, ControlFlow};
 
 pub struct Builder {
-    pub function: ssa::Function,
     pub control_flow: ControlFlow,
 
     local: u32,
@@ -29,7 +28,6 @@ enum ZeroOneMany<T> {
 impl Builder {
     pub fn new() -> Self {
         Builder {
-            function: ssa::Function::new(),
             control_flow: ControlFlow::with_capacity(0),
 
             local: 0,
@@ -50,7 +48,7 @@ impl Builder {
         local
     }
 
-    pub fn read_local(&mut self, block: ssa::Label, local: Local) -> ssa::Value {
+    pub fn read_local(&mut self, function: &mut ssa::Function, block: ssa::Label, local: Local) -> ssa::Value {
         // TODO: factor out `ensure` call with NLL
         if let Some(&def) = self.current_defs.ensure(block).get(&local) {
             return def;
@@ -61,7 +59,7 @@ impl Builder {
 
         let value;
         if !self.sealed.get(block.index()) {
-            value = self.function.emit_parameter(block);
+            value = function.emit_parameter(block);
 
             let args = self.current_args.ensure(block);
             args.push((local, value));
@@ -69,11 +67,11 @@ impl Builder {
             value = ssa::Value::new(0);
         } else if pred_len == 1 {
             let pred = self.control_flow.pred[block][0];
-            value = self.read_local(pred, local);
+            value = self.read_local(function, pred, local);
         } else {
-            let parameter = self.function.emit_parameter(block);
+            let parameter = function.emit_parameter(block);
             self.write_local(block, local, parameter);
-            value = self.read_predecessors(block, parameter, local);
+            value = self.read_predecessors(function, block, parameter, local);
         }
 
         self.write_local(block, local, value);
@@ -86,7 +84,7 @@ impl Builder {
     }
 
     pub fn read_predecessors(
-        &mut self, block: ssa::Label, parameter: ssa::Value, local: Local
+        &mut self, function: &mut ssa::Function, block: ssa::Label, parameter: ssa::Value, local: Local
     ) -> ssa::Value {
         use self::ZeroOneMany::*;
 
@@ -97,7 +95,7 @@ impl Builder {
         let mut unique = Zero;
         for i in 0..pred_len {
             let pred = self.control_flow.pred[block][i];
-            let value = self.read_local(pred, local);
+            let value = self.read_local(function, pred, local);
 
             unique = match unique {
                 Zero if value == parameter => Zero,
@@ -113,30 +111,30 @@ impl Builder {
 
         match unique {
             Zero => {
-                let parameters = &mut self.function.blocks[block].parameters;
+                let parameters = &mut function.blocks[block].parameters;
                 let param = parameters.pop();
                 assert_eq!(param, Some(parameter));
 
                 // this is a garbage value; uninitialized variables are checked elsewhere
                 let value = ssa::Constant::Real(0.0);
-                self.function.values[parameter] = ssa::Inst::Immediate { value };
+                function.values[parameter] = ssa::Inst::Immediate { value };
                 parameter
             }
 
             One(unique) => {
-                let parameters = &mut self.function.blocks[block].parameters;
+                let parameters = &mut function.blocks[block].parameters;
                 let param = parameters.pop();
                 assert_eq!(param, Some(parameter));
 
                 // pre-existing uses of this parameter will be updated after SSA is complete
-                self.function.values[parameter] = ssa::Inst::Alias(unique);
+                function.values[parameter] = ssa::Inst::Alias(unique);
                 unique
             }
 
             Many => {
                 for (pred, value) in arguments {
-                    let jump = self.function.terminator(pred);
-                    match self.function.values[jump] {
+                    let jump = function.terminator(pred);
+                    match function.values[jump] {
                         ssa::Inst::Jump { ref mut args, .. } => {
                             args.push(value);
                         }
@@ -165,24 +163,25 @@ impl Builder {
         }
     }
 
-    pub fn seal_block(&mut self, block: ssa::Label) {
+    pub fn seal_block(&mut self, function: &mut ssa::Function, block: ssa::Label) {
         // TODO: factor out `ensure` call with NLL
         let parameters = mem::replace(self.current_args.ensure(block), Vec::default());
         for (local, parameter) in parameters {
-            self.read_predecessors(block, parameter, local);
+            self.read_predecessors(function, block, parameter, local);
         }
         self.sealed.set(block.index());
     }
 
-    pub fn finish(mut self) -> ssa::Function {
+    // TODO: move these out of SSA generation
+    // TODO: split ssa::Function into DFG and layout to resolve borrow issues?
+
+    pub fn finish(function: &mut ssa::Function) {
         // resolve any aliases left during SSA construction
-        for block in self.function.blocks.keys() {
-            for &value in &self.function.blocks[block].instructions {
-                Self::replace_aliases(&mut self.function.values, value);
+        for block in function.blocks.keys() {
+            for &value in &function.blocks[block].instructions {
+                Self::replace_aliases(&mut function.values, value);
             }
         }
-
-        self.function
     }
 
     fn replace_aliases(values: &mut HandleMap<ssa::Value, ssa::Inst>, value: ssa::Value) {

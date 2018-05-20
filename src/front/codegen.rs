@@ -6,9 +6,11 @@ use front::{self, ast, Span, ErrorHandler};
 use back::ssa;
 
 pub struct Codegen<'p, 'e> {
+    function: ssa::Function,
     builder: front::ssa::Builder,
-    prototypes: &'p HashMap<Symbol, ssa::Prototype>,
     errors: &'e ErrorHandler,
+
+    prototypes: &'p HashMap<Symbol, ssa::Prototype>,
 
     /// GML `var` declarations are static and independent of control flow. All references to a
     /// `var`-declared name after its declaration in the source text are treated as local.
@@ -20,7 +22,7 @@ pub struct Codegen<'p, 'e> {
 
     /// The number of entry-block instructions initializing local variables. This is used as an
     /// insertion point so more can be inserted.
-    initializers: u32,
+    initializers: usize,
 
     current_block: ssa::Label,
 
@@ -88,13 +90,17 @@ const LOCAL: f64 = -7.0;
 
 impl<'p, 'e> Codegen<'p, 'e> {
     pub fn new(prototypes: &'p HashMap<Symbol, ssa::Prototype>, errors: &'e ErrorHandler) -> Self {
+        let function = ssa::Function::new();
+
         let mut builder = front::ssa::Builder::new();
         let return_value = builder.emit_local();
 
         Codegen {
+            function,
             builder,
-            prototypes,
             errors,
+
+            prototypes,
 
             locals: HashMap::new(),
             arguments: 0,
@@ -115,33 +121,37 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
     pub fn compile(mut self, program: &(ast::Stmt, Span)) -> ssa::Function {
         let entry_block = self.current_block;
-        self.builder.seal_block(entry_block);
+        self.seal_block(entry_block);
 
+        // TODO: move this back inline with NLL
+        let local = self.return_value;
         let value = ssa::Constant::Real(0.0);
         let zero = self.emit_initializer(ssa::Inst::Immediate { value });
-        self.builder.write_local(self.current_block, self.return_value, zero);
+        self.write_local(local, zero);
 
         self.emit_statement(program);
 
         self.emit_jump(ssa::EXIT);
-        self.builder.seal_block(ssa::EXIT);
+        self.seal_block(ssa::EXIT);
 
         self.current_block = ssa::EXIT;
         let locals = mem::replace(&mut self.locals, HashMap::default());
         for (_, Local { local, .. }) in locals {
-            let value = self.builder.read_local(self.current_block, local);
+            let value = self.read_local(local);
             self.emit_instruction(ssa::Inst::Release { arg: value });
         }
-        let return_value = self.builder.read_local(self.current_block, self.return_value);
+        // TODO: move this back inline with NLL
+        let local = self.return_value;
+        let return_value = self.read_local(local);
         self.emit_instruction(ssa::Inst::Return { arg: return_value });
 
-        let mut function = self.builder.finish();
-        function.return_def = match function.blocks[ssa::ENTRY].parameters.get(0) {
+        front::ssa::Builder::finish(&mut self.function);
+        self.function.return_def = match self.function.blocks[ssa::ENTRY].parameters.get(0) {
             Some(&def) => def,
-            None => function.values.push(ssa::Inst::Parameter),
+            None => self.function.values.push(ssa::Inst::Parameter),
         };
 
-        function
+        self.function
     }
 
     fn emit_statement(&mut self, statement: &(ast::Stmt, Span)) {
@@ -214,8 +224,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
                 let expr = self.emit_value(expr);
                 self.emit_branch(expr, true_block, false_block);
-                self.builder.seal_block(true_block);
-                self.builder.seal_block(false_block);
+                self.seal_block(true_block);
+                self.seal_block(false_block);
 
                 self.current_block = true_block;
                 self.emit_statement(true_branch);
@@ -227,7 +237,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                     self.emit_jump(merge_block);
                 }
 
-                self.builder.seal_block(merge_block);
+                self.seal_block(merge_block);
 
                 self.current_block = merge_block;
             }
@@ -239,25 +249,25 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
                 let iter = self.builder.emit_local();
                 let count = self.emit_value(expr);
-                self.builder.write_local(self.current_block, iter, count);
+                self.write_local(iter, count);
                 self.emit_jump(cond_block);
 
                 self.current_block = cond_block;
-                let count = self.builder.read_local(self.current_block, iter);
+                let count = self.read_local(iter);
                 let one = self.emit_real(1.0);
                 let op = ssa::Binary::Subtract;
                 let next = self.emit_instruction(ssa::Inst::Binary { op, args: [count, one] });
-                self.builder.write_local(self.current_block, iter, next);
+                self.write_local(iter, next);
                 self.emit_branch(count, body_block, exit_block);
-                self.builder.seal_block(body_block);
+                self.seal_block(body_block);
 
                 self.current_block = body_block;
                 self.with_loop(cond_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
                 self.emit_jump(cond_block);
-                self.builder.seal_block(cond_block);
-                self.builder.seal_block(exit_block);
+                self.seal_block(cond_block);
+                self.seal_block(exit_block);
 
                 self.current_block = exit_block;
             }
@@ -272,15 +282,15 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.current_block = cond_block;
                 let expr = self.emit_value(expr);
                 self.emit_branch(expr, body_block, exit_block);
-                self.builder.seal_block(body_block);
+                self.seal_block(body_block);
 
                 self.current_block = body_block;
                 self.with_loop(cond_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
                 self.emit_jump(cond_block);
-                self.builder.seal_block(cond_block);
-                self.builder.seal_block(exit_block);
+                self.seal_block(cond_block);
+                self.seal_block(exit_block);
 
                 self.current_block = exit_block;
             }
@@ -297,13 +307,13 @@ impl<'p, 'e> Codegen<'p, 'e> {
                     self_.emit_statement(body);
                 });
                 self.emit_jump(cond_block);
-                self.builder.seal_block(cond_block);
+                self.seal_block(cond_block);
 
                 self.current_block = cond_block;
                 let expr = self.emit_value(expr);
                 self.emit_branch(expr, exit_block, body_block);
-                self.builder.seal_block(body_block);
-                self.builder.seal_block(exit_block);
+                self.seal_block(body_block);
+                self.seal_block(exit_block);
 
                 self.current_block = exit_block;
             }
@@ -320,20 +330,20 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.current_block = cond_block;
                 let expr = self.emit_value(expr);
                 self.emit_branch(expr, body_block, exit_block);
-                self.builder.seal_block(body_block);
+                self.seal_block(body_block);
 
                 self.current_block = body_block;
                 self.with_loop(next_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
                 self.emit_jump(next_block);
-                self.builder.seal_block(next_block);
-                self.builder.seal_block(exit_block);
+                self.seal_block(next_block);
+                self.seal_block(exit_block);
 
                 self.current_block = next_block;
                 self.emit_statement(next);
                 self.emit_jump(cond_block);
-                self.builder.seal_block(cond_block);
+                self.seal_block(cond_block);
 
                 self.current_block = exit_block;
             }
@@ -345,7 +355,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
                 let expr = self.emit_value(expr);
                 let With { cond_block, body_block, exit_block, entity } = self.emit_with(expr);
-                self.builder.seal_block(body_block);
+                self.seal_block(body_block);
 
                 self.current_block = body_block;
                 self.emit_instruction(ssa::Inst::StoreScope { scope: SELF, arg: entity });
@@ -353,8 +363,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
                     self_.emit_statement(body);
                 });
                 self.emit_jump(cond_block);
-                self.builder.seal_block(cond_block);
-                self.builder.seal_block(exit_block);
+                self.seal_block(cond_block);
+                self.seal_block(exit_block);
 
                 self.current_block = exit_block;
                 self.emit_instruction(ssa::Inst::StoreScope { scope: SELF, arg: self_value });
@@ -366,7 +376,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 let dead_block = self.make_block();
                 let exit_block = self.make_block();
 
-                self.builder.seal_block(dead_block);
+                self.seal_block(dead_block);
 
                 let expr = self.emit_value(expr);
 
@@ -382,10 +392,10 @@ impl<'p, 'e> Codegen<'p, 'e> {
                     self_.current_expr = None;
                     self_.emit_jump(default_block);
                     if let Some(default_block) = self_.current_default {
-                        self_.builder.seal_block(default_block);
+                        self_.builder.seal_block(&mut self_.function, default_block);
                     }
                 });
-                self.builder.seal_block(exit_block);
+                self.seal_block(exit_block);
 
                 self.current_block = exit_block;
             }
@@ -403,8 +413,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 let op = ssa::Binary::Eq;
                 let expr = self.emit_instruction(ssa::Inst::Binary { op, args: [switch, expr] });
                 self.emit_branch(expr, case_block, expr_block);
-                self.builder.seal_block(case_block);
-                self.builder.seal_block(expr_block);
+                self.seal_block(case_block);
+                self.seal_block(expr_block);
 
                 self.current_block = case_block;
             }
@@ -424,35 +434,42 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
             ast::Stmt::Jump(ast::Jump::Break) if self.current_exit.is_some() => {
                 let exit_block = self.current_exit.unwrap();
+                let dead_block = self.make_block();
 
                 self.emit_jump(exit_block);
-                self.current_block = self.make_block();
-                self.builder.seal_block(self.current_block);
+                self.current_block = dead_block;
+                self.seal_block(dead_block);
             }
 
             ast::Stmt::Jump(ast::Jump::Continue) if self.current_next.is_some() => {
                 let next_block = self.current_next.unwrap();
+                let dead_block = self.make_block();
 
                 self.emit_jump(next_block);
-                self.current_block = self.make_block();
-                self.builder.seal_block(self.current_block);
+                self.current_block = dead_block;
+                self.seal_block(dead_block);
             }
 
             // exit and break/continue outside loops return 0
             ast::Stmt::Jump(_) => {
-                self.emit_jump(ssa::EXIT);
+                let dead_block = self.make_block();
 
-                self.current_block = self.make_block();
-                self.builder.seal_block(self.current_block);
+                self.emit_jump(ssa::EXIT);
+                self.current_block = dead_block;
+                self.seal_block(dead_block);
             }
 
             ast::Stmt::Return(box ref expr) => {
+                let dead_block = self.make_block();
+
+                // TODO: move this back inline with NLL
+                let local = self.return_value;
                 let expr = self.emit_value(expr);
-                self.builder.write_local(self.current_block, self.return_value, expr);
+                self.write_local(local, expr);
                 self.emit_jump(ssa::EXIT);
 
-                self.current_block = self.make_block();
-                self.builder.seal_block(self.current_block);
+                self.current_block = dead_block;
+                self.seal_block(dead_block);
             }
 
             ast::Stmt::Error(_) => {}
@@ -511,7 +528,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                     for argument in self.arguments..argument + 1 {
                         let symbol = Symbol::from_argument(argument);
 
-                        let parameter = self.builder.function.emit_parameter(ssa::ENTRY);
+                        let parameter = self.function.emit_parameter(ssa::ENTRY);
 
                         let local = self.emit_local(Some(parameter));
                         self.locals.insert(symbol, local);
@@ -596,10 +613,10 @@ impl<'p, 'e> Codegen<'p, 'e> {
             Path::Local(symbol) => {
                 let Local { flag, local } = self.locals[&symbol];
 
-                let flag = self.builder.read_local(self.current_block, flag);
+                let flag = self.read_local(flag);
                 self.emit_instruction(ssa::Inst::Read { symbol, arg: flag });
 
-                self.builder.read_local(self.current_block, local)
+                self.read_local(local)
             }
 
             Path::Field(entity, field) => {
@@ -608,9 +625,9 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
             Path::Scope(scope, field) => {
                 let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope);
-                self.builder.seal_block(cond_block);
-                self.builder.seal_block(body_block);
-                self.builder.seal_block(exit_block);
+                self.seal_block(cond_block);
+                self.seal_block(body_block);
+                self.seal_block(exit_block);
 
                 self.current_block = exit_block;
                 self.emit_instruction(ssa::Inst::ScopeError { arg: scope });
@@ -654,13 +671,13 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 let Local { flag, local } = self.locals[&symbol];
 
                 let one = self.emit_real(1.0);
-                self.builder.write_local(self.current_block, flag, one);
+                self.write_local(flag, one);
 
                 // TODO: this only happens pre-gms
-                let array = self.builder.read_local(self.current_block, local);
+                let array = self.read_local(local);
                 let value = self.emit_instruction(ssa::Inst::Write { args: [value, array] });
 
-                self.builder.write_local(self.current_block, local, value);
+                self.write_local(local, value);
             }
 
             Place { path: Path::Field(entity, field), index: None } => {
@@ -674,8 +691,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
             Place { path: Path::Scope(scope, field), index: None } => {
                 // TODO: gms errors on empty iteration
                 let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope);
-                self.builder.seal_block(body_block);
-                self.builder.seal_block(exit_block);
+                self.seal_block(body_block);
+                self.seal_block(exit_block);
                 self.current_block = body_block;
 
                 // TODO: this only happens pre-gms
@@ -685,7 +702,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.emit_instruction(ssa::Inst::StoreField { args: [value, entity], field });
 
                 self.emit_jump(cond_block);
-                self.builder.seal_block(cond_block);
+                self.seal_block(cond_block);
                 self.current_block = exit_block;
             }
 
@@ -693,14 +710,14 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 let Local { flag, local } = self.locals[&symbol];
 
                 let one = self.emit_real(1.0);
-                self.builder.write_local(self.current_block, flag, one);
+                self.write_local(flag, one);
 
-                let array = self.builder.read_local(self.current_block, local);
+                let array = self.read_local(local);
 
                 // TODO: this only happens pre-gms; gms does need to handle undef
                 let op = ssa::Unary::ToArray;
                 let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
-                self.builder.write_local(self.current_block, local, array);
+                self.write_local(local, array);
 
                 let op = ssa::Binary::StoreRow;
                 let row = self.emit_instruction(ssa::Inst::Binary { op, args: [array, i] });
@@ -723,8 +740,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
             Place { path: Path::Scope(scope, field), index: Some([i, j]) } => {
                 // TODO: gms errors on empty iteration
                 let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope);
-                self.builder.seal_block(body_block);
-                self.builder.seal_block(exit_block);
+                self.seal_block(body_block);
+                self.seal_block(exit_block);
                 self.current_block = body_block;
 
                 let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { entity, field });
@@ -739,7 +756,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.emit_instruction(ssa::Inst::StoreIndex { args: [value, row, j] });
 
                 self.emit_jump(cond_block);
-                self.builder.seal_block(cond_block);
+                self.seal_block(cond_block);
                 self.current_block = exit_block;
             }
         }
@@ -756,119 +773,27 @@ impl<'p, 'e> Codegen<'p, 'e> {
         let with = self.emit_instruction(ssa::Inst::With { arg: scope });
         let ptr = self.emit_instruction(ssa::Inst::Project { arg: with, index: 0 });
         let end = self.emit_instruction(ssa::Inst::Project { arg: with, index: 1 });
-        self.builder.write_local(self.current_block, iter, ptr);
+        self.write_local(iter, ptr);
         self.emit_jump(cond_block);
 
         self.current_block = cond_block;
-        let ptr = self.builder.read_local(self.current_block, iter);
+        let ptr = self.read_local(iter);
         let op = ssa::Binary::NePointer;
         let expr = self.emit_instruction(ssa::Inst::Binary { op, args: [ptr, end] });
         self.emit_branch(expr, scan_block, exit_block);
-        self.builder.seal_block(scan_block);
+        self.seal_block(scan_block);
 
         self.current_block = scan_block;
         let op = ssa::Unary::LoadPointer;
         let entity = self.emit_instruction(ssa::Inst::Unary { op, arg: ptr });
         let op = ssa::Unary::NextPointer;
         let ptr = self.emit_instruction(ssa::Inst::Unary { op, arg: ptr });
-        self.builder.write_local(self.current_block, iter, ptr);
+        self.write_local(iter, ptr);
         let op = ssa::Unary::ExistsEntity;
         let exists = self.emit_instruction(ssa::Inst::Unary { op, arg: entity });
         self.emit_branch(exists, body_block, cond_block);
 
         With { cond_block, body_block, exit_block, entity }
-    }
-
-    fn emit_jump(&mut self, target: ssa::Label) {
-        self.emit_instruction(ssa::Inst::Jump { target, args: vec![] });
-
-        self.builder.insert_edge(self.current_block, target);
-    }
-
-    fn emit_branch(&mut self, expr: ssa::Value, true_block: ssa::Label, false_block: ssa::Label) {
-        self.emit_instruction(ssa::Inst::Branch {
-            targets: [true_block, false_block],
-            arg_lens: [0, 0],
-            args: vec![expr],
-        });
-
-        self.builder.insert_edge(self.current_block, true_block);
-        self.builder.insert_edge(self.current_block, false_block);
-    }
-
-    fn emit_call(&mut self, call: &ast::Call) -> ssa::Value {
-        let ast::Call((symbol, symbol_span), box ref args) = *call;
-
-        let args: Vec<_> = args.iter()
-            .map(|argument| self.emit_value(argument))
-            .collect();
-
-        // TODO: remove this from the frontend and SSA
-        //  - generate param/ret defs during regalloc?
-        //  - unconditionally precolor argument values and rely on live range splitting?
-        let parameters: Vec<_> = (0..cmp::max(1, args.len()))
-            .map(|_| self.builder.function.values.push(ssa::Inst::Parameter))
-            .collect();
-
-        let prototype = self.prototypes.get(&symbol)
-            .map(|&prototype| prototype)
-            .unwrap_or_else(|| {
-                self.errors.error(symbol_span, "function does not exist");
-                ssa::Prototype::Script
-            });
-
-        self.emit_instruction(ssa::Inst::Call { symbol, prototype, args, parameters })
-    }
-
-    fn emit_real(&mut self, real: f64) -> ssa::Value {
-        let value = ssa::Constant::Real(real);
-        let instruction = ssa::Inst::Immediate { value };
-        self.emit_instruction(instruction)
-    }
-
-    fn emit_string(&mut self, string: Symbol) -> ssa::Value {
-        let value = ssa::Constant::String(string);
-        let instruction = ssa::Inst::Immediate { value };
-        self.emit_instruction(instruction)
-    }
-
-    fn emit_instruction(&mut self, instruction: ssa::Inst) -> ssa::Value {
-        self.builder.function.emit_instruction(self.current_block, instruction)
-    }
-
-    fn emit_initializer(&mut self, instruction: ssa::Inst) -> ssa::Value {
-        let function = &mut self.builder.function;
-
-        let value = function.values.push(instruction);
-        function.blocks[ssa::ENTRY].instructions.insert(self.initializers as usize, value);
-        self.initializers += 1;
-
-        value
-    }
-
-    /// Emit a GML-level local.
-    ///
-    /// Because `var` declarations are not control-flow dependent, set default values in the
-    /// function entry block, since that is guaranteed to dominate all uses of the local.
-    fn emit_local(&mut self, default: Option<ssa::Value>) -> Local {
-        let flag = self.builder.emit_local();
-        let local = self.builder.emit_local();
-
-        let value = ssa::Constant::Real(if default.is_some() { 1.0 } else { 0.0 });
-        let initialized = self.emit_initializer(ssa::Inst::Immediate { value });
-        self.builder.write_local(ssa::ENTRY, flag, initialized);
-
-        let default = default.unwrap_or_else(|| {
-            let value = ssa::Constant::Real(0.0);
-            self.emit_initializer(ssa::Inst::Immediate { value })
-        });
-        self.builder.write_local(ssa::ENTRY, local, default);
-
-        Local { flag, local }
-    }
-
-    fn make_block(&mut self) -> ssa::Label {
-        self.builder.function.make_block()
     }
 
     fn with_loop<F>(&mut self, next: ssa::Label, exit: ssa::Label, f: F) where
@@ -898,6 +823,111 @@ impl<'p, 'e> Codegen<'p, 'e> {
         self.current_expr = old_expr;
         self.current_default = old_default;
         self.current_exit = old_exit;
+    }
+
+    // SSA builder utilities:
+
+    fn make_block(&mut self) -> ssa::Label {
+        self.function.make_block()
+    }
+
+    fn seal_block(&mut self, block: ssa::Label) {
+        self.builder.seal_block(&mut self.function, block);
+    }
+
+    /// Emit a GML-level local.
+    ///
+    /// Because `var` declarations are not control-flow dependent, set default values in the
+    /// function entry block, since that is guaranteed to dominate all uses of the local.
+    fn emit_local(&mut self, default: Option<ssa::Value>) -> Local {
+        let flag = self.builder.emit_local();
+        let local = self.builder.emit_local();
+
+        let value = ssa::Constant::Real(if default.is_some() { 1.0 } else { 0.0 });
+        let initialized = self.emit_initializer(ssa::Inst::Immediate { value });
+        self.builder.write_local(ssa::ENTRY, flag, initialized);
+
+        let default = default.unwrap_or_else(|| {
+            let value = ssa::Constant::Real(0.0);
+            self.emit_initializer(ssa::Inst::Immediate { value })
+        });
+        self.builder.write_local(ssa::ENTRY, local, default);
+
+        Local { flag, local }
+    }
+
+    fn emit_initializer(&mut self, instruction: ssa::Inst) -> ssa::Value {
+        let value = self.function.values.push(instruction);
+        self.function.blocks[ssa::ENTRY].instructions.insert(self.initializers, value);
+        self.initializers += 1;
+        value
+    }
+
+    fn read_local(&mut self, local: front::ssa::Local) -> ssa::Value {
+        self.builder.read_local(&mut self.function, self.current_block, local)
+    }
+
+    fn write_local(&mut self, local: front::ssa::Local, value: ssa::Value) {
+        self.builder.write_local(self.current_block, local, value);
+    }
+
+    // Instruction format utilities:
+
+    fn emit_real(&mut self, real: f64) -> ssa::Value {
+        let value = ssa::Constant::Real(real);
+        let instruction = ssa::Inst::Immediate { value };
+        self.emit_instruction(instruction)
+    }
+
+    fn emit_string(&mut self, string: Symbol) -> ssa::Value {
+        let value = ssa::Constant::String(string);
+        let instruction = ssa::Inst::Immediate { value };
+        self.emit_instruction(instruction)
+    }
+
+    fn emit_instruction(&mut self, instruction: ssa::Inst) -> ssa::Value {
+        self.function.emit_instruction(self.current_block, instruction)
+    }
+
+    fn emit_call(&mut self, call: &ast::Call) -> ssa::Value {
+        let ast::Call((symbol, symbol_span), box ref args) = *call;
+
+        let args: Vec<_> = args.iter()
+            .map(|argument| self.emit_value(argument))
+            .collect();
+
+        // TODO: remove this from the frontend and SSA
+        //  - generate param/ret defs during regalloc?
+        //  - unconditionally precolor argument values and rely on live range splitting?
+        let parameters: Vec<_> = (0..cmp::max(1, args.len()))
+            .map(|_| self.function.values.push(ssa::Inst::Parameter))
+            .collect();
+
+        let prototype = self.prototypes.get(&symbol)
+            .map(|&prototype| prototype)
+            .unwrap_or_else(|| {
+                self.errors.error(symbol_span, "function does not exist");
+                ssa::Prototype::Script
+            });
+
+        self.emit_instruction(ssa::Inst::Call { symbol, prototype, args, parameters})
+    }
+
+    fn emit_jump(&mut self, target: ssa::Label) {
+        self.emit_instruction(ssa::Inst::Jump { target, args: vec![] });
+
+        self.builder.insert_edge(self.current_block, target);
+    }
+
+    fn emit_branch(&mut self, expr: ssa::Value, true_block: ssa::Label, false_block: ssa::Label) {
+        self.emit_instruction(ssa::Inst::Branch {
+            targets: [true_block, false_block],
+            arg_lens: [0, 0],
+            args: vec![expr],
+        });
+
+        self.builder.insert_edge(self.current_block, true_block);
+        self.builder.insert_edge(self.current_block, false_block);
     }
 }
 
