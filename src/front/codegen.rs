@@ -10,7 +10,8 @@ pub struct Codegen<'p, 'e> {
     builder: front::ssa::Builder,
     errors: &'e ErrorHandler,
 
-    prototypes: &'p HashMap<Symbol, ssa::Prototype>,
+    // TODO: replace this with an actual prototype descriptor
+    prototypes: &'p HashMap<Symbol, ssa::Opcode>,
 
     /// GML `var` declarations are static and independent of control flow. All references to a
     /// `var`-declared name after its declaration in the source text are treated as local.
@@ -89,7 +90,7 @@ const GLOBAL: f64 = -5.0;
 const LOCAL: f64 = -7.0;
 
 impl<'p, 'e> Codegen<'p, 'e> {
-    pub fn new(prototypes: &'p HashMap<Symbol, ssa::Prototype>, errors: &'e ErrorHandler) -> Self {
+    pub fn new(prototypes: &'p HashMap<Symbol, ssa::Opcode>, errors: &'e ErrorHandler) -> Self {
         let function = ssa::Function::new();
 
         let mut builder = front::ssa::Builder::new();
@@ -125,8 +126,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
         // TODO: move this back inline with NLL
         let local = self.return_value;
-        let value = ssa::Constant::Real(0.0);
-        let zero = self.emit_initializer(ssa::Inst::Immediate { value });
+        let op = ssa::Opcode::Constant;
+        let zero = self.emit_initializer(ssa::Instruction::UnaryReal { op, real: 0.0 });
         self.write_local(local, zero);
 
         self.emit_statement(program);
@@ -138,17 +139,17 @@ impl<'p, 'e> Codegen<'p, 'e> {
         let locals = mem::replace(&mut self.locals, HashMap::default());
         for (_, Local { local, .. }) in locals {
             let value = self.read_local(local);
-            self.emit_instruction(ssa::Inst::Release { arg: value });
+            self.emit_unary(ssa::Opcode::Release, value);
         }
         // TODO: move this back inline with NLL
         let local = self.return_value;
         let return_value = self.read_local(local);
-        self.emit_instruction(ssa::Inst::Return { arg: return_value });
+        self.emit_unary(ssa::Opcode::Return, return_value);
 
         front::ssa::Builder::finish(&mut self.function);
         self.function.return_def = match self.function.blocks[ssa::ENTRY].parameters.get(0) {
             Some(&def) => def,
-            None => self.function.values.push(ssa::Inst::Parameter),
+            None => self.function.values.push(ssa::Instruction::Parameter),
         };
 
         self.function
@@ -168,8 +169,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
                     let left = self.emit_load(place);
                     let right = self.emit_value(value);
 
-                    let op = ast::Binary::Op(op).into();
-                    self.emit_instruction(ssa::Inst::Binary { op, args: [left, right] })
+                    let op = ast::Binary::Op(op);
+                    self.emit_binary(ssa::Opcode::from(op), [left, right])
                 } else {
                     self.emit_value(value)
                 };
@@ -201,7 +202,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
                     ast::Declare::Global => {
                         for symbol in names {
-                            self.emit_instruction(ssa::Inst::DeclareGlobal { symbol });
+                            self.emit_unary_symbol(ssa::Opcode::DeclareGlobal, symbol);
                         }
                     }
                 };
@@ -255,8 +256,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.current_block = cond_block;
                 let count = self.read_local(iter);
                 let one = self.emit_real(1.0);
-                let op = ssa::Binary::Subtract;
-                let next = self.emit_instruction(ssa::Inst::Binary { op, args: [count, one] });
+                let next = self.emit_binary(ssa::Opcode::Subtract, [count, one]);
                 self.write_local(iter, next);
                 self.emit_branch(count, body_block, exit_block);
                 self.seal_block(body_block);
@@ -349,16 +349,16 @@ impl<'p, 'e> Codegen<'p, 'e> {
             }
 
             ast::Stmt::With(box ref expr, box ref body) => {
-                let self_value = self.emit_instruction(ssa::Inst::LoadScope { scope: SELF });
-                let other_value = self.emit_instruction(ssa::Inst::LoadScope { scope: OTHER });
-                self.emit_instruction(ssa::Inst::StoreScope { scope: OTHER, arg: self_value });
+                let self_value = self.emit_unary_real(ssa::Opcode::LoadScope, SELF);
+                let other_value = self.emit_unary_real(ssa::Opcode::LoadScope, OTHER);
+                self.emit_binary_real(ssa::Opcode::StoreScope, self_value, OTHER);
 
                 let expr = self.emit_value(expr);
                 let With { cond_block, body_block, exit_block, entity } = self.emit_with(expr);
                 self.seal_block(body_block);
 
                 self.current_block = body_block;
-                self.emit_instruction(ssa::Inst::StoreScope { scope: SELF, arg: entity });
+                self.emit_binary_real(ssa::Opcode::StoreScope, entity, SELF);
                 self.with_loop(cond_block, exit_block, |self_| {
                     self_.emit_statement(body);
                 });
@@ -367,8 +367,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.seal_block(exit_block);
 
                 self.current_block = exit_block;
-                self.emit_instruction(ssa::Inst::StoreScope { scope: SELF, arg: self_value });
-                self.emit_instruction(ssa::Inst::StoreScope { scope: OTHER, arg: other_value });
+                self.emit_binary_real(ssa::Opcode::StoreScope, self_value, SELF);
+                self.emit_binary_real(ssa::Opcode::StoreScope, other_value, OTHER);
             }
 
             ast::Stmt::Switch(box ref expr, box ref body) => {
@@ -410,8 +410,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.current_expr = Some(expr_block);
                 let switch = self.current_switch.expect("corrupt switch state");
                 let expr = self.emit_value(expr);
-                let op = ssa::Binary::Eq;
-                let expr = self.emit_instruction(ssa::Inst::Binary { op, args: [switch, expr] });
+                let expr = self.emit_binary(ssa::Opcode::Eq, [switch, expr]);
                 self.emit_branch(expr, case_block, expr_block);
                 self.seal_block(case_block);
                 self.seal_block(expr_block);
@@ -494,20 +493,19 @@ impl<'p, 'e> Codegen<'p, 'e> {
             ast::Expr::Unary(ast::Unary::Positive, box ref expr) => self.emit_value(expr),
             ast::Expr::Unary(op, box ref expr) => {
                 let op = match op {
-                    ast::Unary::Negate => ssa::Unary::Negate,
-                    ast::Unary::Invert => ssa::Unary::Invert,
-                    ast::Unary::BitInvert => ssa::Unary::BitInvert,
+                    ast::Unary::Negate => ssa::Opcode::Negate,
+                    ast::Unary::Invert => ssa::Opcode::Invert,
+                    ast::Unary::BitInvert => ssa::Opcode::BitInvert,
                     _ => unreachable!(),
                 };
                 let expr = self.emit_value(expr);
-                self.emit_instruction(ssa::Inst::Unary { op, arg: expr })
+                self.emit_unary(op, expr)
             }
 
             ast::Expr::Binary(op, box ref left, box ref right) => {
                 let left = self.emit_value(left);
                 let right = self.emit_value(right);
-                let op = op.into();
-                self.emit_instruction(ssa::Inst::Binary { op, args: [left, right] })
+                self.emit_binary(ssa::Opcode::from(op), [left, right])
             }
 
             ast::Expr::Call(ref call) => self.emit_call(call),
@@ -539,7 +537,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 if self.locals.contains_key(&symbol) {
                     Ok(Place { path: Path::Local(symbol), index: None })
                 } else {
-                    let entity = self.emit_instruction(ssa::Inst::Lookup { symbol });
+                    let entity = self.emit_unary_symbol(ssa::Opcode::Lookup, symbol);
                     Ok(Place { path: Path::Field(entity, symbol), index: None })
                 }
             }
@@ -549,21 +547,21 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 box (ast::Expr::Value(ast::Value::Ident(keyword::Self_)), _expr_span),
                 (field, _field_span)
             ) => {
-                let entity = self.emit_instruction(ssa::Inst::LoadScope { scope: SELF });
+                let entity = self.emit_unary_real(ssa::Opcode::LoadScope, SELF);
                 Ok(Place { path: Path::Field(entity, field), index: None })
             }
             ast::Expr::Field(
                 box (ast::Expr::Value(ast::Value::Ident(keyword::Other)), _expr_span),
                 (field, _field_span)
             ) => {
-                let entity = self.emit_instruction(ssa::Inst::LoadScope { scope: OTHER });
+                let entity = self.emit_unary_real(ssa::Opcode::LoadScope, OTHER);
                 Ok(Place { path: Path::Field(entity, field), index: None })
             }
             ast::Expr::Field(
                 box (ast::Expr::Value(ast::Value::Ident(keyword::Global)), _expr_span),
                 (field, _field_span)
             ) => {
-                let entity = self.emit_instruction(ssa::Inst::LoadScope { scope: GLOBAL });
+                let entity = self.emit_unary_real(ssa::Opcode::LoadScope, GLOBAL);
                 Ok(Place { path: Path::Field(entity, field), index: None })
             }
 
@@ -614,13 +612,13 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 let Local { flag, local } = self.locals[&symbol];
 
                 let flag = self.read_local(flag);
-                self.emit_instruction(ssa::Inst::Read { symbol, arg: flag });
+                self.emit_binary_symbol(ssa::Opcode::Read, flag, symbol);
 
                 self.read_local(local)
             }
 
             Path::Field(entity, field) => {
-                self.emit_instruction(ssa::Inst::LoadField { entity, field })
+                self.emit_binary_symbol(ssa::Opcode::LoadField, entity, field)
             }
 
             Path::Scope(scope, field) => {
@@ -630,10 +628,10 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.seal_block(exit_block);
 
                 self.current_block = exit_block;
-                self.emit_instruction(ssa::Inst::ScopeError { arg: scope });
+                self.emit_unary(ssa::Opcode::ScopeError, scope);
 
                 self.current_block = body_block;
-                self.emit_instruction(ssa::Inst::LoadField { entity, field })
+                self.emit_binary_symbol(ssa::Opcode::LoadField, entity, field)
             }
         };
 
@@ -642,19 +640,15 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
             Some([i, j]) => {
                 // TODO: this only happens pre-gms
-                let op = ssa::Unary::ToArray;
-                let array = self.emit_instruction(ssa::Inst::Unary { op, arg: value });
+                let array = self.emit_unary(ssa::Opcode::ToArray, value);
 
-                let op = ssa::Binary::LoadRow;
-                let row = self.emit_instruction(ssa::Inst::Binary { op, args: [array, i] });
-                let op = ssa::Binary::LoadIndex;
-                self.emit_instruction(ssa::Inst::Binary { op, args: [row, j] })
+                let row = self.emit_binary(ssa::Opcode::LoadRow, [array, i]);
+                self.emit_binary(ssa::Opcode::LoadIndex, [row, j])
             }
         };
 
         // TODO: this only happens pre-gms
-        let op = ssa::Unary::ToScalar;
-        self.emit_instruction(ssa::Inst::Unary { op, arg: value })
+        self.emit_unary(ssa::Opcode::ToScalar, value)
     }
 
     /// Language-level variable store.
@@ -675,17 +669,17 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
                 // TODO: this only happens pre-gms
                 let array = self.read_local(local);
-                let value = self.emit_instruction(ssa::Inst::Write { args: [value, array] });
+                let value = self.emit_binary(ssa::Opcode::Write, [value, array]);
 
                 self.write_local(local, value);
             }
 
             Place { path: Path::Field(entity, field), index: None } => {
                 // TODO: this only happens pre-gms
-                let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { entity, field });
-                let value = self.emit_instruction(ssa::Inst::Write { args: [value, array] });
+                let array = self.emit_binary_symbol(ssa::Opcode::LoadFieldDefault, entity, field);
+                let value = self.emit_binary(ssa::Opcode::Write, [value, array]);
 
-                self.emit_instruction(ssa::Inst::StoreField { args: [value, entity], field });
+                self.emit_ternary_symbol(ssa::Opcode::StoreField, [value, entity], field);
             }
 
             Place { path: Path::Scope(scope, field), index: None } => {
@@ -696,10 +690,10 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.current_block = body_block;
 
                 // TODO: this only happens pre-gms
-                let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { entity, field });
-                let value = self.emit_instruction(ssa::Inst::Write { args: [value, array] });
+                let array = self.emit_binary_symbol(ssa::Opcode::LoadFieldDefault, entity, field);
+                let value = self.emit_binary(ssa::Opcode::Write, [value, array]);
 
-                self.emit_instruction(ssa::Inst::StoreField { args: [value, entity], field });
+                self.emit_ternary_symbol(ssa::Opcode::StoreField, [value, entity], field);
 
                 self.emit_jump(cond_block);
                 self.seal_block(cond_block);
@@ -715,26 +709,22 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 let array = self.read_local(local);
 
                 // TODO: this only happens pre-gms; gms does need to handle undef
-                let op = ssa::Unary::ToArray;
-                let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
+                let array = self.emit_unary(ssa::Opcode::ToArray, array);
                 self.write_local(local, array);
 
-                let op = ssa::Binary::StoreRow;
-                let row = self.emit_instruction(ssa::Inst::Binary { op, args: [array, i] });
-                self.emit_instruction(ssa::Inst::StoreIndex { args: [value, row, j] });
+                let row = self.emit_binary(ssa::Opcode::StoreRow, [array, i]);
+                self.emit_ternary(ssa::Opcode::StoreIndex, [value, row, j]);
             }
 
             Place { path: Path::Field(entity, field), index: Some([i, j]) } => {
-                let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { entity, field });
+                let array = self.emit_binary_symbol(ssa::Opcode::LoadFieldDefault, entity, field);
 
                 // TODO: this only happens pre-gms; gms does need to handle undef
-                let op = ssa::Unary::ToArray;
-                let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
-                self.emit_instruction(ssa::Inst::StoreField { args: [array, entity], field });
+                let array = self.emit_unary(ssa::Opcode::ToArray, array);
+                self.emit_ternary_symbol(ssa::Opcode::StoreField, [array, entity], field);
 
-                let op = ssa::Binary::StoreRow;
-                let row = self.emit_instruction(ssa::Inst::Binary { op, args: [array, i] });
-                self.emit_instruction(ssa::Inst::StoreIndex { args: [value, row, j] });
+                let row = self.emit_binary(ssa::Opcode::StoreRow, [array, i]);
+                self.emit_ternary(ssa::Opcode::StoreIndex, [value, row, j]);
             }
 
             Place { path: Path::Scope(scope, field), index: Some([i, j]) } => {
@@ -744,16 +734,14 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.seal_block(exit_block);
                 self.current_block = body_block;
 
-                let array = self.emit_instruction(ssa::Inst::LoadFieldDefault { entity, field });
+                let array = self.emit_binary_symbol(ssa::Opcode::LoadFieldDefault, entity, field);
 
                 // TODO: this only happens pre-gms; gms does need to handle undef
-                let op = ssa::Unary::ToArray;
-                let array = self.emit_instruction(ssa::Inst::Unary { op, arg: array });
-                self.emit_instruction(ssa::Inst::StoreField { args: [array, entity], field });
+                let array = self.emit_unary(ssa::Opcode::ToArray, array);
+                self.emit_ternary_symbol(ssa::Opcode::StoreField, [value, entity], field);
 
-                let op = ssa::Binary::StoreRow;
-                let row = self.emit_instruction(ssa::Inst::Binary { op, args: [array, i] });
-                self.emit_instruction(ssa::Inst::StoreIndex { args: [value, row, j] });
+                let row = self.emit_binary(ssa::Opcode::StoreRow, [array, i]);
+                self.emit_ternary(ssa::Opcode::StoreIndex, [value, row, j]);
 
                 self.emit_jump(cond_block);
                 self.seal_block(cond_block);
@@ -770,27 +758,23 @@ impl<'p, 'e> Codegen<'p, 'e> {
         let exit_block = self.make_block();
 
         let iter = self.builder.emit_local();
-        let with = self.emit_instruction(ssa::Inst::With { arg: scope });
-        let ptr = self.emit_instruction(ssa::Inst::Project { arg: with, index: 0 });
-        let end = self.emit_instruction(ssa::Inst::Project { arg: with, index: 1 });
+        let with = self.emit_unary(ssa::Opcode::With, scope);
+        let ptr = self.function.values.push(ssa::Instruction::Project { arg: with, index: 0 });
+        let end = self.function.values.push(ssa::Instruction::Project { arg: with, index: 1 });
         self.write_local(iter, ptr);
         self.emit_jump(cond_block);
 
         self.current_block = cond_block;
         let ptr = self.read_local(iter);
-        let op = ssa::Binary::NePointer;
-        let expr = self.emit_instruction(ssa::Inst::Binary { op, args: [ptr, end] });
+        let expr = self.emit_binary(ssa::Opcode::NePointer, [ptr, end]);
         self.emit_branch(expr, scan_block, exit_block);
         self.seal_block(scan_block);
 
         self.current_block = scan_block;
-        let op = ssa::Unary::LoadPointer;
-        let entity = self.emit_instruction(ssa::Inst::Unary { op, arg: ptr });
-        let op = ssa::Unary::NextPointer;
-        let ptr = self.emit_instruction(ssa::Inst::Unary { op, arg: ptr });
+        let entity = self.emit_unary(ssa::Opcode::LoadPointer, ptr);
+        let ptr = self.emit_unary(ssa::Opcode::NextPointer, ptr);
         self.write_local(iter, ptr);
-        let op = ssa::Unary::ExistsEntity;
-        let exists = self.emit_instruction(ssa::Inst::Unary { op, arg: entity });
+        let exists = self.emit_unary(ssa::Opcode::ExistsEntity, entity);
         self.emit_branch(exists, body_block, cond_block);
 
         With { cond_block, body_block, exit_block, entity }
@@ -843,20 +827,21 @@ impl<'p, 'e> Codegen<'p, 'e> {
         let flag = self.builder.emit_local();
         let local = self.builder.emit_local();
 
-        let value = ssa::Constant::Real(if default.is_some() { 1.0 } else { 0.0 });
-        let initialized = self.emit_initializer(ssa::Inst::Immediate { value });
+        let op = ssa::Opcode::Constant;
+        let real = if default.is_some() { 1.0 } else { 0.0 };
+        let initialized = self.emit_initializer(ssa::Instruction::UnaryReal { op, real });
         self.builder.write_local(ssa::ENTRY, flag, initialized);
 
         let default = default.unwrap_or_else(|| {
-            let value = ssa::Constant::Real(0.0);
-            self.emit_initializer(ssa::Inst::Immediate { value })
+            let op = ssa::Opcode::Constant;
+            self.emit_initializer(ssa::Instruction::UnaryReal { op, real: 0.0 })
         });
         self.builder.write_local(ssa::ENTRY, local, default);
 
         Local { flag, local }
     }
 
-    fn emit_initializer(&mut self, instruction: ssa::Inst) -> ssa::Value {
+    fn emit_initializer(&mut self, instruction: ssa::Instruction) -> ssa::Value {
         let value = self.function.values.push(instruction);
         self.function.blocks[ssa::ENTRY].instructions.insert(self.initializers, value);
         self.initializers += 1;
@@ -874,18 +859,50 @@ impl<'p, 'e> Codegen<'p, 'e> {
     // Instruction format utilities:
 
     fn emit_real(&mut self, real: f64) -> ssa::Value {
-        let value = ssa::Constant::Real(real);
-        let instruction = ssa::Inst::Immediate { value };
-        self.emit_instruction(instruction)
+        self.emit_unary_real(ssa::Opcode::Constant, real)
     }
 
     fn emit_string(&mut self, string: Symbol) -> ssa::Value {
-        let value = ssa::Constant::String(string);
-        let instruction = ssa::Inst::Immediate { value };
-        self.emit_instruction(instruction)
+        self.emit_unary_symbol(ssa::Opcode::Constant, string)
     }
 
-    fn emit_instruction(&mut self, instruction: ssa::Inst) -> ssa::Value {
+    fn emit_unary(&mut self, op: ssa::Opcode, arg: ssa::Value) -> ssa::Value {
+        let instruction = ssa::Instruction::Unary { op, arg };
+        self.function.emit_instruction(self.current_block, instruction)
+    }
+
+    fn emit_unary_real(&mut self, op: ssa::Opcode, real: f64) -> ssa::Value {
+        let instruction = ssa::Instruction::UnaryReal { op, real };
+        self.function.emit_instruction(self.current_block, instruction)
+    }
+
+    fn emit_unary_symbol(&mut self, op: ssa::Opcode, symbol: Symbol) -> ssa::Value {
+        let instruction = ssa::Instruction::UnarySymbol { op, symbol };
+        self.function.emit_instruction(self.current_block, instruction)
+    }
+
+    fn emit_binary(&mut self, op: ssa::Opcode, args: [ssa::Value; 2]) -> ssa::Value {
+        let instruction = ssa::Instruction::Binary { op, args };
+        self.function.emit_instruction(self.current_block, instruction)
+    }
+
+    fn emit_binary_real(&mut self, op: ssa::Opcode, arg: ssa::Value, real: f64) -> ssa::Value {
+        let instruction = ssa::Instruction::BinaryReal { op, arg, real };
+        self.function.emit_instruction(self.current_block, instruction)
+    }
+
+    fn emit_binary_symbol(&mut self, op: ssa::Opcode, arg: ssa::Value, symbol: Symbol) -> ssa::Value {
+        let instruction = ssa::Instruction::BinarySymbol { op, arg, symbol };
+        self.function.emit_instruction(self.current_block, instruction)
+    }
+
+    fn emit_ternary(&mut self, op: ssa::Opcode, args: [ssa::Value; 3]) -> ssa::Value {
+        let instruction = ssa::Instruction::Ternary { op, args };
+        self.function.emit_instruction(self.current_block, instruction)
+    }
+
+    fn emit_ternary_symbol(&mut self, op: ssa::Opcode, args: [ssa::Value; 2], symbol: Symbol) -> ssa::Value {
+        let instruction = ssa::Instruction::TernarySymbol { op, args, symbol };
         self.function.emit_instruction(self.current_block, instruction)
     }
 
@@ -896,67 +913,70 @@ impl<'p, 'e> Codegen<'p, 'e> {
             .map(|argument| self.emit_value(argument))
             .collect();
 
-        // TODO: remove this from the frontend and SSA
-        //  - generate param/ret defs during regalloc?
-        //  - unconditionally precolor argument values and rely on live range splitting?
+        // TODO: move this logic to live range splitting
         let parameters: Vec<_> = (0..cmp::max(1, args.len()))
-            .map(|_| self.function.values.push(ssa::Inst::Parameter))
+            .map(|_| self.function.values.push(ssa::Instruction::Parameter))
             .collect();
 
-        let prototype = self.prototypes.get(&symbol)
-            .map(|&prototype| prototype)
+        let op = self.prototypes.get(&symbol)
+            .map(|&op| op)
             .unwrap_or_else(|| {
                 self.errors.error(symbol_span, "function does not exist");
-                ssa::Prototype::Script
+                ssa::Opcode::Call
             });
-
-        self.emit_instruction(ssa::Inst::Call { symbol, prototype, args, parameters})
+        let instruction = ssa::Instruction::Call { op, symbol, args, parameters };
+        self.function.emit_instruction(self.current_block, instruction)
     }
 
     fn emit_jump(&mut self, target: ssa::Label) {
-        self.emit_instruction(ssa::Inst::Jump { target, args: vec![] });
+        let op = ssa::Opcode::Jump;
+        let instruction = ssa::Instruction::Jump { op, target, args: vec![] };
+        self.function.emit_instruction(self.current_block, instruction);
 
         self.builder.insert_edge(self.current_block, target);
     }
 
     fn emit_branch(&mut self, expr: ssa::Value, true_block: ssa::Label, false_block: ssa::Label) {
-        self.emit_instruction(ssa::Inst::Branch {
+        let op = ssa::Opcode::Branch;
+        let instruction = ssa::Instruction::Branch {
+            op,
             targets: [true_block, false_block],
             arg_lens: [0, 0],
             args: vec![expr],
-        });
+        };
+        self.function.emit_instruction(self.current_block, instruction);
 
         self.builder.insert_edge(self.current_block, true_block);
         self.builder.insert_edge(self.current_block, false_block);
     }
 }
 
-impl From<ast::Binary> for ssa::Binary {
-    fn from(op: ast::Binary) -> ssa::Binary {
+impl From<ast::Binary> for ssa::Opcode {
+    fn from(op: ast::Binary) -> ssa::Opcode {
         match op {
-            ast::Binary::Lt => ssa::Binary::Lt,
-            ast::Binary::Le => ssa::Binary::Le,
-            ast::Binary::Eq => ssa::Binary::Eq,
-            ast::Binary::Ne => ssa::Binary::Ne,
-            ast::Binary::Ge => ssa::Binary::Ge,
-            ast::Binary::Gt => ssa::Binary::Gt,
+            ast::Binary::Lt => ssa::Opcode::Lt,
+            ast::Binary::Le => ssa::Opcode::Le,
+            ast::Binary::Eq => ssa::Opcode::Eq,
+            ast::Binary::Ne => ssa::Opcode::Ne,
+            ast::Binary::Ge => ssa::Opcode::Ge,
+            ast::Binary::Gt => ssa::Opcode::Gt,
 
-            ast::Binary::Op(ast::Op::Add) => ssa::Binary::Add,
-            ast::Binary::Op(ast::Op::Subtract) => ssa::Binary::Subtract,
-            ast::Binary::Op(ast::Op::Multiply) => ssa::Binary::Multiply,
-            ast::Binary::Op(ast::Op::Divide) => ssa::Binary::Divide,
-            ast::Binary::Div => ssa::Binary::Div,
-            ast::Binary::Mod => ssa::Binary::Mod,
+            ast::Binary::Op(ast::Op::Add) => ssa::Opcode::Add,
+            ast::Binary::Op(ast::Op::Subtract) => ssa::Opcode::Subtract,
+            ast::Binary::Op(ast::Op::Multiply) => ssa::Opcode::Multiply,
+            ast::Binary::Op(ast::Op::Divide) => ssa::Opcode::Divide,
+            ast::Binary::Div => ssa::Opcode::Div,
+            ast::Binary::Mod => ssa::Opcode::Mod,
 
-            ast::Binary::And => ssa::Binary::And,
-            ast::Binary::Or => ssa::Binary::Or,
-            ast::Binary::Xor => ssa::Binary::Xor,
+            ast::Binary::And => ssa::Opcode::And,
+            ast::Binary::Or => ssa::Opcode::Or,
+            ast::Binary::Xor => ssa::Opcode::Xor,
 
-            ast::Binary::Op(ast::Op::BitAnd) => ssa::Binary::BitAnd,
-            ast::Binary::Op(ast::Op::BitOr) => ssa::Binary::BitOr,
-            ast::Binary::Op(ast::Op::BitXor) => ssa::Binary::BitXor,
-            ast::Binary::ShiftLeft => ssa::Binary::ShiftLeft,
-            ast::Binary::ShiftRight => ssa::Binary::ShiftRight,
+            ast::Binary::Op(ast::Op::BitAnd) => ssa::Opcode::BitAnd,
+            ast::Binary::Op(ast::Op::BitOr) => ssa::Opcode::BitOr,
+            ast::Binary::Op(ast::Op::BitXor) => ssa::Opcode::BitXor,
+            ast::Binary::ShiftLeft => ssa::Opcode::ShiftLeft,
+            ast::Binary::ShiftRight => ssa::Opcode::ShiftRight,
         }
     }
 }

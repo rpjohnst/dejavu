@@ -497,6 +497,8 @@ impl State {
                     };
                 }
 
+                // TODO: Replace these with `self`/`other` arguments and locals passed to `Lookup`.
+
                 (code::Op::LoadScope, t, scope, _) => {
                     let registers = &mut self.stack[reg_base..];
 
@@ -590,7 +592,7 @@ impl State {
                     registers[t].value = vm::Value::from(exists);
                 }
 
-                (op @ code::Op::Read, local, a, _) => {
+                (op @ code::Op::Read, a, local, _) => {
                     let registers = &mut self.stack[reg_base..];
 
                     let a = unsafe { registers[a].value };

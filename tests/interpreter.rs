@@ -363,10 +363,10 @@ enum Function {
 }
 
 fn build(functions: HashMap<Symbol, Function>) -> vm::Resources {
-    let prototypes: HashMap<Symbol, ssa::Prototype> = functions.iter()
+    let prototypes: HashMap<Symbol, ssa::Opcode> = functions.iter()
         .map(|(&name, resource)| match *resource {
-            Function::Script(_) => (name, ssa::Prototype::Script),
-            Function::Native(_) => (name, ssa::Prototype::Function),
+            Function::Script(_) => (name, ssa::Opcode::Call),
+            Function::Native(_) => (name, ssa::Opcode::CallNative),
         })
         .collect();
 
@@ -385,7 +385,7 @@ fn build(functions: HashMap<Symbol, Function>) -> vm::Resources {
     resources
 }
 
-fn compile(prototypes: &HashMap<Symbol, ssa::Prototype>, source: &str) -> code::Function {
+fn compile(prototypes: &HashMap<Symbol, ssa::Opcode>, source: &str) -> code::Function {
     let source = SourceFile {
         name: PathBuf::from("<test>"),
         source: String::from(source),

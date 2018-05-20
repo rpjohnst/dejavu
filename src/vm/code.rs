@@ -25,13 +25,9 @@ impl Function {
 /// Fields use this structure, stored in little-endian order:
 /// | op: 8 | dst: 8 | a: 8 | b: 8 |
 #[derive(Copy, Clone)]
-pub struct Inst(u32);
+pub struct Inst(pub(crate) u32);
 
 impl Inst {
-    pub fn encode(op: Op, dst: usize, a: usize, b: usize) -> Self {
-        Inst((op as usize | dst << 8 | a << 16 | b << 24) as u32)
-    }
-
     pub fn decode(&self) -> (Op, usize, usize, usize) {
         let Inst(bits) = *self;
         let op = unsafe { mem::transmute::<_, Op>((bits & 0xff) as u8) };

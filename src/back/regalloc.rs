@@ -41,7 +41,7 @@ impl Interference {
             for &value in program.blocks[block].instructions.iter().rev() {
                 // values defined by the instruction
                 let defs = program.defs(value);
-                vertices.extend(defs);
+                vertices.extend(defs.clone());
                 for def in defs {
                     live.remove(&def);
 

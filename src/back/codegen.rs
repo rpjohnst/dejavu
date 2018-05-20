@@ -1,4 +1,4 @@
-use std::{u32, slice};
+use std::{i8, u8, slice};
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
 
 use bit_vec::BitVec;
@@ -63,228 +63,106 @@ impl Codegen {
         self.block_offsets.insert(block, self.function.instructions.len());
 
         for &value in &program.blocks[block].instructions {
-            use back::ssa::Inst::*;
-            match program.values[value] {
-                // these should not be used as instructions
-                Alias(_) | Parameter => unreachable!("corrupt function"),
+            use back::ssa::Instruction::*;
 
-                Immediate { value: constant } => {
-                    let target = self.registers[value];
-                    let a = match constant {
-                        ssa::Constant::Real(real) => self.emit_real(real),
-                        ssa::Constant::String(string) => self.emit_string(string),
-                    };
+            // TODO: move this logic to live range splitting
+            if let Unary { op: ssa::Opcode::Return, arg } = program.values[value] {
+                self.emit_phis(slice::from_ref(&program.return_def), slice::from_ref(&arg));
 
-                    let inst = code::Inst::encode(code::Op::Imm, target, a, 0);
-                    self.function.instructions.push(inst);
-                },
+                let inst = inst(code::Op::Ret).encode();
+                self.function.instructions.push(inst);
 
-                Unary { op, arg: a } => {
-                    let op = code::Op::from(op);
-                    let target = self.registers[value];
-                    let a = self.registers[a];
-
-                    let inst = code::Inst::encode(op, target, a, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                Binary { op, args: [a, b] } => {
-                    let op = code::Op::from(op);
-                    let target = self.registers[value];
-                    let a = self.registers[a];
-                    let b = self.registers[b];
-
-                    let inst = code::Inst::encode(op, target, a, b);
-                    self.function.instructions.push(inst);
-                }
-
-                DeclareGlobal { symbol } => {
-                    let a = self.emit_string(symbol);
-
-                    let inst = code::Inst::encode(code::Op::DeclareGlobal, a, 0, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                Lookup { symbol } => {
-                    let target = self.registers[value];
-                    let a = self.emit_string(symbol);
-
-                    let inst = code::Inst::encode(code::Op::Lookup, target, a, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                LoadScope { scope } => {
-                    let target = self.registers[value];
-                    let scope = scope as usize;
-
-                    let inst = code::Inst::encode(code::Op::LoadScope, target, scope, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                StoreScope { scope, arg } => {
-                    let scope = scope as usize;
-                    let arg = self.registers[arg];
-
-                    let inst = code::Inst::encode(code::Op::StoreScope, arg, scope, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                // TODO: propagate projection registers more robustly
-                With { arg } => {
-                    let ptr = ssa::Value::new(value.index() + 1);
-                    assert!(match program.values[ptr] {
-                        Project { arg, index: 0 } if arg == value => true,
-                        _ => false
-                    });
-                    let end = ssa::Value::new(value.index() + 2);
-                    assert!(match program.values[end] {
-                        Project { arg, index: 1 } if arg == value => true,
-                        _ => false
-                    });
-
-                    let ptr = self.registers[ptr];
-                    let end = self.registers[end];
-                    let scope = self.registers[arg];
-
-                    let inst = code::Inst::encode(code::Op::With, ptr, end, scope);
-                    self.function.instructions.push(inst);
-                }
-                Project { .. } => {}
-
-                Read { symbol, arg } => {
-                    let a = self.emit_string(symbol);
-                    let b = self.registers[arg];
-
-                    let inst = code::Inst::encode(code::Op::Read, a, b, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                Write { args: [source, array] } => {
-                    let target = self.registers[value];
-                    let a = self.registers[source];
-                    let b = self.registers[array];
-
-                    let inst = code::Inst::encode(code::Op::Write, target, a, b);
-                    self.function.instructions.push(inst);
-                }
-
-                ScopeError { arg } => {
-                    let arg = self.registers[arg];
-
-                    let inst = code::Inst::encode(code::Op::ScopeError, arg, 0, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                LoadField { entity, field } => {
-                    let target = self.registers[value];
-                    let a = self.registers[entity];
-                    let b = self.emit_string(field);
-
-                    let inst = code::Inst::encode(code::Op::LoadField, target, a, b);
-                    self.function.instructions.push(inst);
-                }
-
-                LoadFieldDefault { entity, field } => {
-                    let target = self.registers[value];
-                    let a = self.registers[entity];
-                    let b = self.emit_string(field);
-
-                    let inst = code::Inst::encode(code::Op::LoadFieldDefault, target, a, b);
-                    self.function.instructions.push(inst);
-                }
-
-                StoreField { args: [value, entity], field } => {
-                    let source = self.registers[value];
-                    let a = self.registers[entity];
-                    let b = self.emit_string(field);
-
-                    let inst = code::Inst::encode(code::Op::StoreField, source, a, b);
-                    self.function.instructions.push(inst);
-                }
-
-                StoreIndex { args: [value, row, j] } => {
-                    let source = self.registers[value];
-                    let row = self.registers[row];
-                    let j = self.registers[j];
-
-                    let inst = code::Inst::encode(code::Op::StoreIndex, source, row, j);
-                    self.function.instructions.push(inst);
-                }
-
-                Release { arg: a } => {
-                    let a = self.registers[a];
-
-                    let inst = code::Inst::encode(code::Op::Release, a, 0, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                Call { symbol, prototype, ref args, ref parameters } => {
-                    self.emit_phis(parameters, args);
-
-                    let symbol = self.emit_string(symbol);
-                    let base = self.registers[parameters[0]];
-                    let len = args.len();
-
-                    let op = match prototype {
-                        ssa::Prototype::Script => code::Op::Call,
-                        ssa::Prototype::Function => code::Op::CallNative,
-                    };
-                    let inst = code::Inst::encode(op, symbol, base, len);
-                    self.function.instructions.push(inst);
-
-                    self.emit_phis(slice::from_ref(&value), &parameters[..1]);
-                }
-
-                Return { ref arg } => {
-                    self.emit_phis(slice::from_ref(&program.return_def), slice::from_ref(arg));
-
-                    let inst = code::Inst::encode(code::Op::Ret, 0, 0, 0);
-                    self.function.instructions.push(inst);
-                }
-
-                Jump { target, ref args } => {
-                    self.emit_edge(program, target, args);
-                }
-
-                // TODO: solve the block scheduling problem more explicitly
-                Branch {
-                    targets: [true_block, false_block],
-                    arg_lens: [true_args, false_args],
-                    ref args
-                } => {
-                    // split the false CFG edge to make room for the phi moves
-                    let edge_block = ssa::Label::new(self.edge_block);
-                    self.edge_block += 1;
-
-                    let a = self.registers[args[0]];
-                    self.jump_offsets.insert(self.function.instructions.len(), edge_block);
-
-                    let inst = code::Inst::encode(code::Op::BranchFalse, a, 0, 0);
-                    self.function.instructions.push(inst);
-
-                    let true_start = 1;
-                    let true_end = true_start + true_args as usize;
-                    self.emit_edge(program, true_block, &args[true_start..true_end]);
-
-                    self.block_offsets.insert(edge_block, self.function.instructions.len());
-
-                    let false_start = true_end;
-                    let false_end = false_start + false_args as usize;
-                    self.emit_edge(program, false_block, &args[false_start..false_end]);
-                }
+                continue;
             }
+            if let Call { op, symbol: a, ref args, ref parameters } = program.values[value] {
+                self.emit_phis(parameters, args);
+
+                let op = code::Op::from(op);
+                let a = self.emit_string(a);
+                let b = self.registers[parameters[0]];
+                let c = args.len();
+                let inst = inst(op).index(a).index(b).index(c).encode();
+                self.function.instructions.push(inst);
+
+                self.emit_phis(slice::from_ref(&value), &parameters[..1]);
+                continue;
+            }
+
+            // TODO: solve the block scheduling problem more explicitly
+            if let Jump { op: ssa::Opcode::Jump, target, ref args } = program.values[value] {
+                self.emit_edge(program, target, args);
+                continue;
+            }
+            if let Branch {
+                op: ssa::Opcode::Branch,
+                targets: [true_block, false_block],
+                arg_lens: [true_args, false_args],
+                ref args,
+            } = program.values[value] {
+                // split the false CFG edge to make room for the phi moves
+                // TODO: make program &mut to replace self.edge_block with program.make_block?
+                let edge_block = ssa::Label::new(self.edge_block);
+                self.edge_block += 1;
+
+                self.jump_offsets.insert(self.function.instructions.len(), edge_block);
+
+                let a = args[0];
+                let inst = inst(code::Op::BranchFalse).index(self.registers[a]).encode();
+                self.function.instructions.push(inst);
+
+                let true_start = 1;
+                let true_end = true_start + true_args as usize;
+                self.emit_edge(program, true_block, &args[true_start..true_end]);
+
+                self.block_offsets.insert(edge_block, self.function.instructions.len());
+
+                let false_start = true_end;
+                let false_end = false_start + false_args as usize;
+                self.emit_edge(program, false_block, &args[false_start..false_end]);
+                continue;
+            }
+
+            let op = code::Op::from(program.op(value));
+            let mut inst = inst(op);
+
+            for def in program.defs(value) {
+                inst.index(self.registers[def]);
+            }
+
+            for &arg in program.uses(value) {
+                inst.index(self.registers[arg]);
+            }
+
+            match program.values[value] {
+                Alias { .. } | Project { .. } | Parameter => panic!("compiling non-instruction"),
+
+                // TODO: de-specialize these
+                UnaryReal { op: ssa::Opcode::LoadScope, real } => { inst.scope(real); }
+                BinaryReal { op: ssa::Opcode::StoreScope, real, .. } => { inst.scope(real); }
+
+                UnaryReal { real, .. } => { inst.index(self.emit_real(real)); }
+                UnarySymbol { symbol, .. } => { inst.index(self.emit_string(symbol)); }
+                BinaryReal { real, .. } => { inst.index(self.emit_real(real)); }
+                BinarySymbol { symbol, .. } => { inst.index(self.emit_string(symbol)); }
+                TernarySymbol { symbol, .. } => { inst.index(self.emit_string(symbol)); }
+
+                _ => {}
+            }
+
+            self.function.instructions.push(inst.encode());
         }
     }
 
     /// Fall through or jump to the unvisited CFG nodes starting with `target`.
     fn emit_edge(&mut self, program: &ssa::Function, target: ssa::Label, arguments: &[ssa::Value]) {
+        // TODO: move this logic to live range splitting
         let parameters = &program.blocks[target].parameters;
         self.emit_phis(parameters, arguments);
 
         if self.visited.get(target.index()) {
             self.jump_offsets.insert(self.function.instructions.len(), target);
 
-            let inst = code::Inst::encode(code::Op::Jump, 0, 0, 0);
+            let inst = inst(code::Op::Jump).encode();
             self.function.instructions.push(inst);
 
             return;
@@ -314,8 +192,7 @@ impl Codegen {
     /// A topological sort of this graph produces an ordering that preserves the correct values.
     /// Cycles are broken by introducing an extra register and moving an arbitrary source value
     /// into it.
-    ///
-    /// TODO: tests
+    // TODO: replace this with live range splitting
     fn emit_phis(&mut self, parameters: &[ssa::Value], arguments: &[ssa::Value]) {
         // the graph representation
         // - `phis` stores the vertices, which are uniquely identified by their targets
@@ -343,7 +220,7 @@ impl Codegen {
             .collect();
         loop {
             while let Some((target, source)) = work.pop_front() {
-                let inst = code::Inst::encode(code::Op::Move, target, source, 0);
+                let inst = inst(code::Op::Move).index(target).index(source).encode();
                 self.function.instructions.push(inst);
 
                 if let Entry::Occupied(mut entry) = uses.entry(source) {
@@ -359,7 +236,7 @@ impl Codegen {
                 break;
             }
 
-            // TODO: find temp registers during register allocation
+            // TODO: move this logic to live range splitting
             let temp = self.register_count;
             self.register_count += 1;
 
@@ -368,7 +245,7 @@ impl Codegen {
             let (&used, &count) = uses.iter().nth(0).unwrap();
             assert_eq!(count, 1);
 
-            let inst = code::Inst::encode(code::Op::Move, temp, used, 0);
+            let inst = inst(code::Op::Move).index(temp).index(used).encode();
             self.function.instructions.push(inst);
 
             // TODO: track edges to make this quicker? there can only be one use by this point
@@ -406,14 +283,14 @@ impl Codegen {
                 (code::Op::Jump, 0, 0, 0) => {
                     let target = self.block_offsets[&block];
 
-                    let inst = code::Inst::encode(code::Op::Jump, target, 0, 0);
+                    let inst = inst(code::Op::Jump).index(target).encode();
                     self.function.instructions[offset] = inst;
                 }
 
                 (code::Op::BranchFalse, cond, 0, 0) => {
                     let target = self.block_offsets[&block];
 
-                    let inst = code::Inst::encode(code::Op::BranchFalse, cond as usize, target, 0);
+                    let inst = inst(code::Op::BranchFalse).index(cond).index(target).encode();
                     self.function.instructions[offset] = inst;
                 }
 
@@ -423,56 +300,114 @@ impl Codegen {
     }
 }
 
-impl From<ssa::Unary> for code::Op {
-    fn from(unary: ssa::Unary) -> code::Op {
-        match unary {
-            ssa::Unary::Negate => code::Op::Neg,
-            ssa::Unary::Invert => code::Op::Not,
-            ssa::Unary::BitInvert => code::Op::BitNot,
+struct InstBuilder {
+    fields: [u8; 4],
+    filled: usize,
+}
 
-            ssa::Unary::LoadPointer => code::Op::LoadPointer,
-            ssa::Unary::NextPointer => code::Op::NextPointer,
-            ssa::Unary::ExistsEntity => code::Op::ExistsEntity,
-
-            ssa::Unary::ToArray => code::Op::ToArray,
-            ssa::Unary::ToScalar => code::Op::ToScalar,
-        }
+fn inst(op: code::Op) -> InstBuilder {
+    InstBuilder {
+        fields: [op as u8, 0, 0, 0],
+        filled: 1,
     }
 }
 
-impl From<ssa::Binary> for code::Op {
-    fn from(binary: ssa::Binary) -> code::Op {
-        match binary {
-            ssa::Binary::Lt => code::Op::Lt,
-            ssa::Binary::Le => code::Op::Le,
-            ssa::Binary::Eq => code::Op::Eq,
-            ssa::Binary::Ne => code::Op::Ne,
-            ssa::Binary::Ge => code::Op::Ge,
-            ssa::Binary::Gt => code::Op::Gt,
+impl InstBuilder {
+    fn index(&mut self, index: usize) -> &mut Self {
+        assert!(index <= u8::MAX as usize);
+        self.fields[self.filled] = index as u8;
+        self.filled += 1;
+        self
+    }
 
-            ssa::Binary::Add => code::Op::Add,
-            ssa::Binary::Subtract => code::Op::Sub,
-            ssa::Binary::Multiply => code::Op::Mul,
-            ssa::Binary::Divide => code::Op::Div,
-            ssa::Binary::Div => code::Op::IntDiv,
-            ssa::Binary::Mod => code::Op::Mod,
+    fn scope(&mut self, scope: f64) -> &mut Self {
+        assert!(scope <= i8::MAX as f64);
+        assert!(scope >= i8::MIN as f64);
+        self.fields[self.filled] = scope as i8 as u8;
+        self.filled += 1;
+        self
+    }
 
-            ssa::Binary::And => code::Op::And,
-            ssa::Binary::Or => code::Op::Or,
-            ssa::Binary::Xor => code::Op::Xor,
+    fn encode(&mut self) -> code::Inst {
+        code::Inst(
+            (self.fields[0] as u32) |
+            (self.fields[1] as u32) << 8 |
+            (self.fields[2] as u32) << 16 |
+            (self.fields[3] as u32) << 24
+        )
+    }
+}
 
-            ssa::Binary::BitAnd => code::Op::BitAnd,
-            ssa::Binary::BitOr => code::Op::BitOr,
-            ssa::Binary::BitXor => code::Op::BitXor,
-            ssa::Binary::ShiftLeft => code::Op::ShiftLeft,
-            ssa::Binary::ShiftRight => code::Op::ShiftRight,
+impl From<ssa::Opcode> for code::Op {
+    fn from(op: ssa::Opcode) -> code::Op {
+        match op {
+            ssa::Opcode::Constant => code::Op::Imm,
 
-            ssa::Binary::LoadRow => code::Op::LoadRow,
-            ssa::Binary::LoadIndex => code::Op::LoadIndex,
+            ssa::Opcode::Negate => code::Op::Neg,
+            ssa::Opcode::Invert => code::Op::Not,
+            ssa::Opcode::BitInvert => code::Op::BitNot,
 
-            ssa::Binary::StoreRow => code::Op::StoreRow,
+            ssa::Opcode::ToArray => code::Op::ToArray,
+            ssa::Opcode::ToScalar => code::Op::ToScalar,
 
-            ssa::Binary::NePointer => code::Op::NePointer,
+            ssa::Opcode::Release => code::Op::Release,
+            ssa::Opcode::Return => code::Op::Ret,
+
+            ssa::Opcode::With => code::Op::With,
+            ssa::Opcode::ScopeError => code::Op::ScopeError,
+            ssa::Opcode::LoadPointer => code::Op::LoadPointer,
+            ssa::Opcode::NextPointer => code::Op::NextPointer,
+            ssa::Opcode::ExistsEntity => code::Op::ExistsEntity,
+
+            ssa::Opcode::DeclareGlobal => code::Op::DeclareGlobal,
+            ssa::Opcode::Lookup => code::Op::Lookup,
+            ssa::Opcode::LoadScope => code::Op::LoadScope,
+
+            ssa::Opcode::Lt => code::Op::Lt,
+            ssa::Opcode::Le => code::Op::Le,
+            ssa::Opcode::Eq => code::Op::Eq,
+            ssa::Opcode::Ne => code::Op::Ne,
+            ssa::Opcode::Ge => code::Op::Ge,
+            ssa::Opcode::Gt => code::Op::Gt,
+
+            ssa::Opcode::NePointer => code::Op::NePointer,
+
+            ssa::Opcode::Add => code::Op::Add,
+            ssa::Opcode::Subtract => code::Op::Sub,
+            ssa::Opcode::Multiply => code::Op::Mul,
+            ssa::Opcode::Divide => code::Op::Div,
+            ssa::Opcode::Div => code::Op::IntDiv,
+            ssa::Opcode::Mod => code::Op::Mod,
+
+            ssa::Opcode::And => code::Op::And,
+            ssa::Opcode::Or => code::Op::Or,
+            ssa::Opcode::Xor => code::Op::Xor,
+
+            ssa::Opcode::BitAnd => code::Op::BitAnd,
+            ssa::Opcode::BitOr => code::Op::BitOr,
+            ssa::Opcode::BitXor => code::Op::BitXor,
+            ssa::Opcode::ShiftLeft => code::Op::ShiftLeft,
+            ssa::Opcode::ShiftRight => code::Op::ShiftRight,
+
+            ssa::Opcode::Read => code::Op::Read,
+            ssa::Opcode::Write => code::Op::Write,
+
+            ssa::Opcode::StoreScope => code::Op::StoreScope,
+
+            ssa::Opcode::LoadField => code::Op::LoadField,
+            ssa::Opcode::LoadFieldDefault => code::Op::LoadFieldDefault,
+
+            ssa::Opcode::LoadRow => code::Op::LoadRow,
+            ssa::Opcode::StoreRow => code::Op::StoreRow,
+            ssa::Opcode::LoadIndex => code::Op::LoadIndex,
+
+            ssa::Opcode::StoreField => code::Op::StoreField,
+            ssa::Opcode::StoreIndex => code::Op::StoreIndex,
+
+            ssa::Opcode::Call => code::Op::Call,
+            ssa::Opcode::CallNative => code::Op::CallNative,
+            ssa::Opcode::Jump => code::Op::Jump,
+            ssa::Opcode::Branch => code::Op::BranchFalse,
         }
     }
 }

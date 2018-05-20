@@ -116,8 +116,8 @@ impl Builder {
                 assert_eq!(param, Some(parameter));
 
                 // this is a garbage value; uninitialized variables are checked elsewhere
-                let value = ssa::Constant::Real(0.0);
-                function.values[parameter] = ssa::Inst::Immediate { value };
+                let op = ssa::Opcode::Constant;
+                function.values[parameter] = ssa::Instruction::UnaryReal { op, real: 0.0 };
                 parameter
             }
 
@@ -127,7 +127,7 @@ impl Builder {
                 assert_eq!(param, Some(parameter));
 
                 // pre-existing uses of this parameter will be updated after SSA is complete
-                function.values[parameter] = ssa::Inst::Alias(unique);
+                function.values[parameter] = ssa::Instruction::Alias { arg: unique };
                 unique
             }
 
@@ -135,11 +135,12 @@ impl Builder {
                 for (pred, value) in arguments {
                     let jump = function.terminator(pred);
                     match function.values[jump] {
-                        ssa::Inst::Jump { ref mut args, .. } => {
+                        ssa::Instruction::Jump { ref mut args, .. } => {
                             args.push(value);
                         }
 
-                        ssa::Inst::Branch {
+                        ssa::Instruction::Branch {
+                            op: _,
                             targets: [true_block, false_block],
                             arg_lens: [ref mut true_args, ref mut false_args],
                             ref mut args
@@ -178,31 +179,27 @@ impl Builder {
     pub fn finish(function: &mut ssa::Function) {
         // resolve any aliases left during SSA construction
         for block in function.blocks.keys() {
-            for &value in &function.blocks[block].instructions {
-                Self::replace_aliases(&mut function.values, value);
+            for i in 0..function.blocks[block].instructions.len() {
+                let value = function.blocks[block].instructions[i];
+                Self::replace_aliases(function, value);
             }
         }
     }
 
-    fn replace_aliases(values: &mut HandleMap<ssa::Value, ssa::Inst>, value: ssa::Value) {
-        // TODO: Cretonne doesn't run afoul of the borrow checker here because it happens to store
-        // values and instructions separately. This also enables multi-value instructions, and
-        // keeps aliases out of the instruction store.
-        //
-        // Is this worth the extra indirection?
-        for i in 0..values[value].arguments().len() {
-            let arg = values[value].arguments()[i];
-            let resolved = Self::resolve_alias(values, arg);
-            if resolved != arg {
-                values[value].arguments_mut()[i] = resolved;
+    fn replace_aliases(function: &mut ssa::Function, value: ssa::Value) {
+        for i in 0..function.uses(value).len() {
+            let arg = function.uses(value)[i];
+            let resolved = Self::resolve_alias(function, arg);
+            if arg != resolved {
+                function.uses_mut(value)[i] = resolved;
             }
         }
     }
 
-    fn resolve_alias(values: &HandleMap<ssa::Value, ssa::Inst>, value: ssa::Value) -> ssa::Value {
+    fn resolve_alias(function: &ssa::Function, value: ssa::Value) -> ssa::Value {
         let mut v = value;
-        let mut i = values.len();
-        while let ssa::Inst::Alias(original) = values[v] {
+        let mut i = function.values.len();
+        while let ssa::Instruction::Alias { arg: original } = function.values[v] {
             v = original;
 
             i -= 1;
