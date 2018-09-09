@@ -11,14 +11,14 @@ use gml::vm::{self, code};
 /// Read script arguments.
 #[test]
 fn arguments() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let select = Symbol::intern("select");
-    functions.insert(select, Function::Script("{
+    items.insert(select, Item::Script("{
         return argument0 + argument1
     }"));
 
-    let resources = build(functions);
+    let resources = build(items);
     let mut state = vm::State::new();
 
     let arguments = [vm::Value::from(3), vm::Value::from(5)];
@@ -36,10 +36,10 @@ fn arguments() {
 /// Read and write member variables.
 #[test]
 fn member() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let member = Symbol::intern("member");
-    functions.insert(member, Function::Script("{
+    items.insert(member, Item::Script("{
         a = 3
         b[3] = 5
         var c;
@@ -47,7 +47,7 @@ fn member() {
         return c
     }"));
 
-    let resources = build(functions);
+    let resources = build(items);
     let mut state = vm::State::new();
 
     state.create_instance(100001);
@@ -60,17 +60,17 @@ fn member() {
 /// Read and write global variables.
 #[test]
 fn global() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let global = Symbol::intern("global");
-    functions.insert(global, Function::Script("{
+    items.insert(global, Item::Script("{
         a = 3
         global.a = 5
         globalvar a;
         return self.a + a
     }"));
 
-    let resources = build(functions);
+    let resources = build(items);
     let mut state = vm::State::new();
 
     state.create_instance(100001);
@@ -82,10 +82,10 @@ fn global() {
 
 #[test]
 fn with() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let with = Symbol::intern("with");
-    functions.insert(with, Function::Script("{
+    items.insert(with, Item::Script("{
         var a, b;
         a = 100001
         b = 100002
@@ -103,7 +103,7 @@ fn with() {
         return a.n + b.n + a.m + b.m
     }"));
 
-    let resources = build(functions);
+    let resources = build(items);
     let mut state = vm::State::new();
 
     state.create_instance(100001);
@@ -117,10 +117,10 @@ fn with() {
 /// Read and write arrays.
 #[test]
 fn array() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let array = Symbol::intern("array");
-    functions.insert(array, Function::Script("{
+    items.insert(array, Item::Script("{
         var a, b, c;
         a[0] = 3
         a[1] = 5
@@ -130,7 +130,7 @@ fn array() {
         return a + a[1] + b[0] + b[1] + b[2] + c + c[1, 1]
     }"));
 
-    let resources = build(functions);
+    let resources = build(items);
     let mut state = vm::State::new();
 
     let result = Ok(vm::Value::from(50));
@@ -142,10 +142,10 @@ fn array() {
 /// Regression test to ensure conditionally-initialized values don't break the compiler.
 #[test]
 fn conditional_initialization() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let fibonacci = Symbol::intern("fibonacci");
-    functions.insert(fibonacci, Function::Script("{
+    items.insert(fibonacci, Item::Script("{
         var t;
         if (true) {
             t = 1
@@ -153,7 +153,7 @@ fn conditional_initialization() {
         return t
     }"));
 
-    build(functions);
+    build(items);
 }
 
 /// Use of undef caused by dead code not dominated by entry.
@@ -161,25 +161,25 @@ fn conditional_initialization() {
 /// Regression test to ensure uses of undef don't break the register allocator.
 #[test]
 fn dead_undef() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let switch = Symbol::intern("switch");
-    functions.insert(switch, Function::Script("{
+    items.insert(switch, Item::Script("{
         var i;
         return 0
         return i
     }"));
 
-    build(functions);
+    build(items);
 }
 
 /// For loop working with locals.
 #[test]
 fn for_loop() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let factorial = Symbol::intern("factorial");
-    functions.insert(factorial, Function::Script("{
+    items.insert(factorial, Item::Script("{
         var i, j;
         j = 1
         for (i = 1; i <= 4; i += 1) {
@@ -188,7 +188,7 @@ fn for_loop() {
         return j
     }"));
 
-    let resources = build(functions);
+    let resources = build(items);
     let mut state = vm::State::new();
 
     let result = Ok(vm::Value::from(24));
@@ -198,10 +198,10 @@ fn for_loop() {
 /// Control flow across a switch statement.
 #[test]
 fn switch() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let switch = Symbol::intern("switch");
-    functions.insert(switch, Function::Script("{
+    items.insert(switch, Item::Script("{
         var i;
         switch (argument0) {
         case 3:
@@ -215,7 +215,7 @@ fn switch() {
         return i
     }"));
 
-    let resources = build(functions);
+    let resources = build(items);
     let mut state = vm::State::new();
 
     let arguments = [vm::Value::from(3)];
@@ -238,24 +238,24 @@ fn switch() {
 /// An empty switch statement.
 #[test]
 fn switch_empty() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let switch = Symbol::intern("switch");
-    functions.insert(switch, Function::Script("{
+    items.insert(switch, Item::Script("{
         switch (argument0) {
         }
     }"));
 
-    build(functions);
+    build(items);
 }
 
 /// A switch statement with fallthrough between cases.
 #[test]
 fn switch_fallthrough() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let switch = Symbol::intern("switch");
-    functions.insert(switch, Function::Script("{
+    items.insert(switch, Item::Script("{
         var i;
         i = 0
         switch (argument0) {
@@ -268,7 +268,7 @@ fn switch_fallthrough() {
         return i
     }"));
 
-    let resources = build(functions);
+    let resources = build(items);
     let mut state = vm::State::new();
 
     let arguments = [vm::Value::from(0)];
@@ -291,15 +291,15 @@ fn switch_fallthrough() {
 /// Call a GML script.
 #[test]
 fn call_script() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let id = Symbol::intern("id");
-    functions.insert(id, Function::Script("return argument0"));
+    items.insert(id, Item::Script("return argument0"));
 
     let call = Symbol::intern("call");
-    functions.insert(call, Function::Script("return id(3) + 5"));
+    items.insert(call, Item::Script("return id(3) + 5"));
 
-    let resources = build(functions);
+    let resources = build(items);
     let mut state = vm::State::new();
 
     let result = Ok(vm::Value::from(8));
@@ -309,10 +309,10 @@ fn call_script() {
 /// Recursively call a GML script.
 #[test]
 fn recurse() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let fibonacci = Symbol::intern("fibonacci");
-    functions.insert(fibonacci, Function::Script("{
+    items.insert(fibonacci, Item::Script("{
         if (argument0 < 2) {
             return 1
         } else {
@@ -320,7 +320,7 @@ fn recurse() {
         }
     }"));
 
-    let resources = build(functions);
+    let resources = build(items);
     let mut state = vm::State::new();
 
     let arguments = [vm::Value::from(6)];
@@ -331,10 +331,10 @@ fn recurse() {
 /// Call a native function.
 #[test]
 fn ffi() {
-    let mut functions = HashMap::new();
+    let mut items = HashMap::new();
 
     let add = Symbol::intern("add");
-    functions.insert(add, Function::Native(native_add));
+    items.insert(add, Item::Native(native_add));
     fn native_add(
         state: &mut vm::State, _resources: &vm::Resources, arguments: vm::Arguments
     ) -> Result<vm::Value, vm::Error> {
@@ -348,35 +348,35 @@ fn ffi() {
     }
 
     let call = Symbol::intern("call");
-    functions.insert(call, Function::Script("return add(3, 5) + 8"));
+    items.insert(call, Item::Script("return add(3, 5) + 8"));
 
-    let resources = build(functions);
+    let resources = build(items);
     let mut state = vm::State::new();
 
     let result = Ok(vm::Value::from(16.0));
     assert_eq!(state.execute(&resources, call, &[]), result);
 }
 
-enum Function {
+enum Item {
     Script(&'static str),
     Native(vm::NativeFunction),
 }
 
-fn build(functions: HashMap<Symbol, Function>) -> vm::Resources {
-    let prototypes: HashMap<Symbol, ssa::Opcode> = functions.iter()
+fn build(items: HashMap<Symbol, Item>) -> vm::Resources {
+    let prototypes: HashMap<Symbol, ssa::Prototype> = items.iter()
         .map(|(&name, resource)| match *resource {
-            Function::Script(_) => (name, ssa::Opcode::Call),
-            Function::Native(_) => (name, ssa::Opcode::CallNative),
+            Item::Script(_) => (name, ssa::Prototype::Script),
+            Item::Native(_) => (name, ssa::Prototype::Native),
         })
         .collect();
 
     let mut resources = vm::Resources::default();
-    for (name, resource) in functions.into_iter() {
-        match resource {
-            Function::Script(source) => {
+    for (name, item) in items.into_iter() {
+        match item {
+            Item::Script(source) => {
                 resources.scripts.insert(name, compile(&prototypes, source));
             }
-            Function::Native(function) => {
+            Item::Native(function) => {
                 resources.functions.insert(name, function);
             }
         }
@@ -385,7 +385,7 @@ fn build(functions: HashMap<Symbol, Function>) -> vm::Resources {
     resources
 }
 
-fn compile(prototypes: &HashMap<Symbol, ssa::Opcode>, source: &str) -> code::Function {
+fn compile(prototypes: &HashMap<Symbol, ssa::Prototype>, source: &str) -> code::Function {
     let source = SourceFile {
         name: PathBuf::from("<test>"),
         source: String::from(source),

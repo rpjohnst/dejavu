@@ -10,8 +10,7 @@ pub struct Codegen<'p, 'e> {
     builder: front::ssa::Builder,
     errors: &'e ErrorHandler,
 
-    // TODO: replace this with an actual prototype descriptor
-    prototypes: &'p HashMap<Symbol, ssa::Opcode>,
+    prototypes: &'p HashMap<Symbol, ssa::Prototype>,
 
     /// GML `var` declarations are static and independent of control flow. All references to a
     /// `var`-declared name after its declaration in the source text are treated as local.
@@ -90,7 +89,7 @@ const GLOBAL: f64 = -5.0;
 const LOCAL: f64 = -7.0;
 
 impl<'p, 'e> Codegen<'p, 'e> {
-    pub fn new(prototypes: &'p HashMap<Symbol, ssa::Opcode>, errors: &'e ErrorHandler) -> Self {
+    pub fn new(prototypes: &'p HashMap<Symbol, ssa::Prototype>, errors: &'e ErrorHandler) -> Self {
         let function = ssa::Function::new();
 
         let mut builder = front::ssa::Builder::new();
@@ -179,7 +178,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
             }
 
             ast::Stmt::Invoke(ref call) => {
-                self.emit_call(call);
+                self.emit_value_call(call);
             }
 
             ast::Stmt::Declare(scope, box ref names) => {
@@ -239,7 +238,6 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 }
 
                 self.seal_block(merge_block);
-
                 self.current_block = merge_block;
             }
 
@@ -508,7 +506,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.emit_binary(ssa::Opcode::from(op), [left, right])
             }
 
-            ast::Expr::Call(ref call) => self.emit_call(call),
+            ast::Expr::Call(ref call) => self.emit_value_call(call),
 
             _ => {
                 let place = self.emit_place(expression)
@@ -516,6 +514,25 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.emit_load(place)
             }
         }
+    }
+
+    fn emit_value_call(&mut self, call: &ast::Call) -> ssa::Value {
+        let ast::Call((symbol, symbol_span), box ref args) = *call;
+
+        let args: Vec<_> = args.iter()
+            .map(|argument| self.emit_value(argument))
+            .collect();
+
+        let op = match self.prototypes.get(&symbol) {
+            Some(&ssa::Prototype::Script) => ssa::Opcode::Call,
+            Some(&ssa::Prototype::Native) => ssa::Opcode::CallNative,
+            _ => {
+                self.errors.error(symbol_span, "unknown function or script");
+                ssa::Opcode::Call
+            }
+        };
+
+        self.emit_call(op, symbol, args)
     }
 
     fn emit_place(&mut self, expression: &(ast::Expr, Span)) -> Result<Place, PlaceError> {
@@ -906,24 +923,12 @@ impl<'p, 'e> Codegen<'p, 'e> {
         self.function.emit_instruction(self.current_block, instruction)
     }
 
-    fn emit_call(&mut self, call: &ast::Call) -> ssa::Value {
-        let ast::Call((symbol, symbol_span), box ref args) = *call;
-
-        let args: Vec<_> = args.iter()
-            .map(|argument| self.emit_value(argument))
-            .collect();
-
+    fn emit_call(&mut self, op: ssa::Opcode, symbol: Symbol, args: Vec<ssa::Value>) -> ssa::Value {
         // TODO: move this logic to live range splitting
         let parameters: Vec<_> = (0..cmp::max(1, args.len()))
             .map(|_| self.function.values.push(ssa::Instruction::Parameter))
             .collect();
 
-        let op = self.prototypes.get(&symbol)
-            .map(|&op| op)
-            .unwrap_or_else(|| {
-                self.errors.error(symbol_span, "function does not exist");
-                ssa::Opcode::Call
-            });
         let instruction = ssa::Instruction::Call { op, symbol, args, parameters };
         self.function.emit_instruction(self.current_block, instruction)
     }

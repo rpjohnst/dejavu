@@ -181,6 +181,20 @@ pub enum Opcode {
     Branch,
 }
 
+/// A declaration of some external entity.
+///
+/// This contains just enough information to generate code for the caller.
+// TODO: gms tracks function arity
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub enum Prototype {
+    /// A GML script.
+    Script,
+    /// A native API function.
+    Native,
+    /// A built-in member accessed via getter and setter.
+    Member,
+}
+
 impl Function {
     pub fn new() -> Self {
         let blocks = HandleMap::new();
