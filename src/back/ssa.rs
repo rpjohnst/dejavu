@@ -68,7 +68,6 @@ pub enum Instruction {
     BinaryReal { op: Opcode, arg: Value, real: f64 },
     BinarySymbol { op: Opcode, arg: Value, symbol: Symbol },
     Ternary { op: Opcode, args: [Value; 3] },
-    // TODO: remove along with adding components
     TernarySymbol { op: Opcode, args: [Value; 2], symbol: Symbol },
 
     // TODO: Remove `parameters` (see front::Codegen::emit_call).
@@ -177,6 +176,8 @@ pub enum Opcode {
     // TODO: combine these using instruction types?
     Call,
     CallNative,
+    CallGet,
+    CallSet,
     Jump,
     Branch,
 }
@@ -287,6 +288,7 @@ impl Function {
             BinaryReal { op: Opcode::StoreScope, .. } |
             Ternary { .. } |
             TernarySymbol { .. } |
+            Call { op: Opcode::CallSet, .. } |
             Jump { .. } |
             Branch { .. } => ValueRange { range: start..start },
 

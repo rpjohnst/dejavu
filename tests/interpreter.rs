@@ -57,6 +57,31 @@ fn member() {
     assert_eq!(state.execute(&resources, member, &[]), result);
 }
 
+/// Read and write builtin variables.
+#[test]
+fn builtin() {
+    let mut items = HashMap::new();
+
+    let x = Symbol::intern("x");
+    items.insert(x, Item::Member(vm::Instance::get_x, vm::Instance::set_x));
+
+    let builtin = Symbol::intern("builtin");
+    items.insert(builtin, Item::Script("{
+        x = 3
+        return x + 5
+    }"));
+
+    let resources = build(items);
+    let mut state = vm::State::new();
+
+    state.create_instance(100001);
+    state.set_self(100001);
+
+    let result = Ok(vm::Value::from(8));
+    assert_eq!(state.execute(&resources, builtin, &[]), result);
+    assert_eq!(state.get_instance(100001).x, 3.0);
+}
+
 /// Read and write global variables.
 #[test]
 fn global() {
@@ -359,7 +384,8 @@ fn ffi() {
 
 enum Item {
     Script(&'static str),
-    Native(vm::NativeFunction),
+    Native(vm::ApiFunction),
+    Member(vm::GetFunction, vm::SetFunction),
 }
 
 fn build(items: HashMap<Symbol, Item>) -> vm::Resources {
@@ -367,6 +393,7 @@ fn build(items: HashMap<Symbol, Item>) -> vm::Resources {
         .map(|(&name, resource)| match *resource {
             Item::Script(_) => (name, ssa::Prototype::Script),
             Item::Native(_) => (name, ssa::Prototype::Native),
+            Item::Member(_, _) => (name, ssa::Prototype::Member),
         })
         .collect();
 
@@ -378,6 +405,10 @@ fn build(items: HashMap<Symbol, Item>) -> vm::Resources {
             }
             Item::Native(function) => {
                 resources.functions.insert(name, function);
+            }
+            Item::Member(get, set) => {
+                resources.get.insert(name, get);
+                resources.set.insert(name, set);
             }
         }
     }

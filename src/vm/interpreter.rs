@@ -78,6 +78,11 @@ impl State {
         self.world.create_instance(id, entity);
     }
 
+    pub fn get_instance(&self, id: i32) -> &vm::Instance {
+        let entity = self.world.instances[id];
+        &self.world.instance_table[&entity]
+    }
+
     pub fn set_self(&mut self, id: i32) {
         self.self_entity = self.world.instances[id];
     }
@@ -823,6 +828,40 @@ impl State {
 
                     let registers = &mut self.stack[reg_base..];
                     registers[0].value = value;
+                }
+
+                (code::Op::CallGet, get, base, _) => {
+                    let symbol = Self::get_string(function.constants[get]);
+                    let function = resources.get[&symbol];
+                    let reg_base = reg_base + base;
+
+                    // TODO: simplify this with NLL
+                    let entity;
+                    {
+                        let registers = &self.stack[reg_base..];
+                        entity = unsafe { registers[0].entity };
+                    }
+                    let instance = &self.world.instance_table[&entity];
+                    let value = function(instance);
+
+                    let registers = &mut self.stack[reg_base..];
+                    registers[0].value = value;
+                }
+
+                (code::Op::CallSet, set, base, _) => {
+                    let symbol = Self::get_string(function.constants[set]);
+                    let function = resources.set[&symbol];
+                    let reg_base = reg_base + base;
+
+                    // TODO: simplify this with NLL
+                    let (entity, value);
+                    {
+                        let registers = &self.stack[reg_base..];
+                        entity = unsafe { registers[0].entity };
+                        value = unsafe { registers[1].value };
+                    }
+                    let instance = self.world.instance_table.get_mut(&entity).unwrap();
+                    function(instance, value);
                 }
 
                 (code::Op::Ret, _, _, _) => {

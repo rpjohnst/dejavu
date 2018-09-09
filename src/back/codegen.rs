@@ -406,6 +406,8 @@ impl From<ssa::Opcode> for code::Op {
 
             ssa::Opcode::Call => code::Op::Call,
             ssa::Opcode::CallNative => code::Op::CallNative,
+            ssa::Opcode::CallGet => code::Op::CallGet,
+            ssa::Opcode::CallSet => code::Op::CallSet,
             ssa::Opcode::Jump => code::Op::Jump,
             ssa::Opcode::Branch => code::Op::BranchFalse,
         }

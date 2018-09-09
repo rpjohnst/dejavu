@@ -554,12 +554,17 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 if self.locals.contains_key(&symbol) {
                     Ok(Place { path: Path::Local(symbol), index: None })
                 } else {
-                    let entity = self.emit_unary_symbol(ssa::Opcode::Lookup, symbol);
+                    // Built-in variables are always local; globalvar cannot redeclare them.
+                    let entity = if self.prototypes.get(&symbol) == Some(&ssa::Prototype::Member) {
+                        self.emit_unary_real(ssa::Opcode::LoadScope, SELF)
+                    } else {
+                        self.emit_unary_symbol(ssa::Opcode::Lookup, symbol)
+                    };
                     Ok(Place { path: Path::Field(entity, symbol), index: None })
                 }
             }
 
-            // TODO: do this as constant propagation instead? or keep as a peephole optimization?
+            // TODO: move into peephole optimizer
             ast::Expr::Field(
                 box (ast::Expr::Value(ast::Value::Ident(keyword::Self_)), _expr_span),
                 (field, _field_span)
@@ -602,12 +607,23 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 let i = indices.next().unwrap();
 
                 match array {
-                    Place { path, index: None } => Ok(Place { path, index: Some([i, j]) }),
+                    // TODO: ignore indices for scalar builtins; pass through or generate for arrays
+                    Place { path: Path::Field(_, field), index: None } |
+                    Place { path: Path::Scope(_, field), index: None } if
+                        self.prototypes.get(&field) == Some(&ssa::Prototype::Member)
+                    => {
+                        let (_, expr_span) = *expr;
+                        self.errors.error(expr_span, "indexed builtins are unimplemented");
+                        Err(PlaceError)
+                    }
+
                     Place { index: Some(_), .. } => {
                         let (_, expr_span) = *expr;
                         self.errors.error(expr_span, "expected a variable");
                         Err(PlaceError)
                     }
+
+                    Place { path, index: None } => Ok(Place { path, index: Some([i, j]) }),
                 }
             }
 
@@ -624,48 +640,128 @@ impl<'p, 'e> Codegen<'p, 'e> {
     /// - all loads produce scalars; if the variable holds an array it loads `a[0, 0]`
     /// - indexed loads from scalar variables treat the variable as a 1x1 array
     fn emit_load(&mut self, place: Place) -> ssa::Value {
-        let value = match place.path {
-            Path::Local(symbol) => {
+        let value = match place {
+            // A locally-declared variable: check for initialization, then read it.
+            Place { path: Path::Local(symbol), index } => {
                 let Local { flag, local } = self.locals[&symbol];
 
                 let flag = self.read_local(flag);
                 self.emit_binary_symbol(ssa::Opcode::Read, flag, symbol);
 
-                self.read_local(local)
+                let value = self.read_local(local);
+                match index {
+                    None => value,
+                    Some(index) => self.emit_load_index(value, index),
+                }
             }
 
-            Path::Field(entity, field) => {
-                self.emit_binary_symbol(ssa::Opcode::LoadField, entity, field)
+            // A built-in member variable: call its getter.
+            Place { path: Path::Field(entity, field), index } if
+                self.prototypes.get(&field) == Some(&ssa::Prototype::Member) &&
+                !self.entity_is_global(entity)
+            => {
+                self.emit_load_builtin(entity, field, index)
             }
 
-            Path::Scope(scope, field) => {
-                let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope);
-                self.seal_block(cond_block);
-                self.seal_block(body_block);
-                self.seal_block(exit_block);
-
-                self.current_block = exit_block;
-                self.emit_unary(ssa::Opcode::ScopeError, scope);
-
-                self.current_block = body_block;
-                self.emit_binary_symbol(ssa::Opcode::LoadField, entity, field)
+            // A user-defined member variable: read it.
+            Place { path: Path::Field(entity, field), index } => {
+                let value = self.emit_binary_symbol(ssa::Opcode::LoadField, entity, field);
+                match index {
+                    None => value,
+                    Some(index) => self.emit_load_index(value, index),
+                }
             }
-        };
 
-        let value = match place.index {
-            None => value,
+            // A built-in member variable on a scope: check for `global`, then call its getter.
+            // (`global` does not have built-in variables, and so must fall back to the
+            // user-defined case as above.)
+            // TODO: fallback only happens pre-gms.
+            Place { path: Path::Scope(scope, field), index } if
+                self.prototypes.get(&field) == Some(&ssa::Prototype::Member)
+            => {
+                let true_block = self.make_block();
+                let false_block = self.make_block();
+                let merge_block = self.make_block();
 
-            Some([i, j]) => {
-                // TODO: this only happens pre-gms
-                let array = self.emit_unary(ssa::Opcode::ToArray, value);
+                let load = self.builder.emit_local();
+                let global = self.emit_real(GLOBAL);
+                let expr = self.emit_binary(ssa::Opcode::Ne, [scope, global]);
+                self.emit_branch(expr, true_block, false_block);
+                self.seal_block(true_block);
+                self.seal_block(false_block);
 
-                let row = self.emit_binary(ssa::Opcode::LoadRow, [array, i]);
-                self.emit_binary(ssa::Opcode::LoadIndex, [row, j])
+                self.current_block = true_block;
+                let entity = self.emit_load_scope(scope);
+                let value = self.emit_load_builtin(entity, field, index);
+                self.write_local(load, value);
+                self.emit_jump(merge_block);
+
+                self.current_block = false_block;
+                let entity = self.emit_unary_real(ssa::Opcode::LoadScope, GLOBAL);
+                let value = self.emit_binary_symbol(ssa::Opcode::LoadField, entity, field);
+                let value = match index {
+                    None => value,
+                    Some(index) => self.emit_load_index(value, index),
+                };
+                self.write_local(load, value);
+                self.emit_jump(merge_block);
+
+                self.seal_block(merge_block);
+                self.current_block = merge_block;
+                self.read_local(load)
+            }
+
+            // A user-defined member variable on a scope: locate the first entity, then read it.
+            Place { path: Path::Scope(scope, field), index } => {
+                let entity = self.emit_load_scope(scope);
+                let value = self.emit_binary_symbol(ssa::Opcode::LoadField, entity, field);
+                match index {
+                    None => value,
+                    Some(index) => self.emit_load_index(value, index),
+                }
             }
         };
 
         // TODO: this only happens pre-gms
         self.emit_unary(ssa::Opcode::ToScalar, value)
+    }
+
+    /// Resolve a scope to its first entity for reading. (Helper for `emit_load`.)
+    fn emit_load_scope(&mut self, scope: ssa::Value) -> ssa::Value {
+        let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope);
+        self.seal_block(cond_block);
+        self.seal_block(body_block);
+        self.seal_block(exit_block);
+
+        self.current_block = exit_block;
+        self.emit_unary(ssa::Opcode::ScopeError, scope);
+
+        self.current_block = body_block;
+        entity
+    }
+
+    /// Built-in member variable load. (Helper for `emit_load`.)
+    fn emit_load_builtin(
+        &mut self, entity: ssa::Value, field: Symbol, index: Option<[ssa::Value; 2]>
+    ) -> ssa::Value {
+        // TODO: select op based on presence of index
+        debug_assert!(index.is_none());
+
+        let args = vec![entity];
+        self.emit_call(ssa::Opcode::CallGet, field, args)
+    }
+
+    /// Load an element of an array. (Helper for `emit_load`.)
+    fn emit_load_index(&mut self, value: ssa::Value, [i, j]: [ssa::Value; 2]) -> ssa::Value {
+        // TODO: this only happens pre-gms
+        let array = self.emit_unary(ssa::Opcode::ToArray, value);
+
+        let row = self.emit_binary(ssa::Opcode::LoadRow, [array, i]);
+        let value = self.emit_binary(ssa::Opcode::LoadIndex, [row, j]);
+
+        // TODO: this only happens pre-gms
+        self.emit_unary(ssa::Opcode::Release, value);
+        value
     }
 
     /// Language-level variable store.
@@ -676,64 +772,136 @@ impl<'p, 'e> Codegen<'p, 'e> {
     /// Before GMS:
     /// - stores to array variables do *not* overwrite the whole array, only `a[0, 0]`
     /// - indexed stores to scalar (or undefined) variables leave the scalar (or `0`) at `a[0, 0]`
+    // TODO: free overwritten arrays for gms
     fn emit_store(&mut self, place: Place, value: ssa::Value) {
         match place {
-            Place { path: Path::Local(symbol), index: None } => {
+            // A locally-declared variable: mark as initialized, then write it.
+            Place { path: Path::Local(symbol), index } => {
                 let Local { flag, local } = self.locals[&symbol];
 
                 let one = self.emit_real(1.0);
                 self.write_local(flag, one);
 
-                // TODO: this only happens pre-gms
-                let array = self.read_local(local);
-                let value = self.emit_binary(ssa::Opcode::Write, [value, array]);
+                match index {
+                    None => {
+                        // TODO: this only happens pre-gms
+                        let array = self.read_local(local);
+                        let value = self.emit_binary(ssa::Opcode::Write, [value, array]);
 
-                self.write_local(local, value);
+                        self.write_local(local, value);
+                    }
+                    Some([i, j]) => {
+                        let array = self.read_local(local);
+
+                        // TODO: this only happens pre-gms; gms does need to handle undef
+                        let array = self.emit_unary(ssa::Opcode::ToArray, array);
+                        self.write_local(local, array);
+
+                        let row = self.emit_binary(ssa::Opcode::StoreRow, [array, i]);
+                        self.emit_ternary(ssa::Opcode::StoreIndex, [value, row, j]);
+                    }
+                }
             }
 
-            Place { path: Path::Field(entity, field), index: None } => {
+            // A built-in member variable: call its setter.
+            Place { path: Path::Field(entity, field), index } if
+                self.prototypes.get(&field) == Some(&ssa::Prototype::Member) &&
+                !self.entity_is_global(entity)
+            => {
+                self.emit_store_builtin(entity, field, index, value);
+            }
+
+            // A user-defined member variable: write it.
+            Place { path: Path::Field(entity, field), index } => {
+                self.emit_store_field(entity, field, index, value);
+            }
+
+            // A built-in member variable on a scope: check for `global`, then call its setter.
+            // (`global` does not have built-in variables, and so must fall back to the
+            // user-defined case as above.)
+            // TODO: fallback only happens pre-gms.
+            Place { path: Path::Scope(scope, field), index } if
+                self.prototypes.get(&field) == Some(&ssa::Prototype::Member)
+            => {
+                let true_block = self.make_block();
+                let false_block = self.make_block();
+                let merge_block = self.make_block();
+
+                let global = self.emit_real(GLOBAL);
+                let expr = self.emit_binary(ssa::Opcode::Ne, [scope, global]);
+                self.emit_branch(expr, true_block, false_block);
+                self.seal_block(true_block);
+                self.seal_block(false_block);
+
+                self.current_block = true_block;
+                self.emit_store_scope(scope, |self_, entity| {
+                    self_.emit_store_builtin(entity, field, index, value);
+                });
+                self.emit_jump(merge_block);
+
+                self.current_block = false_block;
+                let entity = self.emit_unary_real(ssa::Opcode::LoadScope, GLOBAL);
+                self.emit_store_field(entity, field, index, value);
+                self.emit_jump(merge_block);
+
+                self.seal_block(merge_block);
+                self.current_block = merge_block;
+            }
+
+            // A user-defined member variable on a scope: write to all entities.
+            Place { path: Path::Scope(scope, field), index } => {
+                self.emit_store_scope(scope, |self_, entity| {
+                    self_.emit_store_field(entity, field, index, value);
+                });
+            }
+        }
+    }
+
+    /// Iterate over each entity in a scope for writing. (Helper for `emit_store`.)
+    fn emit_store_scope<F>(&mut self, scope: ssa::Value, f: F) where
+        F: FnOnce(&mut Codegen, ssa::Value)
+    {
+        // TODO: gms errors on empty iteration
+        let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope);
+        self.seal_block(body_block);
+        self.seal_block(exit_block);
+        self.current_block = body_block;
+
+        f(self, entity);
+
+        self.emit_jump(cond_block);
+        self.seal_block(cond_block);
+        self.current_block = exit_block;
+    }
+
+    /// Built-in member variable store. (Helper for `emit_store`.)
+    fn emit_store_builtin(
+        &mut self, entity: ssa::Value, field: Symbol, index: Option<[ssa::Value; 2]>,
+        value: ssa::Value
+    ) {
+        // TODO: select op based on presence of index
+        debug_assert!(index.is_none());
+
+        let args = vec![entity, value];
+        self.emit_call(ssa::Opcode::CallSet, field, args);
+    }
+
+    /// Store to an entity field. (Helper for `emit_store`.)
+    ///
+    /// Note that this is the same pattern as `emit_store`'s `Path::Local` arm.
+    fn emit_store_field(
+        &mut self, entity: ssa::Value, field: Symbol, index: Option<[ssa::Value; 2]>,
+        value: ssa::Value
+    ) {
+        match index {
+            None => {
                 // TODO: this only happens pre-gms
                 let array = self.emit_binary_symbol(ssa::Opcode::LoadFieldDefault, entity, field);
                 let value = self.emit_binary(ssa::Opcode::Write, [value, array]);
 
                 self.emit_ternary_symbol(ssa::Opcode::StoreField, [value, entity], field);
             }
-
-            Place { path: Path::Scope(scope, field), index: None } => {
-                // TODO: gms errors on empty iteration
-                let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope);
-                self.seal_block(body_block);
-                self.seal_block(exit_block);
-                self.current_block = body_block;
-
-                // TODO: this only happens pre-gms
-                let array = self.emit_binary_symbol(ssa::Opcode::LoadFieldDefault, entity, field);
-                let value = self.emit_binary(ssa::Opcode::Write, [value, array]);
-
-                self.emit_ternary_symbol(ssa::Opcode::StoreField, [value, entity], field);
-
-                self.emit_jump(cond_block);
-                self.seal_block(cond_block);
-                self.current_block = exit_block;
-            }
-
-            Place { path: Path::Local(symbol), index: Some([i, j]) } => {
-                let Local { flag, local } = self.locals[&symbol];
-
-                let one = self.emit_real(1.0);
-                self.write_local(flag, one);
-
-                let array = self.read_local(local);
-
-                // TODO: this only happens pre-gms; gms does need to handle undef
-                let array = self.emit_unary(ssa::Opcode::ToArray, array);
-                self.write_local(local, array);
-
-                let row = self.emit_binary(ssa::Opcode::StoreRow, [array, i]);
-                self.emit_ternary(ssa::Opcode::StoreIndex, [value, row, j]);
-            }
-
-            Place { path: Path::Field(entity, field), index: Some([i, j]) } => {
+            Some([i, j]) => {
                 let array = self.emit_binary_symbol(ssa::Opcode::LoadFieldDefault, entity, field);
 
                 // TODO: this only happens pre-gms; gms does need to handle undef
@@ -742,27 +910,6 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
                 let row = self.emit_binary(ssa::Opcode::StoreRow, [array, i]);
                 self.emit_ternary(ssa::Opcode::StoreIndex, [value, row, j]);
-            }
-
-            Place { path: Path::Scope(scope, field), index: Some([i, j]) } => {
-                // TODO: gms errors on empty iteration
-                let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope);
-                self.seal_block(body_block);
-                self.seal_block(exit_block);
-                self.current_block = body_block;
-
-                let array = self.emit_binary_symbol(ssa::Opcode::LoadFieldDefault, entity, field);
-
-                // TODO: this only happens pre-gms; gms does need to handle undef
-                let array = self.emit_unary(ssa::Opcode::ToArray, array);
-                self.emit_ternary_symbol(ssa::Opcode::StoreField, [value, entity], field);
-
-                let row = self.emit_binary(ssa::Opcode::StoreRow, [array, i]);
-                self.emit_ternary(ssa::Opcode::StoreIndex, [value, row, j]);
-
-                self.emit_jump(cond_block);
-                self.seal_block(cond_block);
-                self.current_block = exit_block;
             }
         }
     }
@@ -824,6 +971,18 @@ impl<'p, 'e> Codegen<'p, 'e> {
         self.current_expr = old_expr;
         self.current_default = old_default;
         self.current_exit = old_exit;
+    }
+
+    // SSA inspection utilities:
+    // TODO: move into peephole optimizer
+
+    fn entity_is_global(&self, entity: ssa::Value) -> bool {
+        match self.function.values[entity] {
+            ssa::Instruction::UnaryReal { op: ssa::Opcode::LoadScope, real } => {
+                real == GLOBAL
+            }
+            _ => false,
+        }
     }
 
     // SSA builder utilities:
