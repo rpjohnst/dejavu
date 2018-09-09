@@ -5,7 +5,7 @@ use symbol::Symbol;
 pub use vm::interpreter::{State, Error};
 pub use vm::value::{Type, Value, Data};
 pub use vm::array::{Array, Row};
-pub use vm::world::{Entity, Scope, World};
+pub use vm::world::{Entity, Hash, World};
 
 pub mod code;
 pub mod debug;

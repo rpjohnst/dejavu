@@ -14,12 +14,20 @@ pub struct State {
     stack: Vec<Register>,
 }
 
+/// A stack slot for the VM.
+///
+/// Each variant should be the same size: 64 bits.
 #[derive(Copy, Clone)]
-union Register {
-    value: vm::Value,
-    row: vm::Row,
-    iterator: ptr::NonNull<vm::Entity>,
-    entity: vm::Entity,
+pub union Register {
+    /// A language-level value.
+    pub value: vm::Value,
+    /// An intermediate result when working with arrays.
+    pub row: vm::Row,
+
+    /// An entity id, resolved from an instance or other scope id.
+    pub entity: vm::Entity,
+    /// A pointer into an array of entity ids.
+    pub iterator: ptr::NonNull<vm::Entity>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -34,7 +42,6 @@ pub enum ErrorKind {
     TypeUnary(code::Op, vm::Type),
     TypeBinary(code::Op, vm::Type, vm::Type),
     Scope(i32),
-    Entity(vm::Entity),
     Name(Symbol),
     Bounds(usize),
 }
@@ -478,11 +485,7 @@ impl State {
                     self.world.globals.insert(name);
 
                     let entity = vm::world::GLOBAL;
-                    let component = self.world.hash_components.get_mut(&entity)
-                        .ok_or_else(|| {
-                            let kind = ErrorKind::Entity(entity);
-                            Error { symbol, instruction, kind }
-                        })?;
+                    let component = self.world.hash_table.get_mut(&entity).unwrap();
                     component.entry(name).or_insert(vm::Value::from(0.0));
                 }
 
@@ -588,7 +591,7 @@ impl State {
                     let registers = &mut self.stack[reg_base..];
 
                     let entity = unsafe { registers[entity].entity };
-                    let exists = self.world.hash_components.contains_key(&entity);
+                    let exists = self.world.hash_table.contains_key(&entity);
                     registers[t].value = vm::Value::from(exists);
                 }
 
@@ -676,16 +679,12 @@ impl State {
                     unsafe { a.release() };
                 }
 
-                (code::Op::LoadField, t, scope, field) => {
+                (code::Op::LoadField, t, entity, field) => {
                     let registers = &mut self.stack[reg_base..];
 
-                    let entity = unsafe { registers[scope].entity };
+                    let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let component = self.world.hash_components.get(&entity)
-                        .ok_or_else(|| {
-                            let kind = ErrorKind::Entity(entity);
-                            Error { symbol, instruction, kind }
-                        })?;
+                    let component = &self.world.hash_table[&entity];
                     registers[t].value = *component.get(&field)
                         .ok_or_else(|| {
                             let kind = ErrorKind::Name(field);
@@ -693,16 +692,12 @@ impl State {
                         })?;
                 }
 
-                (code::Op::LoadFieldDefault, t, scope, field) => {
+                (code::Op::LoadFieldDefault, t, entity, field) => {
                     let registers = &mut self.stack[reg_base..];
 
-                    let entity = unsafe { registers[scope].entity };
+                    let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let component = self.world.hash_components.get(&entity)
-                        .ok_or_else(|| {
-                            let kind = ErrorKind::Entity(entity);
-                            Error { symbol, instruction, kind }
-                        })?;
+                    let component = &self.world.hash_table[&entity];
                     registers[t].value = *component.get(&field)
                         .unwrap_or(&vm::Value::from(0.0));
                 }
@@ -751,17 +746,13 @@ impl State {
                     }?;
                 }
 
-                (code::Op::StoreField, s, scope, field) => {
+                (code::Op::StoreField, s, entity, field) => {
                     let registers = &self.stack[reg_base..];
 
                     let s = unsafe { registers[s].value };
-                    let entity = unsafe { registers[scope].entity };
+                    let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let component = self.world.hash_components.get_mut(&entity)
-                        .ok_or_else(|| {
-                            let kind = ErrorKind::Entity(entity);
-                            Error { symbol, instruction, kind }
-                        })?;
+                    let component = self.world.hash_table.get_mut(&entity).unwrap();
                     component.insert(field, s);
                 }
 
