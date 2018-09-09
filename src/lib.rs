@@ -2,7 +2,6 @@
 #![feature(box_patterns)]
 #![feature(box_syntax)]
 #![feature(slice_patterns)]
-#![feature(from_ref)]
 #![feature(range_contains)]
 
 #[macro_use]

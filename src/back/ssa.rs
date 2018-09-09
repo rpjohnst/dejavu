@@ -328,12 +328,12 @@ impl Function {
         match self.values[value] {
             Alias { .. } | Project { .. } | Parameter => panic!("finding uses of non-instruction"),
 
-            Unary { ref mut arg, .. } => slice::from_ref_mut(arg),
+            Unary { ref mut arg, .. } => slice::from_mut(arg),
             UnaryReal { .. } => &mut [],
             UnarySymbol { .. } => &mut [],
             Binary { ref mut args, .. } => args,
-            BinaryReal { ref mut arg, .. } => slice::from_ref_mut(arg),
-            BinarySymbol { ref mut arg, .. } => slice::from_ref_mut(arg),
+            BinaryReal { ref mut arg, .. } => slice::from_mut(arg),
+            BinarySymbol { ref mut arg, .. } => slice::from_mut(arg),
             Ternary { ref mut args, .. } => args,
             TernarySymbol { ref mut args, .. } => args,
 
