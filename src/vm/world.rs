@@ -25,6 +25,9 @@ pub type Hash = HashMap<Symbol, vm::Value>;
 pub struct Instance {
     pub x: f32,
     pub y: f32,
+
+    // TODO: this is 12 in gms
+    pub alarm: [i32; 8],
 }
 
 impl Instance {
@@ -45,6 +48,16 @@ impl Instance {
         self.y = match value.data() {
             vm::Data::Real(a) => a as f32,
             _ => 0.0,
+        };
+    }
+
+    pub fn get_alarm(&self, i: usize) -> vm::Value {
+        vm::Value::from(self.alarm[i] as f64)
+    }
+    pub fn set_alarm(&mut self, i: usize, value: vm::Value) {
+        self.alarm[i] = match value.data() {
+            vm::Data::Real(a) => vm::State::to_i32(a),
+            _ => 0,
         };
     }
 }

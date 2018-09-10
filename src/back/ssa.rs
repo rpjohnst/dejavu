@@ -178,6 +178,8 @@ pub enum Opcode {
     CallNative,
     CallGet,
     CallSet,
+    CallGetIndex,
+    CallSetIndex,
     Jump,
     Branch,
 }
@@ -193,7 +195,7 @@ pub enum Prototype {
     /// A native API function.
     Native,
     /// A built-in member accessed via getter and setter.
-    Member,
+    Member { array: bool },
 }
 
 impl Function {

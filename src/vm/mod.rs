@@ -21,11 +21,17 @@ pub struct Resources {
 
     pub get: HashMap<Symbol, GetFunction>,
     pub set: HashMap<Symbol, SetFunction>,
+    pub get_index: HashMap<Symbol, GetIndexFunction>,
+    pub set_index: HashMap<Symbol, SetIndexFunction>,
 }
 
 pub type ApiFunction = fn(&mut State, &Resources, Arguments) -> Result<Value, Error>;
+
 pub type GetFunction = fn(&Instance) -> Value;
 pub type SetFunction = fn(&mut Instance, Value);
+
+pub type GetIndexFunction = fn(&Instance, usize) -> Value;
+pub type SetIndexFunction = fn(&mut Instance, usize, Value);
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Arguments {

@@ -105,6 +105,8 @@ pub enum Op {
     CallNative,
     CallGet,
     CallSet,
+    CallGetIndex,
+    CallSetIndex,
     Ret,
 
     Jump,

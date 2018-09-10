@@ -864,6 +864,50 @@ impl State {
                     function(instance, value);
                 }
 
+                (code::Op::CallGetIndex, get, base, _) => {
+                    let symbol = Self::get_string(function.constants[get]);
+                    let function = resources.get_index[&symbol];
+                    let reg_base = reg_base + base;
+
+                    // TODO: simplify this with NLL
+                    let (entity, i);
+                    {
+                        let registers = &self.stack[reg_base..];
+                        entity = unsafe { registers[0].entity };
+                        i = unsafe { registers[1].value };
+                    }
+                    let instance = &self.world.instance_table[&entity];
+                    let i = match i.data() {
+                        vm::Data::Real(i) => Self::to_i32(i) as usize,
+                        _ => 0,
+                    };
+                    let value = function(instance, i);
+
+                    let registers = &mut self.stack[reg_base..];
+                    registers[0].value = value;
+                }
+
+                (code::Op::CallSetIndex, set, base, _) => {
+                    let symbol = Self::get_string(function.constants[set]);
+                    let function = resources.set_index[&symbol];
+                    let reg_base = reg_base + base;
+
+                    // TODO: simplify this with NLL
+                    let (entity, i, value);
+                    {
+                        let registers = &self.stack[reg_base..];
+                        entity = unsafe { registers[0].entity };
+                        i = unsafe { registers[1].value };
+                        value = unsafe { registers[2].value };
+                    }
+                    let instance = self.world.instance_table.get_mut(&entity).unwrap();
+                    let i = match i.data() {
+                        vm::Data::Real(i) => Self::to_i32(i) as usize,
+                        _ => 0,
+                    };
+                    function(instance, i, value);
+                }
+
                 (code::Op::Ret, _, _, _) => {
                     let (caller, caller_instruction, caller_base) = match self.returns.pop() {
                         Some(frame) => frame,

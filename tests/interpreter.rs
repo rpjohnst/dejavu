@@ -57,16 +57,16 @@ fn member() {
     assert_eq!(state.execute(&resources, member, &[]), result);
 }
 
-/// Read and write builtin variables.
+/// Read and write scalar builtin variables.
 #[test]
-fn builtin() {
+fn builtin_scalar() {
     let mut items = HashMap::new();
 
     let x = Symbol::intern("x");
     items.insert(x, Item::Member(vm::Instance::get_x, vm::Instance::set_x));
 
-    let builtin = Symbol::intern("builtin");
-    items.insert(builtin, Item::Script("{
+    let builtin_scalar = Symbol::intern("builtin_scalar");
+    items.insert(builtin_scalar, Item::Script("{
         x = 3
         return x + 5
     }"));
@@ -78,8 +78,35 @@ fn builtin() {
     state.set_self(100001);
 
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, builtin, &[]), result);
+    assert_eq!(state.execute(&resources, builtin_scalar, &[]), result);
     assert_eq!(state.get_instance(100001).x, 3.0);
+}
+
+/// Read and write array builtin variables.
+#[test]
+fn builtin_array() {
+    let mut items = HashMap::new();
+
+    let alarm = Symbol::intern("alarm");
+    items.insert(alarm, Item::MemberArray(vm::Instance::get_alarm, vm::Instance::set_alarm));
+
+    let builtin_array = Symbol::intern("builtin_array");
+    items.insert(builtin_array, Item::Script("{
+        alarm[0] = 10
+        alarm[1] = 20
+        return alarm[0] + alarm[1]
+    }"));
+
+    let resources = build(items);
+    let mut state = vm::State::new();
+
+    state.create_instance(100001);
+    state.set_self(100001);
+
+    let result = Ok(vm::Value::from(30));
+    assert_eq!(state.execute(&resources, builtin_array, &[]), result);
+    assert_eq!(state.get_instance(100001).alarm[0], 10);
+    assert_eq!(state.get_instance(100001).alarm[1], 20);
 }
 
 /// Read and write global variables.
@@ -386,6 +413,7 @@ enum Item {
     Script(&'static str),
     Native(vm::ApiFunction),
     Member(vm::GetFunction, vm::SetFunction),
+    MemberArray(vm::GetIndexFunction, vm::SetIndexFunction),
 }
 
 fn build(items: HashMap<Symbol, Item>) -> vm::Resources {
@@ -393,7 +421,8 @@ fn build(items: HashMap<Symbol, Item>) -> vm::Resources {
         .map(|(&name, resource)| match *resource {
             Item::Script(_) => (name, ssa::Prototype::Script),
             Item::Native(_) => (name, ssa::Prototype::Native),
-            Item::Member(_, _) => (name, ssa::Prototype::Member),
+            Item::Member(_, _) => (name, ssa::Prototype::Member { array: false }),
+            Item::MemberArray(_, _) => (name, ssa::Prototype::Member { array: true }),
         })
         .collect();
 
@@ -409,6 +438,10 @@ fn build(items: HashMap<Symbol, Item>) -> vm::Resources {
             Item::Member(get, set) => {
                 resources.get.insert(name, get);
                 resources.set.insert(name, set);
+            }
+            Item::MemberArray(get, set) => {
+                resources.get_index.insert(name, get);
+                resources.set_index.insert(name, set);
             }
         }
     }

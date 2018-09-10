@@ -555,7 +555,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
                     Ok(Place { path: Path::Local(symbol), index: None })
                 } else {
                     // Built-in variables are always local; globalvar cannot redeclare them.
-                    let entity = if self.prototypes.get(&symbol) == Some(&ssa::Prototype::Member) {
+                    // TODO: move into peephole optimizer
+                    let entity = if self.field_is_builtin(symbol) {
                         self.emit_unary_real(ssa::Opcode::LoadScope, SELF)
                     } else {
                         self.emit_unary_symbol(ssa::Opcode::Lookup, symbol)
@@ -607,23 +608,12 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 let i = indices.next().unwrap();
 
                 match array {
-                    // TODO: ignore indices for scalar builtins; pass through or generate for arrays
-                    Place { path: Path::Field(_, field), index: None } |
-                    Place { path: Path::Scope(_, field), index: None } if
-                        self.prototypes.get(&field) == Some(&ssa::Prototype::Member)
-                    => {
-                        let (_, expr_span) = *expr;
-                        self.errors.error(expr_span, "indexed builtins are unimplemented");
-                        Err(PlaceError)
-                    }
-
+                    Place { path, index: None } => Ok(Place { path, index: Some([i, j]) }),
                     Place { index: Some(_), .. } => {
                         let (_, expr_span) = *expr;
                         self.errors.error(expr_span, "expected a variable");
                         Err(PlaceError)
                     }
-
-                    Place { path, index: None } => Ok(Place { path, index: Some([i, j]) }),
                 }
             }
 
@@ -657,8 +647,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
             // A built-in member variable: call its getter.
             Place { path: Path::Field(entity, field), index } if
-                self.prototypes.get(&field) == Some(&ssa::Prototype::Member) &&
-                !self.entity_is_global(entity)
+                self.field_is_builtin(field) && !self.entity_is_global(entity)
             => {
                 self.emit_load_builtin(entity, field, index)
             }
@@ -677,7 +666,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
             // user-defined case as above.)
             // TODO: fallback only happens pre-gms.
             Place { path: Path::Scope(scope, field), index } if
-                self.prototypes.get(&field) == Some(&ssa::Prototype::Member)
+                self.field_is_builtin(field)
             => {
                 let true_block = self.make_block();
                 let false_block = self.make_block();
@@ -744,11 +733,20 @@ impl<'p, 'e> Codegen<'p, 'e> {
     fn emit_load_builtin(
         &mut self, entity: ssa::Value, field: Symbol, index: Option<[ssa::Value; 2]>
     ) -> ssa::Value {
-        // TODO: select op based on presence of index
-        debug_assert!(index.is_none());
+        let op = if self.field_is_builtin_array(field) {
+            ssa::Opcode::CallGetIndex
+        } else {
+            ssa::Opcode::CallGet
+        };
 
-        let args = vec![entity];
-        self.emit_call(ssa::Opcode::CallGet, field, args)
+        let mut args = vec![entity];
+        // GML adjusts the given index arity to match the built-in variable.
+        if self.field_is_builtin_array(field) {
+            let i = index.map_or_else(|| self.emit_real(0.0), |[_, j]| j);
+            args.push(i);
+        }
+
+        self.emit_call(op, field, args)
     }
 
     /// Load an element of an array. (Helper for `emit_load`.)
@@ -805,8 +803,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
             // A built-in member variable: call its setter.
             Place { path: Path::Field(entity, field), index } if
-                self.prototypes.get(&field) == Some(&ssa::Prototype::Member) &&
-                !self.entity_is_global(entity)
+                self.field_is_builtin(field) && !self.entity_is_global(entity)
             => {
                 self.emit_store_builtin(entity, field, index, value);
             }
@@ -821,7 +818,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
             // user-defined case as above.)
             // TODO: fallback only happens pre-gms.
             Place { path: Path::Scope(scope, field), index } if
-                self.prototypes.get(&field) == Some(&ssa::Prototype::Member)
+                self.field_is_builtin(field)
             => {
                 let true_block = self.make_block();
                 let false_block = self.make_block();
@@ -879,11 +876,21 @@ impl<'p, 'e> Codegen<'p, 'e> {
         &mut self, entity: ssa::Value, field: Symbol, index: Option<[ssa::Value; 2]>,
         value: ssa::Value
     ) {
-        // TODO: select op based on presence of index
-        debug_assert!(index.is_none());
+        let op = if self.field_is_builtin_array(field) {
+            ssa::Opcode::CallSetIndex
+        } else {
+            ssa::Opcode::CallSet
+        };
 
-        let args = vec![entity, value];
-        self.emit_call(ssa::Opcode::CallSet, field, args);
+        let mut args = vec![entity];
+        // GML adjusts the given index arity to match the built-in variable.
+        if self.field_is_builtin_array(field) {
+            let i = index.map_or_else(|| self.emit_real(0.0), |[_, j]| j);
+            args.push(i);
+        }
+        args.push(value);
+
+        self.emit_call(op, field, args);
     }
 
     /// Store to an entity field. (Helper for `emit_store`.)
@@ -974,8 +981,22 @@ impl<'p, 'e> Codegen<'p, 'e> {
     }
 
     // SSA inspection utilities:
-    // TODO: move into peephole optimizer
 
+    fn field_is_builtin(&self, field: Symbol) -> bool {
+        match self.prototypes.get(&field) {
+            Some(&ssa::Prototype::Member { .. }) => true,
+            _ => false,
+        }
+    }
+
+    fn field_is_builtin_array(&self, field: Symbol) -> bool {
+        match self.prototypes.get(&field) {
+            Some(&ssa::Prototype::Member { array }) => array,
+            _ => false,
+        }
+    }
+
+    // TODO: move into peephole optimizer
     fn entity_is_global(&self, entity: ssa::Value) -> bool {
         match self.function.values[entity] {
             ssa::Instruction::UnaryReal { op: ssa::Opcode::LoadScope, real } => {
