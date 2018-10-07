@@ -525,7 +525,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
         let op = match self.prototypes.get(&symbol) {
             Some(&ssa::Prototype::Script) => ssa::Opcode::Call,
-            Some(&ssa::Prototype::Native) => ssa::Opcode::CallNative,
+            Some(&ssa::Prototype::Native) => ssa::Opcode::CallApi,
             _ => {
                 self.errors.error(symbol_span, "unknown function or script");
                 ssa::Opcode::Call
@@ -733,20 +733,10 @@ impl<'p, 'e> Codegen<'p, 'e> {
     fn emit_load_builtin(
         &mut self, entity: ssa::Value, field: Symbol, index: Option<[ssa::Value; 2]>
     ) -> ssa::Value {
-        let op = if self.field_is_builtin_array(field) {
-            ssa::Opcode::CallGetIndex
-        } else {
-            ssa::Opcode::CallGet
-        };
-
-        let mut args = vec![entity];
         // GML adjusts the given index arity to match the built-in variable.
-        if self.field_is_builtin_array(field) {
-            let i = index.map_or_else(|| self.emit_real(0.0), |[_, j]| j);
-            args.push(i);
-        }
-
-        self.emit_call(op, field, args)
+        // TODO: pass a typed index to avoid conversions in CallGet
+        let i = index.map_or_else(|| self.emit_real(0.0), |[_, j]| j);
+        self.emit_call(ssa::Opcode::CallGet, field, vec![entity, i])
     }
 
     /// Load an element of an array. (Helper for `emit_load`.)
@@ -876,21 +866,10 @@ impl<'p, 'e> Codegen<'p, 'e> {
         &mut self, entity: ssa::Value, field: Symbol, index: Option<[ssa::Value; 2]>,
         value: ssa::Value
     ) {
-        let op = if self.field_is_builtin_array(field) {
-            ssa::Opcode::CallSetIndex
-        } else {
-            ssa::Opcode::CallSet
-        };
-
-        let mut args = vec![entity];
         // GML adjusts the given index arity to match the built-in variable.
-        if self.field_is_builtin_array(field) {
-            let i = index.map_or_else(|| self.emit_real(0.0), |[_, j]| j);
-            args.push(i);
-        }
-        args.push(value);
-
-        self.emit_call(op, field, args);
+        // TODO: pass a typed index to avoid conversions in CallGet
+        let i = index.map_or_else(|| self.emit_real(0.0), |[_, j]| j);
+        self.emit_call(ssa::Opcode::CallSet, field, vec![value, entity, i]);
     }
 
     /// Store to an entity field. (Helper for `emit_store`.)
@@ -984,14 +963,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
     fn field_is_builtin(&self, field: Symbol) -> bool {
         match self.prototypes.get(&field) {
-            Some(&ssa::Prototype::Member { .. }) => true,
-            _ => false,
-        }
-    }
-
-    fn field_is_builtin_array(&self, field: Symbol) -> bool {
-        match self.prototypes.get(&field) {
-            Some(&ssa::Prototype::Member { array }) => array,
+            Some(&ssa::Prototype::Member) => true,
             _ => false,
         }
     }

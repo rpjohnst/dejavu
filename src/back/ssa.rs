@@ -175,11 +175,9 @@ pub enum Opcode {
 
     // TODO: combine these using instruction types?
     Call,
-    CallNative,
+    CallApi,
     CallGet,
     CallSet,
-    CallGetIndex,
-    CallSetIndex,
     Jump,
     Branch,
 }
@@ -195,7 +193,7 @@ pub enum Prototype {
     /// A native API function.
     Native,
     /// A built-in member accessed via getter and setter.
-    Member { array: bool },
+    Member,
 }
 
 impl Function {

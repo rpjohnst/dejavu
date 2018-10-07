@@ -102,11 +102,9 @@ pub enum Op {
     StoreIndex,
 
     Call,
-    CallNative,
+    CallApi,
     CallGet,
     CallSet,
-    CallGetIndex,
-    CallSetIndex,
     Ret,
 
     Jump,

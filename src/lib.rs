@@ -3,6 +3,8 @@
 #![feature(box_syntax)]
 #![feature(slice_patterns)]
 #![feature(range_contains)]
+#![feature(extern_types)]
+#![feature(try_from)]
 
 #[macro_use]
 mod handle_map;

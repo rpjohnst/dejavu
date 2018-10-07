@@ -1,17 +1,21 @@
 use std::{mem, ptr, slice, cmp, iter, fmt};
+use std::convert::TryFrom;
 
 use symbol::Symbol;
 use vm::{self, code};
 
 /// A single thread of GML execution.
 pub struct State {
+    returns: Vec<(Symbol, usize, usize)>,
+    stack: Vec<Register>,
     world: vm::World,
 
     self_entity: vm::Entity,
     other_entity: vm::Entity,
+}
 
-    returns: Vec<(Symbol, usize, usize)>,
-    stack: Vec<Register>,
+extern {
+    type Engine;
 }
 
 /// A stack slot for the VM.
@@ -63,24 +67,17 @@ const LOCAL: i32 = -7;
 impl State {
     pub fn new() -> State {
         State {
+            returns: vec![],
+            stack: vec![],
             world: vm::World::new(),
 
             self_entity: vm::Entity::default(),
             other_entity: vm::Entity::default(),
-
-            returns: vec![],
-            stack: vec![],
         }
     }
 
-    pub fn create_instance(&mut self, id: i32) {
-        let entity = self.world.create_entity();
-        self.world.create_instance(id, entity);
-    }
-
-    pub fn get_instance(&self, id: i32) -> &vm::Instance {
-        let entity = self.world.instances[id];
-        &self.world.instance_table[&entity]
+    pub fn create_instance(&mut self, id: i32) -> vm::Entity {
+        self.world.create_instance(id)
     }
 
     pub fn set_self(&mut self, id: i32) {
@@ -97,8 +94,20 @@ impl State {
         unsafe { mem::transmute::<&[Register], &[vm::Value]>(registers) }
     }
 
-    pub fn execute(
-        &mut self, resources: &vm::Resources, symbol: Symbol, arguments: &[vm::Value]
+    pub fn execute<E>(
+        &mut self,
+        resources: &vm::Resources<E>, engine: &mut E,
+        symbol: Symbol, arguments: &[vm::Value]
+    ) -> Result<vm::Value, Error> {
+        let resources = unsafe { &*(resources as *const _ as *const vm::Resources<Engine>) };
+        let engine = unsafe { &mut *(engine as *mut _ as *mut Engine) };
+        self.execute_internal(resources, engine, symbol, arguments)
+    }
+
+    fn execute_internal(
+        &mut self,
+        resources: &vm::Resources<Engine>, engine: &mut Engine,
+        symbol: Symbol, arguments: &[vm::Value]
     ) -> Result<vm::Value, Error> {
         let mut symbol = symbol;
         let mut function = &resources.scripts[&symbol];
@@ -490,7 +499,7 @@ impl State {
                     self.world.globals.insert(name);
 
                     let entity = vm::world::GLOBAL;
-                    let component = self.world.hash_table.get_mut(&entity).unwrap();
+                    let component = self.world.entities.get_mut(&entity).unwrap();
                     component.entry(name).or_insert(vm::Value::from(0.0));
                 }
 
@@ -596,7 +605,7 @@ impl State {
                     let registers = &mut self.stack[reg_base..];
 
                     let entity = unsafe { registers[entity].entity };
-                    let exists = self.world.hash_table.contains_key(&entity);
+                    let exists = self.world.entities.contains_key(&entity);
                     registers[t].value = vm::Value::from(exists);
                 }
 
@@ -689,7 +698,7 @@ impl State {
 
                     let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let component = &self.world.hash_table[&entity];
+                    let component = &self.world.entities[&entity];
                     registers[t].value = *component.get(&field)
                         .ok_or_else(|| {
                             let kind = ErrorKind::Name(field);
@@ -702,7 +711,7 @@ impl State {
 
                     let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let component = &self.world.hash_table[&entity];
+                    let component = &self.world.entities[&entity];
                     registers[t].value = *component.get(&field)
                         .unwrap_or(&vm::Value::from(0.0));
                 }
@@ -757,7 +766,7 @@ impl State {
                     let s = unsafe { registers[s].value };
                     let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let component = self.world.hash_table.get_mut(&entity).unwrap();
+                    let component = self.world.entities.get_mut(&entity).unwrap();
                     component.insert(field, s);
                 }
 
@@ -816,15 +825,20 @@ impl State {
                     continue;
                 }
 
-                (code::Op::CallNative, callee, base, len) => {
+                (code::Op::CallApi, callee, base, len) => {
                     let symbol = Self::get_string(function.constants[callee]);
-                    let function = resources.functions[&symbol];
+                    let function = resources.api[&symbol];
                     let reg_base = reg_base + base;
 
                     let limit = reg_base + len;
 
-                    let arguments = vm::Arguments { base, limit };
-                    let value = function(self, resources, arguments)?;
+                    // TODO: move this back inline with NLL
+                    let value;
+                    {
+                        let registers = &self.stack[base..limit];
+                        let arguments = unsafe { mem::transmute::<_, &[vm::Value]>(registers) };
+                        value = function(engine, arguments)?;
+                    }
 
                     let registers = &mut self.stack[reg_base..];
                     registers[0].value = value;
@@ -835,17 +849,12 @@ impl State {
                     let function = resources.get[&symbol];
                     let reg_base = reg_base + base;
 
-                    // TODO: simplify this with NLL
-                    let entity;
-                    {
-                        let registers = &self.stack[reg_base..];
-                        entity = unsafe { registers[0].entity };
-                    }
-                    let instance = &self.world.instance_table[&entity];
-                    let value = function(instance);
-
                     let registers = &mut self.stack[reg_base..];
-                    registers[0].value = value;
+
+                    let entity = unsafe { registers[0].entity };
+                    let i = unsafe { registers[1].value };
+                    let i = i32::try_from(i).unwrap_or(0) as usize;
+                    registers[0].value = function(engine, entity, i);
                 }
 
                 (code::Op::CallSet, set, base, _) => {
@@ -853,59 +862,13 @@ impl State {
                     let function = resources.set[&symbol];
                     let reg_base = reg_base + base;
 
-                    // TODO: simplify this with NLL
-                    let (entity, value);
-                    {
-                        let registers = &self.stack[reg_base..];
-                        entity = unsafe { registers[0].entity };
-                        value = unsafe { registers[1].value };
-                    }
-                    let instance = self.world.instance_table.get_mut(&entity).unwrap();
-                    function(instance, value);
-                }
+                    let registers = &self.stack[reg_base..];
 
-                (code::Op::CallGetIndex, get, base, _) => {
-                    let symbol = Self::get_string(function.constants[get]);
-                    let function = resources.get_index[&symbol];
-                    let reg_base = reg_base + base;
-
-                    // TODO: simplify this with NLL
-                    let (entity, i);
-                    {
-                        let registers = &self.stack[reg_base..];
-                        entity = unsafe { registers[0].entity };
-                        i = unsafe { registers[1].value };
-                    }
-                    let instance = &self.world.instance_table[&entity];
-                    let i = match i.data() {
-                        vm::Data::Real(i) => Self::to_i32(i) as usize,
-                        _ => 0,
-                    };
-                    let value = function(instance, i);
-
-                    let registers = &mut self.stack[reg_base..];
-                    registers[0].value = value;
-                }
-
-                (code::Op::CallSetIndex, set, base, _) => {
-                    let symbol = Self::get_string(function.constants[set]);
-                    let function = resources.set_index[&symbol];
-                    let reg_base = reg_base + base;
-
-                    // TODO: simplify this with NLL
-                    let (entity, i, value);
-                    {
-                        let registers = &self.stack[reg_base..];
-                        entity = unsafe { registers[0].entity };
-                        i = unsafe { registers[1].value };
-                        value = unsafe { registers[2].value };
-                    }
-                    let instance = self.world.instance_table.get_mut(&entity).unwrap();
-                    let i = match i.data() {
-                        vm::Data::Real(i) => Self::to_i32(i) as usize,
-                        _ => 0,
-                    };
-                    function(instance, i, value);
+                    let value = unsafe { registers[0].value };
+                    let entity = unsafe { registers[1].entity };
+                    let i = unsafe { registers[2].value };
+                    let i = i32::try_from(i).unwrap_or(0) as usize;
+                    function(engine, entity, i, value);
                 }
 
                 (code::Op::Ret, _, _, _) => {

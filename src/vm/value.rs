@@ -1,4 +1,5 @@
 use std::{mem, fmt};
+use std::convert::TryFrom;
 
 use symbol::Symbol;
 use vm;
@@ -125,5 +126,29 @@ impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let visited = Default::default();
         vm::debug::Value(*self, &visited).fmt(f)
+    }
+}
+
+pub struct TryFromValueError(());
+
+impl TryFrom<Value> for f64 {
+    type Error = TryFromValueError;
+
+    fn try_from(value: Value) -> Result<f64, Self::Error> {
+        match value.data() {
+            vm::Data::Real(i) => Ok(i),
+            _ => Err(TryFromValueError(())),
+        }
+    }
+}
+
+impl TryFrom<Value> for i32 {
+    type Error = TryFromValueError;
+
+    fn try_from(value: Value) -> Result<i32, Self::Error> {
+        match value.data() {
+            vm::Data::Real(i) => Ok(vm::State::to_i32(i)),
+            _ => Err(TryFromValueError(())),
+        }
     }
 }

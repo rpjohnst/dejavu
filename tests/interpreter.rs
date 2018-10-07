@@ -1,7 +1,10 @@
+#![feature(try_from)]
+
 extern crate gml;
 
 use std::path::PathBuf;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 use gml::symbol::Symbol;
 use gml::front::{self, Lexer, Parser, SourceFile, ErrorHandler};
@@ -23,14 +26,14 @@ fn arguments() {
 
     let arguments = [vm::Value::from(3), vm::Value::from(5)];
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, select, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), select, &arguments), result);
 
     let a = Symbol::intern("a");
     let b = Symbol::intern("b");
     let ab = Symbol::intern("ab");
     let arguments = [vm::Value::from(a), vm::Value::from(b)];
     let result = Ok(vm::Value::from(ab));
-    assert_eq!(state.execute(&resources, select, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), select, &arguments), result);
 }
 
 /// Read and write member variables.
@@ -54,59 +57,56 @@ fn member() {
     state.set_self(100001);
 
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, member, &[]), result);
+    assert_eq!(state.execute(&resources, &mut (), member, &[]), result);
 }
 
-/// Read and write scalar builtin variables.
+/// Read and write builtin variables.
 #[test]
-fn builtin_scalar() {
+fn builtin() {
     let mut items = HashMap::new();
 
-    let x = Symbol::intern("x");
-    items.insert(x, Item::Member(vm::Instance::get_x, vm::Instance::set_x));
+    let scalar = Symbol::intern("scalar");
+    items.insert(scalar, Item::Member(Instance::get_scalar, Instance::set_scalar));
 
-    let builtin_scalar = Symbol::intern("builtin_scalar");
-    items.insert(builtin_scalar, Item::Script("{
-        x = 3
-        return x + 5
+    let array = Symbol::intern("array");
+    items.insert(array, Item::Member(Instance::get_array, Instance::set_array));
+
+    let global_scalar = Symbol::intern("global_scalar");
+    items.insert(global_scalar, Item::Member(Engine::get_global_scalar, Engine::set_global_scalar));
+
+    let global_array = Symbol::intern("global_array");
+    items.insert(global_array, Item::Member(Engine::get_global_array, Engine::set_global_array));
+
+    let builtin = Symbol::intern("builtin");
+    items.insert(builtin, Item::Script("{
+        scalar = 3
+        array[0] = 2 + scalar
+        array[1] = scalar + array[0]
+        global_scalar = array[0] + array[1]
+        global_array[0] = array[1] + global_scalar
+        global_array[1] = global_scalar + global_array[0]
+        return global_array[1]
     }"));
 
     let resources = build(items);
+    let mut engine = Engine::default();
     let mut state = vm::State::new();
 
-    state.create_instance(100001);
+    let entity = state.create_instance(100001);
+    engine.instances.insert(entity, Instance::default());
+
     state.set_self(100001);
 
-    let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, builtin_scalar, &[]), result);
-    assert_eq!(state.get_instance(100001).x, 3.0);
-}
+    let result = Ok(vm::Value::from(34));
+    assert_eq!(state.execute(&resources, &mut engine, builtin, &[]), result);
 
-/// Read and write array builtin variables.
-#[test]
-fn builtin_array() {
-    let mut items = HashMap::new();
-
-    let alarm = Symbol::intern("alarm");
-    items.insert(alarm, Item::MemberArray(vm::Instance::get_alarm, vm::Instance::set_alarm));
-
-    let builtin_array = Symbol::intern("builtin_array");
-    items.insert(builtin_array, Item::Script("{
-        alarm[0] = 10
-        alarm[1] = 20
-        return alarm[0] + alarm[1]
-    }"));
-
-    let resources = build(items);
-    let mut state = vm::State::new();
-
-    state.create_instance(100001);
-    state.set_self(100001);
-
-    let result = Ok(vm::Value::from(30));
-    assert_eq!(state.execute(&resources, builtin_array, &[]), result);
-    assert_eq!(state.get_instance(100001).alarm[0], 10);
-    assert_eq!(state.get_instance(100001).alarm[1], 20);
+    let instance = engine.instances.get(&entity).unwrap();
+    assert_eq!(instance.scalar, 3.0);
+    assert_eq!(instance.array[0], 5);
+    assert_eq!(instance.array[1], 8);
+    assert_eq!(engine.global_scalar, 13);
+    assert_eq!(engine.global_array[0], 21.0);
+    assert_eq!(engine.global_array[1], 34.0);
 }
 
 /// Read and write global variables.
@@ -129,7 +129,7 @@ fn global() {
     state.set_self(100001);
 
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, global, &[]), result);
+    assert_eq!(state.execute(&resources, &mut (), global, &[]), result);
 }
 
 #[test]
@@ -163,7 +163,7 @@ fn with() {
     state.set_self(100001);
 
     let result = Ok(vm::Value::from(24.0));
-    assert_eq!(state.execute(&resources, with, &[]), result);
+    assert_eq!(state.execute(&resources, &mut (), with, &[]), result);
 }
 
 /// Read and write arrays.
@@ -186,7 +186,7 @@ fn array() {
     let mut state = vm::State::new();
 
     let result = Ok(vm::Value::from(50));
-    assert_eq!(state.execute(&resources, array, &[]), result);
+    assert_eq!(state.execute(&resources, &mut (), array, &[]), result);
 }
 
 /// First write to a local is control-dependent.
@@ -197,7 +197,7 @@ fn conditional_initialization() {
     let mut items = HashMap::new();
 
     let fibonacci = Symbol::intern("fibonacci");
-    items.insert(fibonacci, Item::Script("{
+    items.insert(fibonacci, Item::Script::<()>("{
         var t;
         if (true) {
             t = 1
@@ -216,7 +216,7 @@ fn dead_undef() {
     let mut items = HashMap::new();
 
     let switch = Symbol::intern("switch");
-    items.insert(switch, Item::Script("{
+    items.insert(switch, Item::Script::<()>("{
         var i;
         return 0
         return i
@@ -244,7 +244,7 @@ fn for_loop() {
     let mut state = vm::State::new();
 
     let result = Ok(vm::Value::from(24));
-    assert_eq!(state.execute(&resources, factorial, &[]), result);
+    assert_eq!(state.execute(&resources, &mut (), factorial, &[]), result);
 }
 
 /// Control flow across a switch statement.
@@ -272,19 +272,19 @@ fn switch() {
 
     let arguments = [vm::Value::from(3)];
     let result = Ok(vm::Value::from(5));
-    assert_eq!(state.execute(&resources, switch, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 
     let arguments = [vm::Value::from(8)];
     let result = Ok(vm::Value::from(13));
-    assert_eq!(state.execute(&resources, switch, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 
     let arguments = [vm::Value::from(21)];
     let result = Ok(vm::Value::from(21));
-    assert_eq!(state.execute(&resources, switch, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 
     let arguments = [vm::Value::from(34)];
     let result = Ok(vm::Value::from(21));
-    assert_eq!(state.execute(&resources, switch, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 }
 
 /// An empty switch statement.
@@ -293,7 +293,7 @@ fn switch_empty() {
     let mut items = HashMap::new();
 
     let switch = Symbol::intern("switch");
-    items.insert(switch, Item::Script("{
+    items.insert(switch, Item::Script::<()>("{
         switch (argument0) {
         }
     }"));
@@ -325,19 +325,19 @@ fn switch_fallthrough() {
 
     let arguments = [vm::Value::from(0)];
     let result = Ok(vm::Value::from(0));
-    assert_eq!(state.execute(&resources, switch, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 
     let arguments = [vm::Value::from(1)];
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, switch, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 
     let arguments = [vm::Value::from(2)];
     let result = Ok(vm::Value::from(5));
-    assert_eq!(state.execute(&resources, switch, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 
     let arguments = [vm::Value::from(3)];
     let result = Ok(vm::Value::from(5));
-    assert_eq!(state.execute(&resources, switch, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
 }
 
 /// Call a GML script.
@@ -355,7 +355,7 @@ fn call_script() {
     let mut state = vm::State::new();
 
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, call, &[]), result);
+    assert_eq!(state.execute(&resources, &mut (), call, &[]), result);
 }
 
 /// Recursively call a GML script.
@@ -377,7 +377,7 @@ fn recurse() {
 
     let arguments = [vm::Value::from(6)];
     let result = Ok(vm::Value::from(13));
-    assert_eq!(state.execute(&resources, fibonacci, &arguments), result);
+    assert_eq!(state.execute(&resources, &mut (), fibonacci, &arguments), result);
 }
 
 /// Call a native function.
@@ -386,11 +386,29 @@ fn ffi() {
     let mut items = HashMap::new();
 
     let add = Symbol::intern("add");
-    items.insert(add, Item::Native(native_add));
-    fn native_add(
-        state: &mut vm::State, _resources: &vm::Resources, arguments: vm::Arguments
-    ) -> Result<vm::Value, vm::Error> {
-        let arguments = state.arguments(arguments);
+    items.insert(add, Item::Native(Engine::native_add));
+
+    let call = Symbol::intern("call");
+    items.insert(call, Item::Script("return add(3, 5) + 8"));
+
+    let resources = build(items);
+    let mut engine = Engine::default();
+    let mut state = vm::State::new();
+
+    let result = Ok(vm::Value::from(16.0));
+    assert_eq!(state.execute(&resources, &mut engine, call, &[]), result);
+}
+
+#[derive(Default)]
+struct Engine {
+    instances: HashMap<vm::Entity, Instance>,
+
+    global_scalar: i32,
+    global_array: [f32; 2],
+}
+
+impl Engine {
+    fn native_add(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::Error> {
         let value = match (arguments[0].data(), arguments[1].data()) {
             (vm::Data::Real(a), vm::Data::Real(b)) => vm::Value::from(a + b),
             _ => vm::Value::from(0),
@@ -399,30 +417,59 @@ fn ffi() {
         Ok(value)
     }
 
-    let call = Symbol::intern("call");
-    items.insert(call, Item::Script("return add(3, 5) + 8"));
+    fn get_global_scalar(&self, _: vm::Entity, _: usize) -> vm::Value {
+        vm::Value::from(self.global_scalar)
+    }
+    fn set_global_scalar(&mut self, _: vm::Entity, _: usize, value: vm::Value) {
+        self.global_scalar = i32::try_from(value).unwrap_or(0);
+    }
 
-    let resources = build(items);
-    let mut state = vm::State::new();
-
-    let result = Ok(vm::Value::from(16.0));
-    assert_eq!(state.execute(&resources, call, &[]), result);
+    fn get_global_array(&self, _: vm::Entity, i: usize) -> vm::Value {
+        vm::Value::from(self.global_array[i] as f64)
+    }
+    fn set_global_array(&mut self, _: vm::Entity, i: usize, value: vm::Value) {
+        self.global_array[i] = f64::try_from(value).unwrap_or(0.0) as f32;
+    }
 }
 
-enum Item {
+#[derive(Default)]
+struct Instance {
+    scalar: f32,
+    array: [i32; 2],
+}
+
+impl Instance {
+    pub fn get_scalar(engine: &Engine, entity: vm::Entity, _: usize) -> vm::Value {
+        let instance = &engine.instances[&entity];
+        vm::Value::from(instance.scalar as f64)
+    }
+    pub fn set_scalar(engine: &mut Engine, entity: vm::Entity, _: usize, value: vm::Value) {
+        let instance = engine.instances.get_mut(&entity).unwrap();
+        instance.scalar = f64::try_from(value).unwrap_or(0.0) as f32;
+    }
+
+    pub fn get_array(engine: &Engine, entity: vm::Entity, i: usize) -> vm::Value {
+        let instance = &engine.instances[&entity];
+        vm::Value::from(instance.array[i])
+    }
+    pub fn set_array(engine: &mut Engine, entity: vm::Entity, i: usize, value: vm::Value) {
+        let instance = engine.instances.get_mut(&entity).unwrap();
+        instance.array[i] = i32::try_from(value).unwrap_or(0);
+    }
+}
+
+enum Item<E> {
     Script(&'static str),
-    Native(vm::ApiFunction),
-    Member(vm::GetFunction, vm::SetFunction),
-    MemberArray(vm::GetIndexFunction, vm::SetIndexFunction),
+    Native(vm::ApiFunction<E>),
+    Member(vm::GetFunction<E>, vm::SetFunction<E>),
 }
 
-fn build(items: HashMap<Symbol, Item>) -> vm::Resources {
+fn build<E: Default>(items: HashMap<Symbol, Item<E>>) -> vm::Resources<E> {
     let prototypes: HashMap<Symbol, ssa::Prototype> = items.iter()
         .map(|(&name, resource)| match *resource {
             Item::Script(_) => (name, ssa::Prototype::Script),
             Item::Native(_) => (name, ssa::Prototype::Native),
-            Item::Member(_, _) => (name, ssa::Prototype::Member { array: false }),
-            Item::MemberArray(_, _) => (name, ssa::Prototype::Member { array: true }),
+            Item::Member(_, _) => (name, ssa::Prototype::Member),
         })
         .collect();
 
@@ -433,15 +480,11 @@ fn build(items: HashMap<Symbol, Item>) -> vm::Resources {
                 resources.scripts.insert(name, compile(&prototypes, source));
             }
             Item::Native(function) => {
-                resources.functions.insert(name, function);
+                resources.api.insert(name, function);
             }
             Item::Member(get, set) => {
                 resources.get.insert(name, get);
                 resources.set.insert(name, set);
-            }
-            Item::MemberArray(get, set) => {
-                resources.get_index.insert(name, get);
-                resources.set_index.insert(name, set);
             }
         }
     }
