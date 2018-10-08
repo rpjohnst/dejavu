@@ -152,15 +152,16 @@ impl<'s> Lexer<'s> {
     fn scan_string(&mut self) -> Token {
         let ref source = self.source_file.source;
 
-        let low = self.position;
-
         let delim = self.current.unwrap();
+
+        let low = self.position;
         self.advance_char();
 
         while self.current.map(|c| c != delim).unwrap_or(false) {
             self.advance_char();
         }
 
+        self.advance_char();
         let high = self.position;
 
         let symbol = Symbol::intern(&source[low..high]);

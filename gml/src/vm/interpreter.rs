@@ -36,15 +36,16 @@ pub union Register {
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Error {
-    symbol: Symbol,
-    instruction: usize,
-    kind: ErrorKind,
+    pub symbol: Symbol,
+    pub instruction: usize,
+    pub kind: ErrorKind,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum ErrorKind {
     TypeUnary(code::Op, vm::Type),
     TypeBinary(code::Op, vm::Type, vm::Type),
+    Arity(usize),
     Scope(i32),
     Name(Symbol),
     Bounds(usize),
@@ -86,12 +87,6 @@ impl State {
 
     pub fn set_other(&mut self, id: i32) {
         self.other_entity = self.world.instances[id];
-    }
-
-    pub fn arguments(&self, arguments: vm::Arguments) -> &[vm::Value] {
-        let vm::Arguments { base, limit } = arguments;
-        let registers = &self.stack[base..limit];
-        unsafe { mem::transmute::<&[Register], &[vm::Value]>(registers) }
     }
 
     pub fn execute<E>(

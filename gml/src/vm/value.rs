@@ -142,6 +142,17 @@ impl TryFrom<Value> for f64 {
     }
 }
 
+impl TryFrom<Value> for Symbol {
+    type Error = TryFromValueError;
+
+    fn try_from(value: Value) -> Result<Symbol, Self::Error> {
+        match value.data() {
+            vm::Data::String(s) => Ok(s),
+            _ => Err(TryFromValueError(())),
+        }
+    }
+}
+
 impl TryFrom<Value> for i32 {
     type Error = TryFromValueError;
 

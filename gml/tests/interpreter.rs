@@ -2,14 +2,10 @@
 
 extern crate gml;
 
-use std::path::PathBuf;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 
-use gml::symbol::Symbol;
-use gml::front::{self, Lexer, Parser, SourceFile, ErrorHandler};
-use gml::back::{self, ssa};
-use gml::vm::{self, code};
+use gml::{build, Item, symbol::Symbol, vm};
 
 /// Read script arguments.
 #[test]
@@ -456,53 +452,4 @@ impl Instance {
         let instance = engine.instances.get_mut(&entity).unwrap();
         instance.array[i] = i32::try_from(value).unwrap_or(0);
     }
-}
-
-enum Item<E> {
-    Script(&'static str),
-    Native(vm::ApiFunction<E>),
-    Member(vm::GetFunction<E>, vm::SetFunction<E>),
-}
-
-fn build<E: Default>(items: HashMap<Symbol, Item<E>>) -> vm::Resources<E> {
-    let prototypes: HashMap<Symbol, ssa::Prototype> = items.iter()
-        .map(|(&name, resource)| match *resource {
-            Item::Script(_) => (name, ssa::Prototype::Script),
-            Item::Native(_) => (name, ssa::Prototype::Native),
-            Item::Member(_, _) => (name, ssa::Prototype::Member),
-        })
-        .collect();
-
-    let mut resources = vm::Resources::default();
-    for (name, item) in items.into_iter() {
-        match item {
-            Item::Script(source) => {
-                resources.scripts.insert(name, compile(&prototypes, source));
-            }
-            Item::Native(function) => {
-                resources.api.insert(name, function);
-            }
-            Item::Member(get, set) => {
-                resources.get.insert(name, get);
-                resources.set.insert(name, set);
-            }
-        }
-    }
-
-    resources
-}
-
-fn compile(prototypes: &HashMap<Symbol, ssa::Prototype>, source: &str) -> code::Function {
-    let source = SourceFile {
-        name: PathBuf::from("<test>"),
-        source: String::from(source),
-    };
-    let errors = ErrorHandler;
-    let reader = Lexer::new(&source);
-    let mut parser = Parser::new(reader, &errors);
-    let program = parser.parse_program();
-    let codegen = front::Codegen::new(prototypes, &errors);
-    let program = codegen.compile(&program);
-    let codegen = back::Codegen::new();
-    codegen.compile(&program)
 }

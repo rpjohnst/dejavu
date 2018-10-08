@@ -1,0 +1,7 @@
+[package]
+name = "runner"
+version = "0.1.0"
+authors = ["Russell Johnston <rpjohnst@gmail.com>"]
+
+[dependencies]
+gml = { path = "../gml" }

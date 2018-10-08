@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use symbol::Symbol;
 
-pub use vm::interpreter::{State, Error};
+pub use vm::interpreter::{State, Error, ErrorKind};
 pub use vm::value::{Type, Value, Data};
 pub use vm::array::{Array, Row};
 pub use vm::world::{Entity, Hash};
@@ -27,9 +27,3 @@ pub struct Resources<E: ?Sized> {
 pub type ApiFunction<E> = fn(&mut E, &[Value]) -> Result<Value, Error>;
 pub type GetFunction<E> = fn(&E, Entity, usize) -> Value;
 pub type SetFunction<E> = fn(&mut E, Entity, usize, Value);
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub struct Arguments {
-    base: usize,
-    limit: usize,
-}

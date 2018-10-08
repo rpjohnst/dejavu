@@ -1,6 +1,5 @@
-[package]
-name = "gml"
-version = "0.1.0"
-authors = ["Russell Johnston <rpjohnst@gmail.com>"]
-
-[dependencies]
+[workspace]
+members = [
+    "gml",
+    "runner",
+]
