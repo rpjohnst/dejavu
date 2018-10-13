@@ -178,7 +178,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
             }
 
             ast::Stmt::Invoke(ref call) => {
-                self.emit_value_call(call);
+                self.emit_value_call(call, statement_span);
             }
 
             ast::Stmt::Declare(scope, box ref names) => {
@@ -474,7 +474,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
     }
 
     fn emit_value(&mut self, expression: &(ast::Expr, Span)) -> ssa::Value {
-        let (ref expr, _expr_span) = *expression;
+        let (ref expr, expr_span) = *expression;
         match *expr {
             ast::Expr::Value(ast::Value::Real(real)) => self.emit_real(real),
             ast::Expr::Value(ast::Value::String(string)) => self.emit_string(string),
@@ -506,7 +506,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.emit_binary(ssa::Opcode::from(op), [left, right])
             }
 
-            ast::Expr::Call(ref call) => self.emit_value_call(call),
+            ast::Expr::Call(ref call) => self.emit_value_call(call, expr_span),
 
             _ => {
                 let place = self.emit_place(expression)
@@ -516,21 +516,27 @@ impl<'p, 'e> Codegen<'p, 'e> {
         }
     }
 
-    fn emit_value_call(&mut self, call: &ast::Call) -> ssa::Value {
+    fn emit_value_call(&mut self, call: &ast::Call, call_span: Span) -> ssa::Value {
         let ast::Call((symbol, symbol_span), box ref args) = *call;
+
+        let (op, arity, variadic) = match self.prototypes.get(&symbol) {
+            Some(&ssa::Prototype::Script) =>
+                (ssa::Opcode::Call, 0, true),
+            Some(&ssa::Prototype::Native { arity, variadic }) =>
+                (ssa::Opcode::CallApi, arity, variadic),
+            _ => {
+                self.errors.error(call_span, "unknown function or script");
+                (ssa::Opcode::Call, 0, true)
+            }
+        };
 
         let args: Vec<_> = args.iter()
             .map(|argument| self.emit_value(argument))
             .collect();
-
-        let op = match self.prototypes.get(&symbol) {
-            Some(&ssa::Prototype::Script) => ssa::Opcode::Call,
-            Some(&ssa::Prototype::Native) => ssa::Opcode::CallApi,
-            _ => {
-                self.errors.error(symbol_span, "unknown function or script");
-                ssa::Opcode::Call
-            }
-        };
+        if args.len() < arity || (!variadic && args.len() > arity) {
+            self.errors.error(symbol_span, "wrong number of arguments to function or script");
+            return self.emit_real(0.0);
+        }
 
         self.emit_call(op, symbol, args)
     }

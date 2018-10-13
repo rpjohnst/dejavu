@@ -382,7 +382,7 @@ fn ffi() {
     let mut items = HashMap::new();
 
     let add = Symbol::intern("add");
-    items.insert(add, Item::Native(Engine::native_add));
+    items.insert(add, Item::Native(Engine::native_add, 2, false));
 
     let call = Symbol::intern("call");
     items.insert(call, Item::Script("return add(3, 5) + 8"));

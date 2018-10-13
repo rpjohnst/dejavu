@@ -191,7 +191,7 @@ pub enum Prototype {
     /// A GML script.
     Script,
     /// A native API function.
-    Native,
+    Native { arity: usize, variadic: bool },
     /// A built-in member accessed via getter and setter.
     Member,
 }

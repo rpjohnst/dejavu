@@ -11,7 +11,7 @@ impl<'b> fmt::Debug for Value<'b> {
         let Value(value, visited) = *self;
         match value.data() {
             vm::Data::Real(value) => write!(f, "{:?}", value),
-            vm::Data::String(value) => write!(f, "{:?}", value),
+            vm::Data::String(value) => write!(f, "{}", value),
             vm::Data::Array(value) => write!(f, "{:?}", Array(&value, visited)),
         }
     }

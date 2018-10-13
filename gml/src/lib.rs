@@ -27,7 +27,7 @@ pub mod vm;
 /// A GML item definition, used as input to build a project.
 pub enum Item<E> {
     Script(&'static str),
-    Native(vm::ApiFunction<E>),
+    Native(vm::ApiFunction<E>, usize, bool),
     Member(vm::GetFunction<E>, vm::SetFunction<E>),
 }
 
@@ -36,7 +36,7 @@ pub fn build<E: Default>(items: HashMap<Symbol, Item<E>>) -> vm::Resources<E> {
     let prototypes: HashMap<Symbol, ssa::Prototype> = items.iter()
         .map(|(&name, resource)| match *resource {
             Item::Script(_) => (name, ssa::Prototype::Script),
-            Item::Native(_) => (name, ssa::Prototype::Native),
+            Item::Native(_, arity, variadic) => (name, ssa::Prototype::Native { arity, variadic }),
             Item::Member(_, _) => (name, ssa::Prototype::Member),
         })
         .collect();
@@ -47,7 +47,7 @@ pub fn build<E: Default>(items: HashMap<Symbol, Item<E>>) -> vm::Resources<E> {
             Item::Script(source) => {
                 resources.scripts.insert(name, compile(&prototypes, name, source));
             }
-            Item::Native(function) => {
+            Item::Native(function, _, _) => {
                 resources.api.insert(name, function);
             }
             Item::Member(get, set) => {
