@@ -54,7 +54,7 @@ pub enum ErrorKind {
     /// Name in entity does not exit.
     Name(Symbol),
     /// Array index out of bounds.
-    Bounds(usize),
+    Bounds(i32),
 }
 
 impl fmt::Debug for Error {
@@ -724,8 +724,8 @@ impl State {
                     let i = unsafe { registers[i].value };
                     registers[t].row = match (a.data(), i.data()) {
                         (vm::Data::Array(array), vm::Data::Real(i)) => {
-                            let i = Self::to_i32(i) as usize;
-                            let value = array.load_row(i)
+                            let i = Self::to_i32(i);
+                            let value = array.load_row(i as usize)
                                 .map_err(|_| {
                                     let kind = ErrorKind::Bounds(i);
                                     Error { symbol, instruction, kind }
@@ -746,8 +746,8 @@ impl State {
                     let j = unsafe { registers[j].value };
                     registers[t].value = match j.data() {
                         vm::Data::Real(j) => {
-                            let j = Self::to_i32(j) as usize;
-                            let value = unsafe { r.load(j) }
+                            let j = Self::to_i32(j);
+                            let value = unsafe { r.load(j as usize) }
                                 .map_err(|_| {
                                     let kind = ErrorKind::Bounds(j);
                                     Error { symbol, instruction, kind }
