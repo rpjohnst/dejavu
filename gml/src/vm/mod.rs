@@ -2,17 +2,16 @@ use std::collections::HashMap;
 
 use symbol::Symbol;
 
-pub use vm::interpreter::{State, Error, ErrorKind};
+pub use vm::interpreter::{Thread, Error, ErrorKind};
 pub use vm::value::{Type, Value, Data};
 pub use vm::array::{Array, Row};
-pub use vm::world::{Entity, Hash};
-pub(crate) use vm::world::World;
+pub use vm::world::{World, Entity, Hash};
 
 pub mod code;
 pub mod debug;
+pub mod world;
 mod value;
 mod array;
-mod world;
 mod interpreter;
 
 #[derive(Default)]

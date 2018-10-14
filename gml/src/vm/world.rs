@@ -4,7 +4,7 @@ use index_map::IndexMap;
 use symbol::Symbol;
 use vm;
 
-pub(crate) struct World {
+pub struct World {
     next_entity: u64,
     pub(in vm) entities: HashMap<Entity, Hash>,
 
@@ -20,8 +20,12 @@ pub const GLOBAL: Entity = Entity(0);
 
 pub type Hash = HashMap<Symbol, vm::Value>;
 
-impl World {
-    pub(in vm) fn new() -> Self {
+pub trait Api {
+    fn state(&mut self) -> &mut World;
+}
+
+impl Default for World {
+    fn default() -> Self {
         let Entity(global) = GLOBAL;
 
         let mut world = World {
@@ -38,14 +42,16 @@ impl World {
 
         world
     }
+}
 
+impl World {
     fn create_entity(&mut self) -> Entity {
         let entity = self.next_entity;
         self.next_entity += 1;
         Entity(entity)
     }
 
-    pub(in vm) fn create_instance(&mut self, id: i32) -> Entity {
+    pub fn create_instance(&mut self, id: i32) -> Entity {
         let entity = self.create_entity();
         self.instances.insert(id, entity);
         self.entities.insert(entity, Hash::new());

@@ -18,18 +18,19 @@ fn arguments() {
     }"));
 
     let resources = build(items);
-    let mut state = vm::State::new();
+    let mut engine = Engine::default();
+    let mut thread = vm::Thread::new();
 
     let arguments = [vm::Value::from(3), vm::Value::from(5)];
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), select, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, select, &arguments), result);
 
     let a = Symbol::intern("a");
     let b = Symbol::intern("b");
     let ab = Symbol::intern("ab");
     let arguments = [vm::Value::from(a), vm::Value::from(b)];
     let result = Ok(vm::Value::from(ab));
-    assert_eq!(state.execute(&resources, &mut (), select, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, select, &arguments), result);
 }
 
 /// Read and write member variables.
@@ -47,13 +48,14 @@ fn member() {
     }"));
 
     let resources = build(items);
-    let mut state = vm::State::new();
+    let mut engine = Engine::default();
+    let mut thread = vm::Thread::new();
 
-    state.create_instance(100001);
-    state.set_self(100001);
+    let entity = engine.world.create_instance(100001);
+    thread.set_self(entity);
 
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), member, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, member, &[]), result);
 }
 
 /// Read and write builtin variables.
@@ -86,17 +88,16 @@ fn builtin() {
 
     let resources = build(items);
     let mut engine = Engine::default();
-    let mut state = vm::State::new();
+    let mut thread = vm::Thread::new();
 
-    let entity = state.create_instance(100001);
+    let entity = engine.world.create_instance(100001);
     engine.instances.insert(entity, Instance::default());
-
-    state.set_self(100001);
+    thread.set_self(entity);
 
     let result = Ok(vm::Value::from(34));
-    assert_eq!(state.execute(&resources, &mut engine, builtin, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, builtin, &[]), result);
 
-    let instance = engine.instances.get(&entity).unwrap();
+    let instance = &engine.instances[&entity];
     assert_eq!(instance.scalar, 3.0);
     assert_eq!(instance.array[0], 5);
     assert_eq!(instance.array[1], 8);
@@ -119,13 +120,14 @@ fn global() {
     }"));
 
     let resources = build(items);
-    let mut state = vm::State::new();
+    let mut engine = Engine::default();
+    let mut thread = vm::Thread::new();
 
-    state.create_instance(100001);
-    state.set_self(100001);
+    let entity = engine.world.create_instance(100001);
+    thread.set_self(entity);
 
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), global, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, global, &[]), result);
 }
 
 #[test]
@@ -152,14 +154,15 @@ fn with() {
     }"));
 
     let resources = build(items);
-    let mut state = vm::State::new();
+    let mut engine = Engine::default();
+    let mut thread = vm::Thread::new();
 
-    state.create_instance(100001);
-    state.create_instance(100002);
-    state.set_self(100001);
+    let a = engine.world.create_instance(100001);
+    engine.world.create_instance(100002);
+    thread.set_self(a);
 
     let result = Ok(vm::Value::from(24.0));
-    assert_eq!(state.execute(&resources, &mut (), with, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, with, &[]), result);
 }
 
 /// Read and write arrays.
@@ -179,10 +182,11 @@ fn array() {
     }"));
 
     let resources = build(items);
-    let mut state = vm::State::new();
+    let mut engine = Engine::default();
+    let mut thread = vm::Thread::new();
 
     let result = Ok(vm::Value::from(50));
-    assert_eq!(state.execute(&resources, &mut (), array, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, array, &[]), result);
 }
 
 /// First write to a local is control-dependent.
@@ -237,10 +241,11 @@ fn for_loop() {
     }"));
 
     let resources = build(items);
-    let mut state = vm::State::new();
+    let mut engine = Engine::default();
+    let mut thread = vm::Thread::new();
 
     let result = Ok(vm::Value::from(24));
-    assert_eq!(state.execute(&resources, &mut (), factorial, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, factorial, &[]), result);
 }
 
 /// Control flow across a switch statement.
@@ -264,23 +269,24 @@ fn switch() {
     }"));
 
     let resources = build(items);
-    let mut state = vm::State::new();
+    let mut engine = Engine::default();
+    let mut thread = vm::Thread::new();
 
     let arguments = [vm::Value::from(3)];
     let result = Ok(vm::Value::from(5));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
 
     let arguments = [vm::Value::from(8)];
     let result = Ok(vm::Value::from(13));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
 
     let arguments = [vm::Value::from(21)];
     let result = Ok(vm::Value::from(21));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
 
     let arguments = [vm::Value::from(34)];
     let result = Ok(vm::Value::from(21));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
 }
 
 /// An empty switch statement.
@@ -317,23 +323,24 @@ fn switch_fallthrough() {
     }"));
 
     let resources = build(items);
-    let mut state = vm::State::new();
+    let mut engine = Engine::default();
+    let mut thread = vm::Thread::new();
 
     let arguments = [vm::Value::from(0)];
     let result = Ok(vm::Value::from(0));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
 
     let arguments = [vm::Value::from(1)];
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
 
     let arguments = [vm::Value::from(2)];
     let result = Ok(vm::Value::from(5));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
 
     let arguments = [vm::Value::from(3)];
     let result = Ok(vm::Value::from(5));
-    assert_eq!(state.execute(&resources, &mut (), switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
 }
 
 /// Call a GML script.
@@ -348,10 +355,11 @@ fn call_script() {
     items.insert(call, Item::Script("return id(3) + 5"));
 
     let resources = build(items);
-    let mut state = vm::State::new();
+    let mut engine = Engine::default();
+    let mut thread = vm::Thread::new();
 
     let result = Ok(vm::Value::from(8));
-    assert_eq!(state.execute(&resources, &mut (), call, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, call, &[]), result);
 }
 
 /// Recursively call a GML script.
@@ -369,11 +377,12 @@ fn recurse() {
     }"));
 
     let resources = build(items);
-    let mut state = vm::State::new();
+    let mut engine = Engine::default();
+    let mut thread = vm::Thread::new();
 
     let arguments = [vm::Value::from(6)];
     let result = Ok(vm::Value::from(13));
-    assert_eq!(state.execute(&resources, &mut (), fibonacci, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, fibonacci, &arguments), result);
 }
 
 /// Call a native function.
@@ -389,18 +398,24 @@ fn ffi() {
 
     let resources = build(items);
     let mut engine = Engine::default();
-    let mut state = vm::State::new();
+    let mut thread = vm::Thread::new();
 
     let result = Ok(vm::Value::from(16.0));
-    assert_eq!(state.execute(&resources, &mut engine, call, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, call, &[]), result);
 }
 
 #[derive(Default)]
 struct Engine {
+    world: vm::World,
+
     instances: HashMap<vm::Entity, Instance>,
 
     global_scalar: i32,
     global_array: [f32; 2],
+}
+
+impl vm::world::Api for Engine {
+    fn state(&mut self) -> &mut vm::World { &mut self.world }
 }
 
 impl Engine {

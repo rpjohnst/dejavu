@@ -8,7 +8,12 @@ use lib::{data};
 
 #[derive(Default)]
 struct Engine {
+    world: vm::World,
     data: data::State,
+}
+
+impl vm::world::Api for Engine {
+    fn state(&mut self) -> &mut vm::World { &mut self.world }
 }
 
 impl data::Api for Engine {
@@ -44,7 +49,7 @@ fn main() {
 
     let resources = gml::build(items);
     let mut engine = Engine::default();
-    let mut state = gml::vm::State::new();
+    let mut thread = gml::vm::Thread::new();
 
-    let _ = state.execute(&resources, &mut engine, main, &[]);
+    let _ = thread.execute(&mut engine, &resources, main, &[]);
 }

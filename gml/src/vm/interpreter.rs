@@ -5,10 +5,9 @@ use symbol::Symbol;
 use vm::{self, code};
 
 /// A single thread of GML execution.
-pub struct State {
+pub struct Thread {
     returns: Vec<(Symbol, usize, usize)>,
     stack: Vec<Register>,
-    world: vm::World,
 
     self_entity: vm::Entity,
     other_entity: vm::Entity,
@@ -74,43 +73,39 @@ const GLOBAL: i32 = -5;
 // -6?
 const LOCAL: i32 = -7;
 
-impl State {
-    pub fn new() -> State {
-        State {
+impl Thread {
+    pub fn new() -> Self {
+        Self {
             returns: vec![],
             stack: vec![],
-            world: vm::World::new(),
 
             self_entity: vm::Entity::default(),
             other_entity: vm::Entity::default(),
         }
     }
 
-    pub fn create_instance(&mut self, id: i32) -> vm::Entity {
-        self.world.create_instance(id)
+    pub fn set_self(&mut self, entity: vm::Entity) {
+        self.self_entity = entity;
     }
 
-    pub fn set_self(&mut self, id: i32) {
-        self.self_entity = self.world.instances[id];
+    pub fn set_other(&mut self, entity: vm::Entity) {
+        self.other_entity = entity;
     }
 
-    pub fn set_other(&mut self, id: i32) {
-        self.other_entity = self.world.instances[id];
-    }
-
-    pub fn execute<E>(
+    pub fn execute<E: vm::world::Api>(
         &mut self,
-        resources: &vm::Resources<E>, engine: &mut E,
+        engine: &mut E, resources: &vm::Resources<E>,
         symbol: Symbol, arguments: &[vm::Value]
     ) -> Result<vm::Value, Error> {
-        let resources = unsafe { &*(resources as *const _ as *const vm::Resources<Engine>) };
+        let world = E::state(engine) as *mut _;
         let engine = unsafe { &mut *(engine as *mut _ as *mut Engine) };
-        self.execute_internal(resources, engine, symbol, arguments)
+        let resources = unsafe { &*(resources as *const _ as *const vm::Resources<Engine>) };
+        self.execute_internal(engine, world, resources, symbol, arguments)
     }
 
-    fn execute_internal(
+    fn execute_internal<'a>(
         &mut self,
-        resources: &vm::Resources<Engine>, engine: &mut Engine,
+        engine: &'a mut Engine, world: *mut vm::World, resources: &vm::Resources<Engine>,
         symbol: Symbol, arguments: &[vm::Value]
     ) -> Result<vm::Value, Error> {
         let mut symbol = symbol;
@@ -124,6 +119,10 @@ impl State {
         let arg_len = cmp::min(function.params as usize, arguments.len());
         let arguments = unsafe { mem::transmute::<&[vm::Value], &[Register]>(arguments) };
         self.stack[reg_base..reg_base + arg_len].copy_from_slice(&arguments[0..arg_len]);
+
+        // Enforce that `world` is treated as a reborrow of `engine`.
+        fn constrain<F: for<'a> Fn(&'a mut Engine) -> &'a mut vm::World>(f: F) -> F { f }
+        let world = constrain(move |_| unsafe { &mut *world });
 
         loop {
             match function.instructions[instruction].decode() {
@@ -500,10 +499,10 @@ impl State {
 
                 (code::Op::DeclareGlobal, name, _, _) => {
                     let name = Self::get_string(function.constants[name]);
-                    self.world.globals.insert(name);
+                    world(engine).globals.insert(name);
 
                     let entity = vm::world::GLOBAL;
-                    let component = self.world.entities.get_mut(&entity).unwrap();
+                    let component = world(engine).entities.get_mut(&entity).unwrap();
                     component.entry(name).or_insert(vm::Value::from(0.0));
                 }
 
@@ -511,7 +510,7 @@ impl State {
                     let registers = &mut self.stack[reg_base..];
 
                     let name = Self::get_string(function.constants[name]);
-                    registers[t].entity = if self.world.globals.contains(&name) {
+                    registers[t].entity = if world(engine).globals.contains(&name) {
                         vm::world::GLOBAL
                     } else {
                         self.self_entity
@@ -563,14 +562,14 @@ impl State {
                     let slice = match scope {
                         SELF => slice::from_ref(&self.self_entity),
                         OTHER => slice::from_ref(&self.other_entity),
-                        ALL => self.world.instances.values(),
+                        ALL => world(engine).instances.values(),
                         NOONE => &[],
                         GLOBAL => slice::from_ref(&vm::world::GLOBAL),
                         LOCAL => &[], // TODO: error
                         object if (0..=100_000).contains(&object) =>
-                            &self.world.objects[&object][..],
+                            &world(engine).objects[&object][..],
                         instance if (100_001..).contains(&instance) =>
-                            slice::from_ref(&self.world.instances[instance]),
+                            slice::from_ref(&world(engine).instances[instance]),
                         _ => &[], // TODO: error
                     };
                     unsafe {
@@ -609,7 +608,7 @@ impl State {
                     let registers = &mut self.stack[reg_base..];
 
                     let entity = unsafe { registers[entity].entity };
-                    let exists = self.world.entities.contains_key(&entity);
+                    let exists = world(engine).entities.contains_key(&entity);
                     registers[t].value = vm::Value::from(exists);
                 }
 
@@ -702,7 +701,7 @@ impl State {
 
                     let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let component = &self.world.entities[&entity];
+                    let component = &world(engine).entities[&entity];
                     registers[t].value = *component.get(&field)
                         .ok_or_else(|| {
                             let kind = ErrorKind::Name(field);
@@ -715,7 +714,7 @@ impl State {
 
                     let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let component = &self.world.entities[&entity];
+                    let component = &world(engine).entities[&entity];
                     registers[t].value = *component.get(&field)
                         .unwrap_or(&vm::Value::from(0.0));
                 }
@@ -770,7 +769,7 @@ impl State {
                     let s = unsafe { registers[s].value };
                     let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let component = self.world.entities.get_mut(&entity).unwrap();
+                    let component = world(engine).entities.get_mut(&entity).unwrap();
                     component.insert(field, s);
                 }
 

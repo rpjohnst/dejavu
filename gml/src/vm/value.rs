@@ -158,7 +158,7 @@ impl TryFrom<Value> for i32 {
 
     fn try_from(value: Value) -> Result<i32, Self::Error> {
         match value.data() {
-            vm::Data::Real(i) => Ok(vm::State::to_i32(i)),
+            vm::Data::Real(i) => Ok(vm::Thread::to_i32(i)),
             _ => Err(TryFromValueError(())),
         }
     }
