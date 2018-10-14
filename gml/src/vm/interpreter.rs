@@ -36,18 +36,24 @@ pub union Register {
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Error {
-    pub symbol: Symbol,
-    pub instruction: usize,
-    pub kind: ErrorKind,
+    symbol: Symbol,
+    instruction: usize,
+    kind: ErrorKind,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum ErrorKind {
+    /// Unary type error.
     TypeUnary(code::Op, vm::Type),
+    /// Binary type error.
     TypeBinary(code::Op, vm::Type, vm::Type),
+    /// Function call arity mismatch.
     Arity(usize),
+    /// Scope does not exit.
     Scope(i32),
+    /// Name in entity does not exit.
     Name(Symbol),
+    /// Array index out of bounds.
     Bounds(usize),
 }
 
@@ -821,8 +827,8 @@ impl State {
                 }
 
                 (code::Op::CallApi, callee, base, len) => {
-                    let symbol = Self::get_string(function.constants[callee]);
-                    let function = resources.api[&symbol];
+                    let api_symbol = Self::get_string(function.constants[callee]);
+                    let function = resources.api[&api_symbol];
                     let reg_base = reg_base + base;
 
                     let limit = reg_base + len;
@@ -832,7 +838,8 @@ impl State {
                     {
                         let registers = &self.stack[base..limit];
                         let arguments = unsafe { mem::transmute::<_, &[vm::Value]>(registers) };
-                        value = function(engine, arguments)?;
+                        value = function(engine, arguments)
+                            .map_err(|kind| Error { symbol, instruction, kind })?;
                     }
 
                     let registers = &mut self.stack[reg_base..];

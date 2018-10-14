@@ -404,7 +404,7 @@ struct Engine {
 }
 
 impl Engine {
-    fn native_add(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::Error> {
+    fn native_add(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
         let value = match (arguments[0].data(), arguments[1].data()) {
             (vm::Data::Real(a), vm::Data::Real(b)) => vm::Value::from(a + b),
             _ => vm::Value::from(0),

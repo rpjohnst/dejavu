@@ -8,7 +8,7 @@ use gml::{symbol::Symbol, vm};
 struct Engine;
 
 impl Engine {
-    fn show_debug_message(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::Error> {
+    fn show_debug_message(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
         eprintln!("{:?}", arguments[0]);
         Ok(vm::Value::from(0))
     }
