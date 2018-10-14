@@ -49,6 +49,9 @@ pub enum ErrorKind {
     TypeBinary(code::Op, vm::Type, vm::Type),
     /// Function call arity mismatch.
     Arity(usize),
+    /// Resource with id does not exist.
+    // TODO: include a resource type? define this in lib/data instead?
+    Resource(i32),
     /// Scope does not exit.
     Scope(i32),
     /// Name in entity does not exit.
