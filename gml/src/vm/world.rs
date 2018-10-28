@@ -5,56 +5,45 @@ use symbol::Symbol;
 use vm;
 
 pub struct World {
-    next_entity: u64,
-    pub(in vm) entities: HashMap<Entity, Hash>,
+    entities: vm::EntityAllocator,
+    pub(in vm) members: vm::EntityMap<HashMap<Symbol, vm::Value>>,
+
+    pub(in vm) objects: HashMap<i32, Vec<vm::Entity>>,
+    pub(in vm) instances: IndexMap<i32, vm::Entity>,
 
     pub(in vm) globals: HashSet<Symbol>,
-    pub(in vm) objects: HashMap<i32, Vec<Entity>>,
-    pub(in vm) instances: IndexMap<i32, Entity>,
 }
 
-#[derive(Copy, Clone, Default, PartialEq, Eq, Hash, Debug)]
-pub struct Entity(u64);
-
-pub const GLOBAL: Entity = Entity(0);
-
-pub type Hash = HashMap<Symbol, vm::Value>;
-
-pub trait Api {
-    fn state(&mut self) -> &mut World;
-}
+pub const GLOBAL: vm::Entity = vm::Entity(0);
 
 impl Default for World {
     fn default() -> Self {
-        let Entity(global) = GLOBAL;
-
         let mut world = World {
-            next_entity: global,
-            entities: HashMap::default(),
+            entities: vm::EntityAllocator::default(),
+            members: vm::EntityMap::default(),
 
-            globals: HashSet::default(),
             objects: HashMap::default(),
             instances: IndexMap::default(),
+
+            globals: HashSet::default(),
         };
 
-        let global = world.create_entity();
-        world.entities.insert(global, Hash::new());
+        let global = world.entities.create();
+        world.members.insert(global, HashMap::default());
 
         world
     }
 }
 
 impl World {
-    fn create_entity(&mut self) -> Entity {
-        let entity = self.next_entity;
-        self.next_entity += 1;
-        Entity(entity)
-    }
-
-    pub fn create_instance(&mut self, id: i32) -> Entity {
-        let entity = self.create_entity();
+    pub fn create_instance(&mut self, id: i32) -> vm::Entity {
+        let entity = self.entities.create();
+        self.members.insert(entity, HashMap::new());
         self.instances.insert(id, entity);
-        self.entities.insert(entity, Hash::new());
         entity
     }
+}
+
+pub trait Api {
+    fn state(&mut self) -> &mut World;
 }

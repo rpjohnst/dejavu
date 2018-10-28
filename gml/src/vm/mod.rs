@@ -3,16 +3,18 @@ use std::collections::HashMap;
 use symbol::Symbol;
 
 pub use vm::interpreter::{Thread, Error, ErrorKind};
+pub use vm::world::World;
+pub use vm::entity_map::{Entity, EntityAllocator, EntityMap};
 pub use vm::value::{Type, Value, Data};
 pub use vm::array::{Array, Row};
-pub use vm::world::{World, Entity, Hash};
 
 pub mod code;
 pub mod debug;
 pub mod world;
+mod interpreter;
+mod entity_map;
 mod value;
 mod array;
-mod interpreter;
 
 #[derive(Default)]
 pub struct Resources<E: ?Sized> {

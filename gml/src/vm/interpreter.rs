@@ -79,8 +79,8 @@ impl Thread {
             returns: vec![],
             stack: vec![],
 
-            self_entity: vm::Entity::default(),
-            other_entity: vm::Entity::default(),
+            self_entity: vm::Entity(0),
+            other_entity: vm::Entity(0),
         }
     }
 
@@ -501,9 +501,8 @@ impl Thread {
                     let name = Self::get_string(function.constants[name]);
                     world(engine).globals.insert(name);
 
-                    let entity = vm::world::GLOBAL;
-                    let component = world(engine).entities.get_mut(&entity).unwrap();
-                    component.entry(name).or_insert(vm::Value::from(0.0));
+                    let instance = &mut world(engine).members[vm::world::GLOBAL];
+                    instance.entry(name).or_insert(vm::Value::from(0.0));
                 }
 
                 (code::Op::Lookup, t, name, _) => {
@@ -608,7 +607,7 @@ impl Thread {
                     let registers = &mut self.stack[reg_base..];
 
                     let entity = unsafe { registers[entity].entity };
-                    let exists = world(engine).entities.contains_key(&entity);
+                    let exists = world(engine).members.contains_key(entity);
                     registers[t].value = vm::Value::from(exists);
                 }
 
@@ -701,8 +700,8 @@ impl Thread {
 
                     let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let component = &world(engine).entities[&entity];
-                    registers[t].value = *component.get(&field)
+                    let instance = &world(engine).members[entity];
+                    registers[t].value = *instance.get(&field)
                         .ok_or_else(|| {
                             let kind = ErrorKind::Name(field);
                             Error { symbol, instruction, kind }
@@ -714,8 +713,8 @@ impl Thread {
 
                     let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let component = &world(engine).entities[&entity];
-                    registers[t].value = *component.get(&field)
+                    let instance = &world(engine).members[entity];
+                    registers[t].value = *instance.get(&field)
                         .unwrap_or(&vm::Value::from(0.0));
                 }
 
@@ -769,8 +768,8 @@ impl Thread {
                     let s = unsafe { registers[s].value };
                     let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
-                    let component = world(engine).entities.get_mut(&entity).unwrap();
-                    component.insert(field, s);
+                    let instance = &mut world(engine).members[entity];
+                    instance.insert(field, s);
                 }
 
                 (op @ code::Op::StoreRow, t, a, i) => {
