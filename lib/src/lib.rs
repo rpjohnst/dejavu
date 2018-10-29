@@ -2,4 +2,5 @@
 
 extern crate gml;
 
+pub mod instance;
 pub mod data;

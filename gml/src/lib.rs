@@ -32,7 +32,7 @@ pub mod vm;
 pub enum Item<E> {
     Script(&'static str),
     Native(vm::ApiFunction<E>, usize, bool),
-    Member(vm::GetFunction<E>, vm::SetFunction<E>),
+    Member(Option<vm::GetFunction<E>>, Option<vm::SetFunction<E>>),
 }
 
 /// Build a GML project.
@@ -55,8 +55,8 @@ pub fn build<E: Default>(items: HashMap<Symbol, Item<E>>) -> vm::Resources<E> {
                 resources.api.insert(name, function);
             }
             Item::Member(get, set) => {
-                resources.get.insert(name, get);
-                resources.set.insert(name, set);
+                if let Some(get) = get { resources.get.insert(name, get); }
+                if let Some(set) = set { resources.set.insert(name, set); }
             }
         }
     }

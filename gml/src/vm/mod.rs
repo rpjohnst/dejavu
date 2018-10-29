@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use symbol::Symbol;
 
-pub use vm::interpreter::{Thread, Error, ErrorKind};
+pub use vm::interpreter::{Thread, Error, ErrorKind, SELF, OTHER, ALL, NOONE, GLOBAL};
 pub use vm::world::World;
 pub use vm::entity_map::{Entity, EntityAllocator, EntityMap};
 pub use vm::value::{Type, Value, Data};

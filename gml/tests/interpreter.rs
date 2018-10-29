@@ -64,16 +64,16 @@ fn builtin() {
     let mut items = HashMap::new();
 
     let scalar = Symbol::intern("scalar");
-    items.insert(scalar, Item::Member(Instance::get_scalar, Instance::set_scalar));
+    items.insert(scalar, Item::Member(Some(Instance::get_scalar), Some(Instance::set_scalar)));
 
     let array = Symbol::intern("array");
-    items.insert(array, Item::Member(Instance::get_array, Instance::set_array));
+    items.insert(array, Item::Member(Some(Instance::get_array), Some(Instance::set_array)));
 
     let global_scalar = Symbol::intern("global_scalar");
-    items.insert(global_scalar, Item::Member(Engine::get_global_scalar, Engine::set_global_scalar));
+    items.insert(global_scalar, Item::Member(Some(Engine::get_global_scalar), Some(Engine::set_global_scalar)));
 
     let global_array = Symbol::intern("global_array");
-    items.insert(global_array, Item::Member(Engine::get_global_array, Engine::set_global_array));
+    items.insert(global_array, Item::Member(Some(Engine::get_global_array), Some(Engine::set_global_array)));
 
     let builtin = Symbol::intern("builtin");
     items.insert(builtin, Item::Script("{
@@ -415,6 +415,7 @@ struct Engine {
 }
 
 impl vm::world::Api for Engine {
+    fn state(&self) -> &vm::World { &self.world }
     fn state_mut(&mut self) -> &mut vm::World { &mut self.world }
 }
 

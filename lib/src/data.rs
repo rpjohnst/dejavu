@@ -18,7 +18,6 @@ impl State {
         let id = self.next_list;
         self.next_list += 1;
         self.lists.insert(id, Vec::new());
-
         Ok(id)
     }
 
@@ -29,7 +28,6 @@ impl State {
             Entry::Vacant(_) => return Err(vm::ErrorKind::Resource(id)),
         };
         entry.remove();
-
         Ok(())
     }
 
@@ -37,7 +35,6 @@ impl State {
     pub fn ds_list_clear(&mut self, id: i32) -> Result<(), vm::ErrorKind> {
         let list = self.lists.get_mut(&id).ok_or(vm::ErrorKind::Resource(id))?;
         list.clear();
-
         Ok(())
     }
 
@@ -45,7 +42,6 @@ impl State {
     pub fn ds_list_empty(&mut self, id: i32) -> Result<bool, vm::ErrorKind> {
         let list = self.lists.get(&id).ok_or(vm::ErrorKind::Resource(id))?;
         let empty = list.is_empty();
-
         Ok(empty)
     }
 
@@ -53,7 +49,6 @@ impl State {
     pub fn ds_list_size(&mut self, id: i32) -> Result<i32, vm::ErrorKind> {
         let list = self.lists.get(&id).ok_or(vm::ErrorKind::Resource(id))?;
         let size = list.len() as i32;
-
         Ok(size)
     }
 
@@ -61,7 +56,6 @@ impl State {
     pub fn ds_list_add(&mut self, id: i32, vals: &[vm::Value]) -> Result<(), vm::ErrorKind> {
         let list = self.lists.get_mut(&id).ok_or(vm::ErrorKind::Resource(id))?;
         list.extend_from_slice(vals);
-
         Ok(())
     }
 
@@ -72,7 +66,6 @@ impl State {
             return Ok(());
         }
         list.remove(pos as usize);
-
         Ok(())
     }
 
@@ -82,7 +75,6 @@ impl State {
         let pos = list.iter()
             .position(move |&e| e == val)
             .map_or(-1, |i| i as i32);
-
         Ok(pos)
     }
 
@@ -93,7 +85,6 @@ impl State {
             return Ok(vm::Value::from(0));
         }
         let val = list.get(pos as usize).map_or(vm::Value::from(0), |&val| val);
-
         Ok(val)
     }
 
@@ -106,7 +97,6 @@ impl State {
             return Ok(());
         }
         list.insert(pos as usize, val);
-
         Ok(())
     }
 
@@ -119,7 +109,6 @@ impl State {
             return Ok(());
         }
         list[pos as usize] = val;
-
         Ok(())
     }
 }

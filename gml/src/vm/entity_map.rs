@@ -20,7 +20,6 @@ pub struct EntityAllocator {
 const MIN_FREE_SLOTS: usize = 1024;
 
 // TODO: SoA in a single allocation?
-#[derive(Default)]
 pub struct EntityMap<T> {
     data: Vec<Option<Entry<T>>>,
 }
@@ -81,6 +80,12 @@ impl EntityAllocator {
 
     pub fn exists(&mut self, entity: Entity) -> bool {
         self.generations[entity.index()] == entity.generation()
+    }
+}
+
+impl<T> Default for EntityMap<T> {
+    fn default() -> Self {
+        Self { data: Vec::default() }
     }
 }
 

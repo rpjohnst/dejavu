@@ -5,13 +5,13 @@ use symbol::Symbol;
 use vm;
 
 pub struct World {
-    entities: vm::EntityAllocator,
-    pub(in vm) members: vm::EntityMap<HashMap<Symbol, vm::Value>>,
+    pub entities: vm::EntityAllocator,
+    pub members: vm::EntityMap<HashMap<Symbol, vm::Value>>,
 
-    pub(in vm) objects: HashMap<i32, Vec<vm::Entity>>,
-    pub(in vm) instances: IndexMap<i32, vm::Entity>,
+    pub objects: HashMap<i32, Vec<vm::Entity>>,
+    pub instances: IndexMap<i32, vm::Entity>,
 
-    pub(in vm) globals: HashSet<Symbol>,
+    pub globals: HashSet<Symbol>,
 }
 
 pub const GLOBAL: vm::Entity = vm::Entity(0);
@@ -45,5 +45,6 @@ impl World {
 }
 
 pub trait Api {
+    fn state(&self) -> &World;
     fn state_mut(&mut self) -> &mut World;
 }

@@ -22,6 +22,18 @@ impl<K, V> IndexMap<K, V> where K: Eq + Hash {
         &self.values[..]
     }
 
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn contains_key(&self, key: K) -> bool {
+        self.keys.contains_key(&key)
+    }
+
     pub fn insert(&mut self, key: K, value: V) {
         match self.keys.entry(key) {
             Entry::Occupied(entry) => {

@@ -23,7 +23,7 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
     let set: syn::Path = syn::parse_quote! { gml::set };
 
     let mut functions = vec![];
-    let mut fields: HashMap<syn::LitStr, _> = HashMap::default();
+    let mut fields: HashMap<syn::Ident, _> = HashMap::default();
     for item in &mut input.items {
         let method = match *item {
             syn::ImplItem::Method(ref mut method) => method,
@@ -42,30 +42,23 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
                     Ok(getter) => getter,
                     Err(err) => return TokenStream::from(err.to_compile_error()),
                 };
-                let (ref mut get, _) = *fields.entry(getter.member).or_insert((None, None));
-                *get = Some(getter.ident);
+                let (ref mut get, _) = *fields.entry(getter.member.clone()).or_insert((None, None));
+                *get = Some(getter);
             } else if attr.path == set {
                 let setter = match Member::parse(attr.tts.clone().into(), method) {
                     Ok(setter) => setter,
                     Err(err) => return TokenStream::from(err.to_compile_error()),
                 };
-                let (_, ref mut set) = *fields.entry(setter.member).or_insert((None, None));
-                *set = Some(setter.ident);
+                let (_, ref mut set) = *fields.entry(setter.member.clone()).or_insert((None, None));
+                *set = Some(setter);
             }
         }
         method.attrs.retain(|attr| ![&function, &get, &set].contains(&&attr.path));
     }
 
-    let mut members = vec![];
-    for (member, (get, set)) in fields {
-        match (get, set) {
-            (Some(get), Some(set)) => members.push((member, get, set)),
-            _ => {
-                let error = Error::new(member.span(), "member requires a getter and a setter");
-                return TokenStream::from(error.to_compile_error());
-            }
-        }
-    }
+    let members: Vec<_> = fields.into_iter()
+        .map(|(member, (get, set))| (member, get, set))
+        .collect();
 
     // Generate the API glue trait.
     // TODO: remove these _n clones with https://github.com/dtolnay/quote/issues/8.
@@ -82,29 +75,65 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
     let arguments = functions.iter().map(|method| {
         let argument = method.parameters.iter().enumerate().map(|(i, &parameter)| {
             match parameter {
-                Parameter::Direct => quote! { arguments[#i] },
+                Parameter::World => quote! { world },
+                Parameter::Value => quote! { arguments[#i] },
                 Parameter::Convert => quote! { arguments[#i].try_into().unwrap_or_default() },
                 Parameter::Variadic => quote! { &arguments[#i..] },
+                _ => unreachable!(),
             }
         });
         quote! { #(#argument),* }
     });
-    let variadic = functions.iter().map(|method| method.variadic);
+    let variadic = functions.iter().map(|function| function.variadic);
 
     let member = members.iter().map(|(member, _, _)| member);
+
     let get = members.iter().map(|(_, get, _)| get);
-    let get_1 = get.clone();
-    let get_2 = get.clone();
-    let get_3 = get.clone();
+    let get_opt = get.clone().map(|get| get.as_ref().map_or_else(
+        || quote! { None },
+        |Member { ident, .. }| quote! { Some(Self::#ident) },
+    ));
+    let get = get.filter_map(|get| get.as_ref());
+    let get_1 = get.clone().map(|Member { ident, .. }| ident);
+    let get_2 = get.clone().map(|Member { ident, .. }| ident);
+    let get_arguments = get.clone().map(|Member { parameters, .. }| {
+        let argument = parameters.iter().map(|&parameter| {
+            match parameter {
+                Parameter::World => quote! { world },
+                Parameter::Entity => quote! { entity },
+                Parameter::Index => quote! { index },
+                _ => unreachable!(),
+            }
+        });
+        quote! { #(#argument),* }
+    });
+
     let set = members.iter().map(|(_, _, set)| set);
-    let set_1 = set.clone();
-    let set_2 = set.clone();
-    let set_3 = set.clone();
+    let set_opt = set.clone().map(|set| set.as_ref().map_or_else(
+        || quote! { None },
+        |Member { ident, .. }| quote! { Some(Self::#ident) },
+    ));
+    let set = set.filter_map(|set| set.as_ref());
+    let set_1 = set.clone().map(|Member { ident, .. }| ident);
+    let set_2 = set.clone().map(|Member { ident, .. }| ident);
+    let set_arguments = set.clone().map(|Member { parameters, .. }| {
+        let argument = parameters.iter().map(|&parameter| {
+            match parameter {
+                Parameter::World => quote! { world },
+                Parameter::Entity => quote! { entity },
+                Parameter::Index => quote! { index },
+                Parameter::Value => quote! { value },
+                Parameter::Convert => quote! { value.try_into().unwrap_or_default() },
+                _ => unreachable!(),
+            }
+        });
+        quote! { #(#argument),* }
+    });
 
     let output = quote! {
         pub trait #api {
-            fn state(&self) -> &#self_ty;
-            fn state_mut(&mut self) -> &mut #self_ty;
+            fn state(&self) -> (&gml::vm::World, &#self_ty);
+            fn state_mut(&mut self) -> (&mut gml::vm::World, &mut #self_ty);
 
             fn register(items: &mut std::collections::HashMap<Symbol, gml::Item<Self>>) where
                 Self: Sized
@@ -115,34 +144,36 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
                 );)*
 
                 #(items.insert(
-                    gml::symbol::Symbol::intern(#member),
-                    gml::Item::Member(Self::#get_1, Self::#set_1),
+                    gml::symbol::Symbol::intern(stringify!(#member)),
+                    gml::Item::Member(#get_opt, #set_opt),
                 );)*
             }
 
             #(fn #function_3(&mut self, arguments: &[gml::vm::Value]) ->
                 Result<gml::vm::Value, gml::vm::ErrorKind>
             {
-                #[allow(unused_imports)]
+                #![allow(unused_imports, unused)]
                 use std::convert::TryInto;
 
-                let state = self.state_mut();
+                let (world, state) = self.state_mut();
                 let ret = state.#function_4(#arguments)?;
                 Ok(ret.into())
             })*
 
-            #(fn #get_2(&self, entity: gml::vm::Entity, index: usize) -> gml::vm::Value {
-                let state = self.state();
-                let value = state.#get_3(entity, index);
+            #(fn #get_1(&self, entity: gml::vm::Entity, index: usize) -> gml::vm::Value {
+                #![allow(unused)]
+
+                let (world, state) = self.state();
+                let value = state.#get_2(#get_arguments);
                 value.into()
             })*
 
-            #(fn #set_2(&mut self, entity: gml::vm::Entity, index: usize, value: gml::vm::Value) {
-                #[allow(unused_imports)]
+            #(fn #set_1(&mut self, entity: gml::vm::Entity, index: usize, value: gml::vm::Value) {
+                #![allow(unused_imports, unused)]
                 use std::convert::TryInto;
 
-                let state = self.state_mut();
-                state.#set_3(entity, index, value.try_into().unwrap_or_default());
+                let (world, state) = self.state_mut();
+                state.#set_2(#set_arguments);
             })*
         }
 
@@ -175,17 +206,20 @@ impl Parse for ItemBind {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum Parameter {
+    World,
+    Entity,
+    Index,
+    Value,
+    Convert,
+    Variadic,
+}
+
 struct Function {
     ident: syn::Ident,
     parameters: Vec<Parameter>,
     variadic: bool,
-}
-
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum Parameter {
-    Direct,
-    Convert,
-    Variadic,
 }
 
 impl Function {
@@ -194,11 +228,15 @@ impl Function {
         let mut parameters = vec![];
         let mut variadic = false;
 
-        let value: syn::Path = syn::parse_quote! { vm::Value };
+        let self_mut: syn::FnArg = syn::parse_quote! { &mut self };
+        let world: syn::Type = syn::parse_quote! { &vm::World };
+        let world_mut: syn::Type = syn::parse_quote! { &mut vm::World };
+        let value: syn::Type = syn::parse_quote! { vm::Value };
+        let values: syn::Type = syn::parse_quote! { &[vm::Value] };
 
         let mut inputs = method.sig.decl.inputs.iter();
         match inputs.next() {
-            Some(&syn::FnArg::SelfRef(syn::ArgSelfRef { mutability: Some(_), .. })) => {}
+            Some(arg) if *arg == self_mut => {}
             _ => return Err(Error::new(method.sig.span(), "expected `&mut self`")),
         }
         while let Some(parameter) = inputs.next() {
@@ -207,19 +245,9 @@ impl Function {
                 _ => return Err(Error::new(parameter.span(), "unsupported parameter")),
             };
             let parameter = match *ty {
-                syn::Type::Path(syn::TypePath { qself: None, ref path }) if *path == value =>
-                    Parameter::Direct,
-
-                syn::Type::Reference(syn::TypeReference {
-                    mutability: None,
-                    elem: box syn::Type::Slice(syn::TypeSlice {
-                        elem: box syn::Type::Path(syn::TypePath { qself: None, ref path }),
-                        ..
-                    }),
-                    ..
-                }) if *path == value =>
-                    Parameter::Variadic,
-
+                _ if *ty == world || *ty == world_mut => Parameter::World,
+                _ if *ty == value => Parameter::Value,
+                _ if *ty == values => Parameter::Variadic,
                 _ => Parameter::Convert,
             };
             parameters.push(parameter);
@@ -238,30 +266,83 @@ impl Function {
 }
 
 struct Member {
-    member: syn::LitStr,
+    member: syn::Ident,
     ident: syn::Ident,
-}
-
-struct MemberArg {
-    member: syn::LitStr,
+    parameters: Vec<Parameter>,
 }
 
 impl Member {
     fn parse(attr: TokenStream, method: &syn::ImplItemMethod) -> syn::parse::Result<Self> {
-        let attr: MemberArg = syn::parse(attr)?;
-        let member = attr.member;
+        let attr: MemberName = syn::parse(attr)?;
+        let member = attr.name;
 
         let ident = method.sig.ident.clone();
+        let mut parameters = vec![];
 
-        Ok(Member { member, ident })
+        let self_ref: syn::FnArg = syn::parse_quote! { &self };
+        let self_mut: syn::FnArg = syn::parse_quote! { &mut self };
+        let world: syn::Type = syn::parse_quote! { &vm::World };
+        let world_mut: syn::Type = syn::parse_quote! { &mut vm::World };
+        let entity: syn::Type = syn::parse_quote! { vm::Entity };
+        let index: syn::Type = syn::parse_quote! { usize };
+        let value: syn::Type = syn::parse_quote! { vm::Value };
+
+        let mut inputs = method.sig.decl.inputs.iter().peekable();
+        match inputs.next() {
+            Some(arg) if *arg == self_ref || *arg == self_mut => {}
+            _ => return Err(Error::new(method.sig.span(), "expected `&self` or `&mut self`")),
+        }
+        match inputs.peek() {
+            Some(&syn::FnArg::Captured(syn::ArgCaptured { ref ty, .. })) if
+                *ty == world || *ty == world_mut
+            => {
+                parameters.push(Parameter::World);
+                inputs.next();
+            }
+            _ => {},
+        }
+        match inputs.peek() {
+            Some(&syn::FnArg::Captured(syn::ArgCaptured { ref ty, .. })) if *ty == entity => {
+                parameters.push(Parameter::Entity);
+                inputs.next();
+            }
+            _ => {},
+        }
+        match inputs.peek() {
+            Some(&syn::FnArg::Captured(syn::ArgCaptured { ref ty, .. })) if *ty == index => {
+                parameters.push(Parameter::Index);
+                inputs.next();
+            }
+            _ => {},
+        }
+        match inputs.peek() {
+            Some(&syn::FnArg::Captured(syn::ArgCaptured { ref ty, .. })) => {
+                if *ty == value {
+                    parameters.push(Parameter::Value);
+                } else {
+                    parameters.push(Parameter::Convert);
+                }
+                inputs.next();
+            }
+            _ => {},
+        }
+        if let Some(parameter) = inputs.next() {
+            return Err(Error::new(parameter.span(), "unexpected parameter"));
+        }
+
+        Ok(Member { member, ident, parameters })
     }
 }
 
-impl Parse for MemberArg {
+struct MemberName {
+    name: syn::Ident,
+}
+
+impl Parse for MemberName {
     fn parse(input: ParseStream) -> syn::parse::Result<Self> {
         let content;
         syn::parenthesized!(content in input);
-        let member = content.parse()?;
-        Ok(MemberArg { member })
+        let name = content.parse()?;
+        Ok(MemberName { name })
     }
 }

@@ -55,6 +55,8 @@ pub enum ErrorKind {
     Scope(i32),
     /// Name in entity does not exit.
     Name(Symbol),
+    /// Variable is read-only.
+    Write(Symbol),
     /// Array index out of bounds.
     Bounds(i32),
 }
@@ -65,13 +67,13 @@ impl fmt::Debug for Error {
     }
 }
 
-const SELF: i32 = -1;
-const OTHER: i32 = -2;
-const ALL: i32 = -3;
-const NOONE: i32 = -4;
-const GLOBAL: i32 = -5;
+pub const SELF: i32 = -1;
+pub const OTHER: i32 = -2;
+pub const ALL: i32 = -3;
+pub const NOONE: i32 = -4;
+pub const GLOBAL: i32 = -5;
 // -6?
-const LOCAL: i32 = -7;
+pub const LOCAL: i32 = -7;
 
 impl Thread {
     pub fn new() -> Self {
@@ -849,7 +851,11 @@ impl Thread {
 
                 (code::Op::CallGet, get, base, _) => {
                     let symbol = Self::get_string(function.constants[get]);
-                    let function = resources.get[&symbol];
+                    let function = resources.get.get(&symbol)
+                        .ok_or_else(|| {
+                            let kind = ErrorKind::Name(symbol);
+                            Error { symbol, instruction, kind }
+                        })?;
                     let reg_base = reg_base + base;
 
                     let registers = &mut self.stack[reg_base..];
@@ -862,7 +868,11 @@ impl Thread {
 
                 (code::Op::CallSet, set, base, _) => {
                     let symbol = Self::get_string(function.constants[set]);
-                    let function = resources.set[&symbol];
+                    let function = resources.set.get(&symbol)
+                        .ok_or_else(|| {
+                            let kind = ErrorKind::Write(symbol);
+                            Error { symbol, instruction, kind }
+                        })?;
                     let reg_base = reg_base + base;
 
                     let registers = &self.stack[reg_base..];

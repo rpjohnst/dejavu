@@ -186,3 +186,14 @@ impl TryFrom<Value> for i32 {
         }
     }
 }
+
+impl TryFrom<Value> for bool {
+    type Error = TryFromValueError;
+
+    fn try_from(value: Value) -> Result<bool, Self::Error> {
+        match value.data() {
+            vm::Data::Real(i) => Ok(vm::Thread::to_bool(i)),
+            _ => Err(TryFromValueError(())),
+        }
+    }
+}
