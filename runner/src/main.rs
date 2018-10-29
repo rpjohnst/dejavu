@@ -13,11 +13,12 @@ struct Engine {
 }
 
 impl vm::world::Api for Engine {
-    fn state(&mut self) -> &mut vm::World { &mut self.world }
+    fn state_mut(&mut self) -> &mut vm::World { &mut self.world }
 }
 
 impl data::Api for Engine {
-    fn state(&mut self) -> &mut data::State { &mut self.data }
+    fn state(&self) -> &data::State { &self.data }
+    fn state_mut(&mut self) -> &mut data::State { &mut self.data }
 }
 
 impl Engine {

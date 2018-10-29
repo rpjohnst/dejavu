@@ -1,0 +1,11 @@
+[package]
+name = "gml-meta"
+version = "0.1.0"
+authors = ["Russell Johnston <rpjohnst@gmail.com>"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "0.15", features = ["full", "extra-traits"] }
+quote = "0.6"

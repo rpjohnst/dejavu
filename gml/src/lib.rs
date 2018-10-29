@@ -6,6 +6,8 @@
 #![feature(extern_types)]
 #![feature(try_from)]
 
+extern crate gml_meta;
+
 use std::path::PathBuf;
 use std::collections::HashMap;
 
@@ -13,6 +15,8 @@ use symbol::Symbol;
 use front::{Lexer, Parser, SourceFile, ErrorHandler};
 use back::ssa;
 use vm::code;
+
+pub use gml_meta::bind;
 
 #[macro_use]
 mod handle_map;

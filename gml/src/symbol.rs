@@ -11,6 +11,12 @@ pub struct Symbol(u32);
 impl !Send for Symbol {}
 impl !Sync for Symbol {}
 
+impl Default for Symbol {
+    fn default() -> Self {
+        Symbol::intern("")
+    }
+}
+
 impl Symbol {
     /// Map a string to its interned symbol
     pub fn intern(string: &str) -> Self {

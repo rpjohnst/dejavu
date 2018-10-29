@@ -97,7 +97,7 @@ impl Thread {
         engine: &mut E, resources: &vm::Resources<E>,
         symbol: Symbol, arguments: &[vm::Value]
     ) -> Result<vm::Value, Error> {
-        let world = E::state(engine) as *mut _;
+        let world = E::state_mut(engine) as *mut _;
         let engine = unsafe { &mut *(engine as *mut _ as *mut Engine) };
         let resources = unsafe { &*(resources as *const _ as *const vm::Resources<Engine>) };
         self.execute_internal(engine, world, resources, symbol, arguments)

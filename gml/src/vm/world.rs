@@ -38,12 +38,12 @@ impl Default for World {
 impl World {
     pub fn create_instance(&mut self, id: i32) -> vm::Entity {
         let entity = self.entities.create();
-        self.members.insert(entity, HashMap::new());
+        self.members.insert(entity, HashMap::default());
         self.instances.insert(id, entity);
         entity
     }
 }
 
 pub trait Api {
-    fn state(&mut self) -> &mut World;
+    fn state_mut(&mut self) -> &mut World;
 }

@@ -1,5 +1,4 @@
 use std::collections::{HashMap, hash_map::Entry};
-use std::convert::TryFrom;
 
 use gml::symbol::Symbol;
 use gml::{self, vm};
@@ -12,141 +11,84 @@ pub struct State {
 
 type List = Vec<vm::Value>;
 
-pub trait Api {
-    fn state(&mut self) -> &mut State;
+#[gml::bind(Api)]
+impl State {
+    #[gml::function]
+    pub fn ds_list_create(&mut self) -> Result<i32, vm::ErrorKind> {
+        let id = self.next_list;
+        self.next_list += 1;
+        self.lists.insert(id, Vec::new());
 
-    fn register(items: &mut HashMap<Symbol, gml::Item<Self>>) where Self: Sized {
-        let ds_list_create = Symbol::intern("ds_list_create");
-        items.insert(ds_list_create, gml::Item::Native(Self::ds_list_create, 0, false));
-
-        let ds_list_destroy = Symbol::intern("ds_list_destroy");
-        items.insert(ds_list_destroy, gml::Item::Native(Self::ds_list_destroy, 1, false));
-
-        let ds_list_clear = Symbol::intern("ds_list_clear");
-        items.insert(ds_list_clear, gml::Item::Native(Self::ds_list_clear, 1, false));
-
-        let ds_list_empty = Symbol::intern("ds_list_empty");
-        items.insert(ds_list_empty, gml::Item::Native(Self::ds_list_empty, 1, false));
-
-        let ds_list_size = Symbol::intern("ds_list_size");
-        items.insert(ds_list_size, gml::Item::Native(Self::ds_list_size, 1, false));
-
-        let ds_list_add = Symbol::intern("ds_list_add");
-        items.insert(ds_list_add, gml::Item::Native(Self::ds_list_add, 2, true));
-
-        let ds_list_delete = Symbol::intern("ds_list_delete");
-        items.insert(ds_list_delete, gml::Item::Native(Self::ds_list_delete, 2, false));
-
-        let ds_list_find_index = Symbol::intern("ds_list_find_index");
-        items.insert(ds_list_find_index, gml::Item::Native(Self::ds_list_find_index, 2, false));
-
-        let ds_list_find_value = Symbol::intern("ds_list_find_value");
-        items.insert(ds_list_find_value, gml::Item::Native(Self::ds_list_find_value, 2, false));
-
-        let ds_list_insert = Symbol::intern("ds_list_insert");
-        items.insert(ds_list_insert, gml::Item::Native(Self::ds_list_insert, 3, false));
-
-        let ds_list_replace = Symbol::intern("ds_list_replace");
-        items.insert(ds_list_replace, gml::Item::Native(Self::ds_list_replace, 3, false));
+        Ok(id)
     }
 
-    fn ds_list_create(&mut self, _arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
-        let state = self.state();
-
-        let id = state.next_list;
-        state.next_list += 1;
-        state.lists.insert(id, Vec::new());
-
-        Ok(vm::Value::from(id))
-    }
-
-    fn ds_list_destroy(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
-        let state = self.state();
-        let id = i32::try_from(arguments[0]).unwrap_or(0);
-
-        let entry = match state.lists.entry(id) {
+    #[gml::function]
+    pub fn ds_list_destroy(&mut self, id: i32) -> Result<(), vm::ErrorKind> {
+        let entry = match self.lists.entry(id) {
             Entry::Occupied(entry) => entry,
             Entry::Vacant(_) => return Err(vm::ErrorKind::Resource(id)),
         };
         entry.remove();
 
-        Ok(vm::Value::from(0))
+        Ok(())
     }
 
-    fn ds_list_clear(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
-        let state = self.state();
-        let id = i32::try_from(arguments[0]).unwrap_or(0);
-
-        let list = state.lists.get_mut(&id).ok_or(vm::ErrorKind::Resource(id))?;
+    #[gml::function]
+    pub fn ds_list_clear(&mut self, id: i32) -> Result<(), vm::ErrorKind> {
+        let list = self.lists.get_mut(&id).ok_or(vm::ErrorKind::Resource(id))?;
         list.clear();
 
-        Ok(vm::Value::from(0))
+        Ok(())
     }
 
-    fn ds_list_empty(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
-        let state = self.state();
-        let id = i32::try_from(arguments[0]).unwrap_or(0);
-
-        let list = state.lists.get(&id).ok_or(vm::ErrorKind::Resource(id))?;
+    #[gml::function]
+    pub fn ds_list_empty(&mut self, id: i32) -> Result<bool, vm::ErrorKind> {
+        let list = self.lists.get(&id).ok_or(vm::ErrorKind::Resource(id))?;
         let empty = list.is_empty();
 
-        Ok(vm::Value::from(empty))
+        Ok(empty)
     }
 
-    fn ds_list_size(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
-        let state = self.state();
-        let id = i32::try_from(arguments[0]).unwrap_or(0);
-
-        let list = state.lists.get(&id).ok_or(vm::ErrorKind::Resource(id))?;
+    #[gml::function]
+    pub fn ds_list_size(&mut self, id: i32) -> Result<i32, vm::ErrorKind> {
+        let list = self.lists.get(&id).ok_or(vm::ErrorKind::Resource(id))?;
         let size = list.len() as i32;
 
-        Ok(vm::Value::from(size))
+        Ok(size)
     }
 
-    fn ds_list_add(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
-        let state = self.state();
-        let id = i32::try_from(arguments[0]).unwrap_or(0);
-        let vals = &arguments[1..];
-
-        let list = state.lists.get_mut(&id).ok_or(vm::ErrorKind::Resource(id))?;
+    #[gml::function]
+    pub fn ds_list_add(&mut self, id: i32, vals: &[vm::Value]) -> Result<(), vm::ErrorKind> {
+        let list = self.lists.get_mut(&id).ok_or(vm::ErrorKind::Resource(id))?;
         list.extend_from_slice(vals);
 
-        Ok(vm::Value::from(0))
+        Ok(())
     }
 
-    fn ds_list_delete(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
-        let state = self.state();
-        let id = i32::try_from(arguments[0]).unwrap_or(0);
-        let pos = i32::try_from(arguments[1]).unwrap_or(0);
-
-        let list = state.lists.get_mut(&id).ok_or(vm::ErrorKind::Resource(id))?;
+    #[gml::function]
+    pub fn ds_list_delete(&mut self, id: i32, pos: i32) -> Result<(), vm::ErrorKind> {
+        let list = self.lists.get_mut(&id).ok_or(vm::ErrorKind::Resource(id))?;
         if pos < 0 || list.len() <= pos as usize {
-            return Ok(vm::Value::from(0));
+            return Ok(());
         }
         list.remove(pos as usize);
 
-        Ok(vm::Value::from(0))
+        Ok(())
     }
 
-    fn ds_list_find_index(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
-        let state = self.state();
-        let id = i32::try_from(arguments[0]).unwrap_or(0);
-        let val = arguments[1];
-
-        let list = state.lists.get(&id).ok_or(vm::ErrorKind::Resource(id))?;
+    #[gml::function]
+    pub fn ds_list_find_index(&mut self, id: i32, val: vm::Value) -> Result<i32, vm::ErrorKind> {
+        let list = self.lists.get(&id).ok_or(vm::ErrorKind::Resource(id))?;
         let pos = list.iter()
             .position(move |&e| e == val)
             .map_or(-1, |i| i as i32);
 
-        Ok(vm::Value::from(pos))
+        Ok(pos)
     }
 
-    fn ds_list_find_value(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
-        let state = self.state();
-        let id = i32::try_from(arguments[0]).unwrap_or(0);
-        let pos = i32::try_from(arguments[1]).unwrap_or(0);
-
-        let list = state.lists.get(&id).ok_or(vm::ErrorKind::Resource(id))?;
+    #[gml::function]
+    pub fn ds_list_find_value(&mut self, id: i32, pos: i32) -> Result<vm::Value, vm::ErrorKind> {
+        let list = self.lists.get(&id).ok_or(vm::ErrorKind::Resource(id))?;
         if pos < 0 || list.len() <= pos as usize {
             return Ok(vm::Value::from(0));
         }
@@ -155,33 +97,29 @@ pub trait Api {
         Ok(val)
     }
 
-    fn ds_list_insert(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
-        let state = self.state();
-        let id = i32::try_from(arguments[0]).unwrap_or(0);
-        let pos = i32::try_from(arguments[1]).unwrap_or(0);
-        let val = arguments[2];
-
-        let list = state.lists.get_mut(&id).ok_or(vm::ErrorKind::Resource(id))?;
+    #[gml::function]
+    pub fn ds_list_insert(&mut self, id: i32, pos: i32, val: vm::Value) ->
+        Result<(), vm::ErrorKind>
+    {
+        let list = self.lists.get_mut(&id).ok_or(vm::ErrorKind::Resource(id))?;
         if pos < 0 || list.len() < pos as usize {
-            return Ok(vm::Value::from(0));
+            return Ok(());
         }
         list.insert(pos as usize, val);
 
-        Ok(vm::Value::from(0))
+        Ok(())
     }
 
-    fn ds_list_replace(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
-        let state = self.state();
-        let id = i32::try_from(arguments[0]).unwrap_or(0);
-        let pos = i32::try_from(arguments[1]).unwrap_or(0);
-        let val = arguments[2];
-
-        let list = state.lists.get_mut(&id).ok_or(vm::ErrorKind::Resource(id))?;
+    #[gml::function]
+    pub fn ds_list_replace(&mut self, id: i32, pos: i32, val: vm::Value) ->
+        Result<(), vm::ErrorKind>
+    {
+        let list = self.lists.get_mut(&id).ok_or(vm::ErrorKind::Resource(id))?;
         if pos < 0 || list.len() <= pos as usize {
-            return Ok(vm::Value::from(0));
+            return Ok(());
         }
         list[pos as usize] = val;
 
-        Ok(vm::Value::from(0))
+        Ok(())
     }
 }

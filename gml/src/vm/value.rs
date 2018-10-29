@@ -110,6 +110,18 @@ impl From<vm::Array> for Value {
     }
 }
 
+impl From<()> for Value {
+    fn from(_: ()) -> Value {
+        Value::from(0.0)
+    }
+}
+
+impl From<f32> for Value {
+    fn from(value: f32) -> Value {
+        Value::from(value as f64)
+    }
+}
+
 impl From<i32> for Value {
     fn from(value: i32) -> Value {
         Value::from(value as f64)
@@ -148,6 +160,17 @@ impl TryFrom<Value> for Symbol {
     fn try_from(value: Value) -> Result<Symbol, Self::Error> {
         match value.data() {
             vm::Data::String(s) => Ok(s),
+            _ => Err(TryFromValueError(())),
+        }
+    }
+}
+
+impl TryFrom<Value> for f32 {
+    type Error = TryFromValueError;
+
+    fn try_from(value: Value) -> Result<f32, Self::Error> {
+        match value.data() {
+            vm::Data::Real(i) => Ok(i as f32),
             _ => Err(TryFromValueError(())),
         }
     }

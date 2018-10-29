@@ -415,7 +415,7 @@ struct Engine {
 }
 
 impl vm::world::Api for Engine {
-    fn state(&mut self) -> &mut vm::World { &mut self.world }
+    fn state_mut(&mut self) -> &mut vm::World { &mut self.world }
 }
 
 impl Engine {
