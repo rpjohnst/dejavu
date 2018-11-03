@@ -51,7 +51,7 @@ fn member() {
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
-    let entity = engine.world.create_instance(100001);
+    let entity = engine.world.create_instance(0, 100001);
     thread.set_self(entity);
 
     let result = Ok(vm::Value::from(8));
@@ -90,7 +90,7 @@ fn builtin() {
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
-    let entity = engine.world.create_instance(100001);
+    let entity = engine.world.create_instance(0, 100001);
     engine.instances.insert(entity, Instance::default());
     thread.set_self(entity);
 
@@ -123,7 +123,7 @@ fn global() {
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
-    let entity = engine.world.create_instance(100001);
+    let entity = engine.world.create_instance(0, 100001);
     thread.set_self(entity);
 
     let result = Ok(vm::Value::from(8));
@@ -157,8 +157,8 @@ fn with() {
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
-    let a = engine.world.create_instance(100001);
-    engine.world.create_instance(100002);
+    let a = engine.world.create_instance(0, 100001);
+    engine.world.create_instance(0, 100002);
     thread.set_self(a);
 
     let result = Ok(vm::Value::from(24.0));

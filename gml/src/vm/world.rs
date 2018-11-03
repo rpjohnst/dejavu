@@ -36,9 +36,10 @@ impl Default for World {
 }
 
 impl World {
-    pub fn create_instance(&mut self, id: i32) -> vm::Entity {
+    pub fn create_instance(&mut self, object_index: i32, id: i32) -> vm::Entity {
         let entity = self.entities.create();
         self.members.insert(entity, HashMap::default());
+        self.objects.entry(object_index).or_default().push(entity);
         self.instances.insert(id, entity);
         entity
     }

@@ -36,7 +36,7 @@ impl State {
     }
 
     #[gml::get(instance_count)]
-    pub fn get_instance_count(&self, world: &vm::World) -> i32 {
+    pub fn get_instance_count(world: &vm::World) -> i32 {
         world.instances.len() as i32
     }
 
@@ -72,13 +72,13 @@ impl State {
     }
 
     #[gml::function]
-    pub fn instance_exists(&mut self, world: &mut vm::World, obj: i32) ->
+    pub fn instance_exists(world: &mut vm::World, obj: i32) ->
         Result<bool, vm::ErrorKind>
     {
         if obj == vm::ALL {
             Ok(!world.instances.is_empty())
         } else if obj < 100000 {
-            Ok(!world.objects.get(&obj).map_or(false, |entities| !entities.is_empty()))
+            Ok(world.objects.get(&obj).map_or(false, |entities| !entities.is_empty()))
         } else {
             Ok(world.instances.contains_key(obj))
         }
