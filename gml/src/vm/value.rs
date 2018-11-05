@@ -128,6 +128,12 @@ impl From<i32> for Value {
     }
 }
 
+impl From<u32> for Value {
+    fn from(value: u32) -> Value {
+        Value::from(value as f64)
+    }
+}
+
 impl From<bool> for Value {
     fn from(value: bool) -> Value {
         Value::from(value as i32)
@@ -182,6 +188,17 @@ impl TryFrom<Value> for i32 {
     fn try_from(value: Value) -> Result<i32, Self::Error> {
         match value.data() {
             vm::Data::Real(i) => Ok(vm::Thread::to_i32(i)),
+            _ => Err(TryFromValueError(())),
+        }
+    }
+}
+
+impl TryFrom<Value> for u32 {
+    type Error = TryFromValueError;
+
+    fn try_from(value: Value) -> Result<u32, Self::Error> {
+        match value.data() {
+            vm::Data::Real(i) => Ok(vm::Thread::to_u32(i)),
             _ => Err(TryFromValueError(())),
         }
     }

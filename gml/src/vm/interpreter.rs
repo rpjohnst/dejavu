@@ -938,6 +938,11 @@ impl Thread {
         value as i32
     }
 
+    // TODO: round-to-nearest instead of truncate
+    pub fn to_u32(value: f64) -> u32 {
+        value as u32
+    }
+
     pub fn to_bool(value: f64) -> bool {
         Self::to_i32(value) > 0
     }

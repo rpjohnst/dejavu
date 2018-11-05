@@ -53,13 +53,12 @@ impl State {
     }
 
     #[gml::function]
-    pub fn irandom(&mut self, x: i32) -> i32 {
-        let x = x as u32;
-        self.random_u32(x + 1) as i32
+    pub fn irandom(&mut self, x: u32) -> u32 {
+        self.random_u32(x + 1)
     }
 
     #[gml::function]
-    pub fn irandom_range(&mut self, x1: i32, x2: i32) -> i32 {
+    pub fn irandom_range(&mut self, x1: u32, x2: u32) -> u32 {
         x1 + self.irandom(x2 - x1 + 1)
     }
 
@@ -81,7 +80,7 @@ impl State {
 
     #[gml::function]
     pub fn choose(&mut self, vals: &[vm::Value]) -> vm::Value {
-        vals[self.irandom(vals.len() as i32 - 1) as usize]
+        vals[self.irandom(vals.len() as u32 - 1) as usize]
     }
 
     #[gml::function]
