@@ -50,37 +50,42 @@ impl State {
     }
 
     #[gml::function]
-    pub fn instance_find(&mut self, world: &mut vm::World, obj: i32, n: i32) ->
-        Result<i32, vm::ErrorKind>
-    {
+    pub fn instance_find(&mut self, world: &mut vm::World, obj: i32, n: i32) -> i32 {
         let n = n as usize;
         let entity = if obj == vm::ALL {
             match world.instances.values().get(n) {
                 Some(&entity) => entity,
-                None => return Ok(vm::NOONE),
+                None => return vm::NOONE,
             }
         } else {
             match world.objects.get(&obj) {
                 Some(entities) => match entities.get(n) {
                     Some(&entity) => entity,
-                    None => return Ok(vm::NOONE),
+                    None => return vm::NOONE,
                 },
-                None => return Ok(vm::NOONE),
+                None => return vm::NOONE,
             }
         };
-        Ok(self.instances[entity].id)
+        self.instances[entity].id
     }
 
     #[gml::function]
-    pub fn instance_exists(world: &mut vm::World, obj: i32) ->
-        Result<bool, vm::ErrorKind>
-    {
+    pub fn instance_exists(world: &mut vm::World, obj: i32) -> bool {
         if obj == vm::ALL {
-            Ok(!world.instances.is_empty())
+            !world.instances.is_empty()
         } else if obj < 100000 {
-            Ok(world.objects.get(&obj).map_or(false, |entities| !entities.is_empty()))
+            world.objects.get(&obj).map_or(false, |entities| !entities.is_empty())
         } else {
-            Ok(world.instances.contains_key(obj))
+            world.instances.contains_key(obj)
+        }
+    }
+
+    #[gml::function]
+    pub fn instance_number(world: &mut vm::World, obj: i32) -> i32 {
+        if obj == vm::ALL {
+            world.instances.len() as i32
+        } else {
+            world.objects.get(&obj).map_or(0, |entities| entities.len()) as i32
         }
     }
 }

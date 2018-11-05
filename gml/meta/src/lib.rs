@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use proc_macro::TokenStream;
 use syn::{
     parse_quote, parenthesized, punctuated,
-    ItemImpl, ImplItemMethod, Attribute, MethodSig, FnArg, ArgCaptured, Ident
+    ItemImpl, ImplItemMethod, Attribute, MethodSig, FnArg, ArgCaptured, ReturnType, Type, Ident
 };
 use syn::parse::{Parse, ParseStream, Result, Error};
 use syn::visit_mut::VisitMut;
@@ -27,6 +27,7 @@ struct Function {
     receivers: Vec<Receiver>,
     parameters: Vec<Parameter>,
     rest: Option<()>,
+    output: Return,
 }
 
 #[derive(Default)]
@@ -53,6 +54,12 @@ enum Receiver {
 enum Parameter {
     Direct,
     Convert,
+}
+
+#[derive(Copy, Clone)]
+enum Return {
+    Value,
+    Result,
 }
 
 impl ItemBindings {
@@ -196,7 +203,16 @@ impl Function {
             return Err(Error::new(param.span(), "unexpected parameter"));
         }
 
-        Ok(Function { name, receivers, parameters, rest })
+        let result: Ident = parse_quote!(Result);
+        let output = match sig.decl.output {
+            ReturnType::Default => Return::Value,
+            ReturnType::Type(_, ref ty) => match **ty {
+                Type::Path(ref ty) if ty.path.segments[0].ident == result => Return::Result,
+                _ => Return::Value,
+            },
+        };
+
+        Ok(Function { name, receivers, parameters, rest, output })
     }
 }
 
@@ -317,6 +333,12 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
         let arity = function.parameters.len();
         function.rest.map(|()| quote!(&arguments[#arity..]))
     });
+    let api_try = bindings.functions.iter().map(|function| {
+        match function.output {
+            Return::Value => None,
+            Return::Result => Some(quote!(?)),
+        }
+    });
 
     let member = bindings.members.iter().map(|(name, _)| name);
 
@@ -392,7 +414,7 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
                 use std::convert::TryInto;
 
                 let (state, world) = self.state_mut();
-                let ret = #self_tys_1::#api_4(#(#api_receivers,)* #(#api_arguments,)* #api_rest)?;
+                let ret = #self_tys_1::#api_4(#(#api_receivers,)* #(#api_arguments,)* #api_rest) #api_try;
                 Ok(ret.into())
             })*
 

@@ -14,11 +14,11 @@ type List = Vec<vm::Value>;
 #[gml::bind(Api)]
 impl State {
     #[gml::function]
-    pub fn ds_list_create(&mut self) -> Result<i32, vm::ErrorKind> {
+    pub fn ds_list_create(&mut self) -> i32 {
         let id = self.next_list;
         self.next_list += 1;
         self.lists.insert(id, Vec::new());
-        Ok(id)
+        id
     }
 
     #[gml::function]

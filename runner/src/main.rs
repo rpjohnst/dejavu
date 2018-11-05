@@ -79,6 +79,7 @@ fn main() {
         show_debug_message("instance_exists(0) =>", instance_exists(0))
         show_debug_message("instance_exists(100002) =>", instance_exists(100002))
         show_debug_message("instance_exists(2) =>", instance_exists(2))
+        show_debug_message("instance_number(1) =>", instance_number(1))
     }"#));
 
     let resources = gml::build(items);
