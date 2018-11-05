@@ -4,12 +4,13 @@ extern crate lib;
 use std::collections::HashMap;
 
 use gml::{symbol::Symbol, vm};
-use lib::{real, instance, data};
+use lib::{real, string, instance, data};
 
 #[derive(Default)]
 struct Engine {
     world: vm::World,
     real: real::State,
+    string: string::State,
     instance: instance::State,
     data: data::State,
 }
@@ -23,6 +24,13 @@ impl real::Api for Engine {
     fn state(&self) -> (&real::State, &vm::World) { (&self.real, &self.world) }
     fn state_mut(&mut self) -> (&mut real::State, &mut vm::World) {
         (&mut self.real, &mut self.world)
+    }
+}
+
+impl string::Api for Engine {
+    fn state(&self) -> (&string::State, &vm::World) { (&self.string, &self.world) }
+    fn state_mut(&mut self) -> (&mut string::State, &mut vm::World) {
+        (&mut self.string, &mut self.world)
     }
 }
 
@@ -54,6 +62,7 @@ fn main() {
     let mut items = HashMap::new();
 
     <Engine as real::Api>::register(&mut items);
+    <Engine as string::Api>::register(&mut items);
     <Engine as instance::Api>::register(&mut items);
     <Engine as data::Api>::register(&mut items);
 

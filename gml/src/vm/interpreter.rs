@@ -1,4 +1,4 @@
-use std::{mem, ptr, slice, cmp, iter, fmt};
+use std::{mem, ptr, slice, cmp, fmt};
 use std::convert::TryFrom;
 
 use symbol::Symbol;
@@ -300,7 +300,7 @@ impl Thread {
                         (vm::Data::Real(a), vm::Data::Real(b)) => Ok(vm::Value::from(a * b)),
                         (vm::Data::Real(a), vm::Data::String(b)) => {
                             let b: &str = &b;
-                            let t: String = iter::repeat(b).take(a as usize).collect();
+                            let t = b.repeat(a as usize);
                             Ok(vm::Value::from(Symbol::intern(&t)))
                         }
                         (a, b) => {
