@@ -45,6 +45,8 @@ pub enum ErrorKind {
     TypeUnary(code::Op, vm::Type),
     /// Binary type error.
     TypeBinary(code::Op, vm::Type, vm::Type),
+    /// Division by zero.
+    DivideByZero,
     /// Function call arity mismatch.
     Arity(usize),
     /// Scope does not exit.
@@ -314,7 +316,13 @@ impl Thread {
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
-                        (vm::Data::Real(a), vm::Data::Real(b)) => Ok(vm::Value::from(a / b)),
+                        (vm::Data::Real(a), vm::Data::Real(b)) => {
+                            if b == 0.0 {
+                                let kind = ErrorKind::DivideByZero;
+                                return Err(Error { symbol, instruction, kind });
+                            }
+                            Ok(vm::Value::from(a / b))
+                        }
                         (a, b) => {
                             let kind = ErrorKind::TypeBinary(op, a.ty(), b.ty());
                             Err(Error { symbol, instruction, kind })
@@ -329,6 +337,10 @@ impl Thread {
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
                         (vm::Data::Real(a), vm::Data::Real(b)) => {
+                            if b == 0.0 {
+                                let kind = ErrorKind::DivideByZero;
+                                return Err(Error { symbol, instruction, kind });
+                            }
                             let t = a / b;
                             Ok(vm::Value::from(t as i32))
                         }
@@ -345,7 +357,13 @@ impl Thread {
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
-                        (vm::Data::Real(a), vm::Data::Real(b)) => Ok(vm::Value::from(a % b)),
+                        (vm::Data::Real(a), vm::Data::Real(b)) => {
+                            if b == 0.0 {
+                                let kind = ErrorKind::DivideByZero;
+                                return Err(Error { symbol, instruction, kind });
+                            }
+                            Ok(vm::Value::from(a % b))
+                        }
                         (a, b) => {
                             let kind = ErrorKind::TypeBinary(op, a.ty(), b.ty());
                             Err(Error { symbol, instruction, kind })

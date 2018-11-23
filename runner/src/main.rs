@@ -82,6 +82,16 @@ fn main() {
         show_debug_message("list[| 2] =", ds_list_find_value(list, 2))
         ds_list_destroy(list)
 
+        var map, key1, key2;
+        map = ds_map_create()
+        ds_map_add(map, 3, "foo")
+        ds_map_add(map, "abc", "bar")
+        key1 = ds_map_find_first(map)
+        key2 = ds_map_find_next(map, key1)
+        show_debug_message("map[? ", key1, "] = ", ds_map_find_value(map, key1))
+        show_debug_message("map[? ", key2, "] = ", ds_map_find_value(map, key2))
+        ds_map_destroy(map)
+
         show_debug_message("object_index =", object_index)
         show_debug_message("id =", id)
         persistent = true

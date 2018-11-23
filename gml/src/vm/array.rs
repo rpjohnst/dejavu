@@ -70,6 +70,10 @@ impl Array {
         Rc::into_raw(self.data)
     }
 
+    pub fn as_ref(&self) -> &UnsafeCell<Vec<Vec<vm::Value>>> {
+        &self.data
+    }
+
     pub unsafe fn from_raw(ptr: *const UnsafeCell<Vec<Vec<vm::Value>>>) -> Array {
         let data = Rc::from_raw(ptr);
         Array { data }

@@ -49,9 +49,15 @@ impl Borrow<str> for Symbol {
 
 impl cmp::PartialOrd for Symbol {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(Symbol::cmp(self, other))
+    }
+}
+
+impl cmp::Ord for Symbol {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
         let a: &str = self;
         let b: &str = other;
-        a.partial_cmp(b)
+        str::cmp(a, b)
     }
 }
 
