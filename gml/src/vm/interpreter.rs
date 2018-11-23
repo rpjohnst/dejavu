@@ -1,4 +1,4 @@
-use std::{mem, ptr, slice, cmp, fmt};
+use std::{mem, ptr, slice, cmp, fmt, error};
 use std::convert::TryFrom;
 
 use symbol::Symbol;
@@ -33,14 +33,13 @@ pub union Register {
     pub iterator: ptr::NonNull<vm::Entity>,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Error {
     symbol: Symbol,
     instruction: usize,
     kind: ErrorKind,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Debug)]
 pub enum ErrorKind {
     /// Unary type error.
     TypeUnary(code::Op, vm::Type),
@@ -48,9 +47,6 @@ pub enum ErrorKind {
     TypeBinary(code::Op, vm::Type, vm::Type),
     /// Function call arity mismatch.
     Arity(usize),
-    /// Resource with id does not exist.
-    // TODO: include a resource type? define this in lib/data instead?
-    Resource(i32),
     /// Scope does not exit.
     Scope(i32),
     /// Name in entity does not exit.
@@ -59,6 +55,8 @@ pub enum ErrorKind {
     Write(Symbol),
     /// Array index out of bounds.
     Bounds(i32),
+    /// Error from a library.
+    Other(Box<dyn error::Error>),
 }
 
 impl fmt::Debug for Error {

@@ -9,7 +9,7 @@ use gml::{build, Item, symbol::Symbol, vm};
 
 /// Read script arguments.
 #[test]
-fn arguments() {
+fn arguments() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let select = Symbol::intern("select");
@@ -22,20 +22,20 @@ fn arguments() {
     let mut thread = vm::Thread::new();
 
     let arguments = [vm::Value::from(3), vm::Value::from(5)];
-    let result = Ok(vm::Value::from(8));
-    assert_eq!(thread.execute(&mut engine, &resources, select, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, select, &arguments)?, vm::Value::from(8));
 
     let a = Symbol::intern("a");
     let b = Symbol::intern("b");
     let ab = Symbol::intern("ab");
     let arguments = [vm::Value::from(a), vm::Value::from(b)];
-    let result = Ok(vm::Value::from(ab));
-    assert_eq!(thread.execute(&mut engine, &resources, select, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, select, &arguments)?, vm::Value::from(ab));
+
+    Ok(())
 }
 
 /// Read and write member variables.
 #[test]
-fn member() {
+fn member() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let member = Symbol::intern("member");
@@ -54,13 +54,13 @@ fn member() {
     let entity = engine.world.create_instance(0, 100001);
     thread.set_self(entity);
 
-    let result = Ok(vm::Value::from(8));
-    assert_eq!(thread.execute(&mut engine, &resources, member, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, member, &[])?, vm::Value::from(8));
+    Ok(())
 }
 
 /// Read and write builtin variables.
 #[test]
-fn builtin() {
+fn builtin() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let scalar = Symbol::intern("scalar");
@@ -94,8 +94,7 @@ fn builtin() {
     engine.instances.insert(entity, Instance::default());
     thread.set_self(entity);
 
-    let result = Ok(vm::Value::from(34));
-    assert_eq!(thread.execute(&mut engine, &resources, builtin, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, builtin, &[])?, vm::Value::from(34));
 
     let instance = &engine.instances[&entity];
     assert_eq!(instance.scalar, 3.0);
@@ -104,11 +103,13 @@ fn builtin() {
     assert_eq!(engine.global_scalar, 13);
     assert_eq!(engine.global_array[0], 21.0);
     assert_eq!(engine.global_array[1], 34.0);
+
+    Ok(())
 }
 
 /// Read and write global variables.
 #[test]
-fn global() {
+fn global() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let global = Symbol::intern("global");
@@ -126,12 +127,12 @@ fn global() {
     let entity = engine.world.create_instance(0, 100001);
     thread.set_self(entity);
 
-    let result = Ok(vm::Value::from(8));
-    assert_eq!(thread.execute(&mut engine, &resources, global, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, global, &[])?, vm::Value::from(8));
+    Ok(())
 }
 
 #[test]
-fn with() {
+fn with() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let with = Symbol::intern("with");
@@ -161,13 +162,13 @@ fn with() {
     engine.world.create_instance(0, 100002);
     thread.set_self(a);
 
-    let result = Ok(vm::Value::from(24.0));
-    assert_eq!(thread.execute(&mut engine, &resources, with, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, with, &[])?, vm::Value::from(24.0));
+    Ok(())
 }
 
 /// Read and write arrays.
 #[test]
-fn array() {
+fn array() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let array = Symbol::intern("array");
@@ -185,15 +186,15 @@ fn array() {
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
-    let result = Ok(vm::Value::from(50));
-    assert_eq!(thread.execute(&mut engine, &resources, array, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, array, &[])?, vm::Value::from(50));
+    Ok(())
 }
 
 /// First write to a local is control-dependent.
 ///
 /// Regression test to ensure conditionally-initialized values don't break the compiler.
 #[test]
-fn conditional_initialization() {
+fn conditional_initialization() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let fibonacci = Symbol::intern("fibonacci");
@@ -206,13 +207,14 @@ fn conditional_initialization() {
     }"));
 
     build(items);
+    Ok(())
 }
 
 /// Use of undef caused by dead code not dominated by entry.
 ///
 /// Regression test to ensure uses of undef don't break the register allocator.
 #[test]
-fn dead_undef() {
+fn dead_undef() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let switch = Symbol::intern("switch");
@@ -223,11 +225,12 @@ fn dead_undef() {
     }"));
 
     build(items);
+    Ok(())
 }
 
 /// For loop working with locals.
 #[test]
-fn for_loop() {
+fn for_loop() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let factorial = Symbol::intern("factorial");
@@ -244,13 +247,13 @@ fn for_loop() {
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
-    let result = Ok(vm::Value::from(24));
-    assert_eq!(thread.execute(&mut engine, &resources, factorial, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, factorial, &[])?, vm::Value::from(24));
+    Ok(())
 }
 
 /// Control flow across a switch statement.
 #[test]
-fn switch() {
+fn switch() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let switch = Symbol::intern("switch");
@@ -273,25 +276,23 @@ fn switch() {
     let mut thread = vm::Thread::new();
 
     let arguments = [vm::Value::from(3)];
-    let result = Ok(vm::Value::from(5));
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(5));
 
     let arguments = [vm::Value::from(8)];
-    let result = Ok(vm::Value::from(13));
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(13));
 
     let arguments = [vm::Value::from(21)];
-    let result = Ok(vm::Value::from(21));
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(21));
 
     let arguments = [vm::Value::from(34)];
-    let result = Ok(vm::Value::from(21));
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(21));
+
+    Ok(())
 }
 
 /// An empty switch statement.
 #[test]
-fn switch_empty() {
+fn switch_empty() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let switch = Symbol::intern("switch");
@@ -301,11 +302,12 @@ fn switch_empty() {
     }"));
 
     build(items);
+    Ok(())
 }
 
 /// A switch statement with fallthrough between cases.
 #[test]
-fn switch_fallthrough() {
+fn switch_fallthrough() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let switch = Symbol::intern("switch");
@@ -327,25 +329,23 @@ fn switch_fallthrough() {
     let mut thread = vm::Thread::new();
 
     let arguments = [vm::Value::from(0)];
-    let result = Ok(vm::Value::from(0));
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(0));
 
     let arguments = [vm::Value::from(1)];
-    let result = Ok(vm::Value::from(8));
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(8));
 
     let arguments = [vm::Value::from(2)];
-    let result = Ok(vm::Value::from(5));
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(5));
 
     let arguments = [vm::Value::from(3)];
-    let result = Ok(vm::Value::from(5));
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(5));
+
+    Ok(())
 }
 
 /// Call a GML script.
 #[test]
-fn call_script() {
+fn call_script() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let id = Symbol::intern("id");
@@ -358,13 +358,13 @@ fn call_script() {
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
-    let result = Ok(vm::Value::from(8));
-    assert_eq!(thread.execute(&mut engine, &resources, call, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, call, &[])?, vm::Value::from(8));
+    Ok(())
 }
 
 /// Recursively call a GML script.
 #[test]
-fn recurse() {
+fn recurse() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let fibonacci = Symbol::intern("fibonacci");
@@ -381,13 +381,13 @@ fn recurse() {
     let mut thread = vm::Thread::new();
 
     let arguments = [vm::Value::from(6)];
-    let result = Ok(vm::Value::from(13));
-    assert_eq!(thread.execute(&mut engine, &resources, fibonacci, &arguments), result);
+    assert_eq!(thread.execute(&mut engine, &resources, fibonacci, &arguments)?, vm::Value::from(13));
+    Ok(())
 }
 
 /// Call a native function.
 #[test]
-fn ffi() {
+fn ffi() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let add = Symbol::intern("add");
@@ -400,8 +400,8 @@ fn ffi() {
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
-    let result = Ok(vm::Value::from(16.0));
-    assert_eq!(thread.execute(&mut engine, &resources, call, &[]), result);
+    assert_eq!(thread.execute(&mut engine, &resources, call, &[])?, vm::Value::from(16.0));
+    Ok(())
 }
 
 #[derive(Default)]
