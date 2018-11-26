@@ -920,12 +920,12 @@ impl Thread {
                     continue;
                 }
 
-                (code::Op::Jump, t, _, _) => {
-                    instruction = t;
+                (code::Op::Jump, t_low, t_high, _) => {
+                    instruction = t_low | (t_high << 8);
                     continue;
                 }
 
-                (op @ code::Op::BranchFalse, a, t, _) => {
+                (op @ code::Op::BranchFalse, a, t_low, t_high) => {
                     let registers = &mut self.stack[reg_base..];
 
                     let a = unsafe { registers[a].value };
@@ -933,7 +933,7 @@ impl Thread {
                         vm::Data::Real(a) => {
                             let a = Self::to_bool(a);
                             if !a {
-                                instruction = t;
+                                instruction = t_low | (t_high << 8);
                                 continue;
                             }
                         }

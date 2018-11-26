@@ -1,4 +1,4 @@
-use std::{i8, u8, slice};
+use std::{i8, u8, u16, slice};
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
 
 use bit_vec::BitVec;
@@ -283,14 +283,14 @@ impl Codegen {
                 (code::Op::Jump, 0, 0, 0) => {
                     let target = self.block_offsets[&block];
 
-                    let inst = inst(code::Op::Jump).index(target).encode();
+                    let inst = inst(code::Op::Jump).wide_index(target).encode();
                     self.function.instructions[offset] = inst;
                 }
 
                 (code::Op::BranchFalse, cond, 0, 0) => {
                     let target = self.block_offsets[&block];
 
-                    let inst = inst(code::Op::BranchFalse).index(cond).index(target).encode();
+                    let inst = inst(code::Op::BranchFalse).index(cond).wide_index(target).encode();
                     self.function.instructions[offset] = inst;
                 }
 
@@ -316,6 +316,15 @@ impl InstBuilder {
     fn index(&mut self, index: usize) -> &mut Self {
         assert!(index <= u8::MAX as usize);
         self.fields[self.filled] = index as u8;
+        self.filled += 1;
+        self
+    }
+
+    fn wide_index(&mut self, index: usize) -> &mut Self {
+        assert!(index <= u16::MAX as usize);
+        self.fields[self.filled] = index as u8;
+        self.filled += 1;
+        self.fields[self.filled] = (index >> 8) as u8;
         self.filled += 1;
         self
     }
