@@ -1,4 +1,4 @@
-use std::{cmp, fmt, error};
+use std::{mem, cmp, fmt, error};
 use std::collections::{hash_map, HashMap};
 use std::collections::{btree_map, BTreeMap};
 
@@ -12,6 +12,9 @@ pub struct State {
 
     maps: HashMap<i32, Map>,
     next_map: i32,
+
+    grids: HashMap<i32, Grid>,
+    next_grid: i32,
 }
 
 type List = Vec<vm::Value>;
@@ -50,6 +53,17 @@ impl cmp::Ord for MapKey {
     }
 }
 
+struct Grid {
+    data: Box<[vm::Value]>,
+    width: usize,
+}
+
+impl Grid {
+    fn height(&self) -> usize {
+        self.data.len() / self.width
+    }
+}
+
 #[derive(Debug)]
 pub enum Error {
     /// The resource does not exist.
@@ -62,6 +76,7 @@ pub enum Error {
 pub enum Type {
     List,
     Map,
+    Grid,
 }
 
 impl From<Error> for vm::ErrorKind {
@@ -88,6 +103,8 @@ impl error::Error for Error {}
 
 #[gml::bind(Api)]
 impl State {
+    // ds_list
+
     #[gml::function]
     pub fn ds_list_create(&mut self) -> i32 {
         let id = self.next_list;
@@ -188,6 +205,8 @@ impl State {
         Ok(())
     }
 
+    // ds_map
+
     #[gml::function]
     pub fn ds_map_create(&mut self) -> i32 {
         let id = self.next_map;
@@ -265,7 +284,7 @@ impl State {
 
     #[gml::function]
     pub fn ds_map_exists(&mut self, id: i32, key: vm::Value) -> Result<(), vm::ErrorKind> {
-        let map = self.maps.get_mut(&id).ok_or(Error::Resource(Type::Map, id))?;
+        let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
         map.contains_key(&MapKey(key));
         Ok(())
     }
@@ -315,5 +334,99 @@ impl State {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
         let key = map.keys().rev().nth(0).map_or(vm::Value::from(0.0), |&MapKey(key)| key);
         Ok(key)
+    }
+
+    // ds_grid
+
+    #[gml::function]
+    pub fn ds_grid_create(&mut self, w: u32, h: u32) -> i32 {
+        let id = self.next_grid;
+        self.next_grid += 1;
+        let data = vec![vm::Value::from(0.0); w as usize * h as usize].into_boxed_slice();
+        let width = w as usize;
+        self.grids.insert(id, Grid { data, width });
+        id
+    }
+
+    #[gml::function]
+    pub fn ds_grid_destroy(&mut self, id: i32) -> Result<(), vm::ErrorKind> {
+        use self::hash_map::Entry;
+        let entry = match self.grids.entry(id) {
+            Entry::Occupied(entry) => entry,
+            Entry::Vacant(_) => Err(Error::Resource(Type::Grid, id))?,
+        };
+        entry.remove();
+        Ok(())
+    }
+
+    #[gml::function]
+    pub fn ds_grid_resize(&mut self, id: i32, w: u32, h: u32) -> Result<(), vm::ErrorKind> {
+        let grid = self.grids.get_mut(&id).ok_or(Error::Resource(Type::Grid, id))?;
+
+        let new_data = vec![vm::Value::from(0.0); w as usize * h as usize].into_boxed_slice();
+        let new_width = w as usize;
+
+        let old_data = mem::replace(&mut grid.data, new_data);
+        let old_width = mem::replace(&mut grid.width, new_width);
+
+        let new_rows = grid.data.chunks_exact_mut(grid.width);
+        let old_rows = old_data.chunks_exact(old_width);
+
+        let copy_width = cmp::min(new_width, old_width);
+        for (new, old) in Iterator::zip(new_rows, old_rows) {
+            new[..copy_width].copy_from_slice(&old[..copy_width]);
+        }
+
+        Ok(())
+    }
+
+    #[gml::function]
+    pub fn ds_grid_width(&mut self, id: i32) -> Result<u32, vm::ErrorKind> {
+        let grid = self.grids.get(&id).ok_or(Error::Resource(Type::Grid, id))?;
+        Ok(grid.width as u32)
+    }
+
+    #[gml::function]
+    pub fn ds_grid_height(&mut self, id: i32) -> Result<u32, vm::ErrorKind> {
+        let grid = self.grids.get(&id).ok_or(Error::Resource(Type::Grid, id))?;
+        Ok(grid.height() as u32)
+    }
+
+    #[gml::function]
+    pub fn ds_grid_clear(&mut self, id: i32, val: vm::Value) -> Result<(), vm::ErrorKind> {
+        let grid = self.grids.get_mut(&id).ok_or(Error::Resource(Type::Grid, id))?;
+        for cell in &mut *grid.data {
+            *cell = val;
+        }
+        Ok(())
+    }
+
+    #[gml::function]
+    pub fn ds_grid_set(&mut self, id: i32, x: u32, y: u32, val: vm::Value) ->
+        Result<(), vm::ErrorKind>
+    {
+        let grid = self.grids.get_mut(&id).ok_or(Error::Resource(Type::Grid, id))?;
+        if grid.width <= x as usize {
+            return Ok(());
+        }
+        if grid.height() <= y as usize {
+            return Ok(());
+        }
+        let index = y as usize * grid.width + x as usize;
+        grid.data[index] = val;
+        Ok(())
+    }
+
+    #[gml::function]
+    pub fn ds_grid_get(&self, id: i32, x: u32, y: u32) -> Result<vm::Value, vm::ErrorKind> {
+        let grid = self.grids.get(&id).ok_or(Error::Resource(Type::Grid, id))?;
+        if grid.width <= x as usize {
+            return Ok(vm::Value::from(0.0));
+        }
+        if grid.height() <= y as usize {
+            return Ok(vm::Value::from(0.0));
+        }
+        let index = y as usize * grid.width + x as usize;
+        Ok(grid.data[index])
     }
 }

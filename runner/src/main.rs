@@ -88,9 +88,21 @@ fn main() {
         ds_map_add(map, "abc", "bar")
         key1 = ds_map_find_first(map)
         key2 = ds_map_find_next(map, key1)
-        show_debug_message("map[? ", key1, "] = ", ds_map_find_value(map, key1))
-        show_debug_message("map[? ", key2, "] = ", ds_map_find_value(map, key2))
+        show_debug_message("map[?", key1, "] =", ds_map_find_value(map, key1))
+        show_debug_message("map[?", key2, "] =", ds_map_find_value(map, key2))
         ds_map_destroy(map)
+
+        var grid;
+        grid = ds_grid_create(2, 2)
+        ds_grid_set(grid, 0, 0, 1)
+        ds_grid_set(grid, 1, 0, 2)
+        ds_grid_set(grid, 0, 1, 3)
+        ds_grid_set(grid, 1, 1, 4)
+        show_debug_message("grid[# 0, 0] =", ds_grid_get(grid, 0, 0))
+        show_debug_message("grid[# 1, 0] =", ds_grid_get(grid, 1, 0))
+        show_debug_message("grid[# 0, 1] =", ds_grid_get(grid, 0, 1))
+        show_debug_message("grid[# 1, 1] =", ds_grid_get(grid, 1, 1))
+        ds_grid_destroy(grid)
 
         show_debug_message("object_index =", object_index)
         show_debug_message("id =", id)
