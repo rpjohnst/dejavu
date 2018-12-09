@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-pub use front::lexer::Lexer;
-pub use front::parser::Parser;
-pub use front::codegen::Codegen;
+pub use crate::front::lexer::Lexer;
+pub use crate::front::parser::Parser;
+pub use crate::front::codegen::Codegen;
 
 pub mod token;
 pub mod ast;

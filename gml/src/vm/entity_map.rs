@@ -4,7 +4,7 @@ use std::num::Wrapping;
 use std::u32;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-pub struct Entity(pub(in vm) u32);
+pub struct Entity(pub(in crate::vm) u32);
 
 const INDEX_BITS: u32 = 24;
 const INDEX_MASK: u32 = (1 << INDEX_BITS) - 1;

@@ -1,15 +1,13 @@
 #![recursion_limit = "128"]
 
 extern crate proc_macro;
-extern crate proc_macro2;
-extern crate syn;
-extern crate quote;
 
 use std::iter;
 use std::collections::HashMap;
 use proc_macro::TokenStream;
+use proc_macro2;
 use syn::{
-    parse_quote, parenthesized, punctuated,
+    self, parse_quote, parenthesized, punctuated,
     ItemImpl, ImplItemMethod, Attribute, MethodSig, FnArg, ArgCaptured, ReturnType, Type, Ident
 };
 use syn::parse::{Parse, ParseStream, Result, Error};
@@ -165,7 +163,7 @@ struct PropertyMeta {
 }
 
 impl Parse for PropertyMeta {
-    fn parse(input: ParseStream) -> Result<Self> {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
         let content;
         parenthesized!(content in input);
         Ok(PropertyMeta { name: content.parse()? })
@@ -264,7 +262,7 @@ impl Property {
     }
 }
 
-fn parse_receivers(inputs: &mut iter::Peekable<punctuated::Iter<FnArg>>) -> Vec<Receiver> {
+fn parse_receivers(inputs: &mut iter::Peekable<punctuated::Iter<'_, FnArg>>) -> Vec<Receiver> {
     let mut receivers = Vec::new();
 
     let self_ref = parse_quote!(&self);

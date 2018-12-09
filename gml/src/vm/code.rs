@@ -1,6 +1,6 @@
 use std::{u8, mem, fmt};
 
-use vm;
+use crate::vm;
 
 pub struct Function {
     pub params: u32,
@@ -112,7 +112,7 @@ pub enum Op {
 }
 
 impl fmt::Debug for Function {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
         for param in 0..self.params {
             write!(f, "%{:?}, ", param)?;

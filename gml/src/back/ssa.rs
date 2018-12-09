@@ -1,7 +1,7 @@
 use std::{u32, slice, fmt, ops::Range};
 
-use handle_map::{Handle, HandleMap};
-use symbol::Symbol;
+use crate::handle_map::{Handle, HandleMap};
+use crate::symbol::Symbol;
 
 /// A function, defined as a control flow graph with statements in SSA form.
 ///
@@ -392,14 +392,14 @@ impl ExactSizeIterator for ValueRange {
 }
 
 impl fmt::Debug for Function {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for block in self.blocks.keys() {
             write!(f, "b{}(", block.index())?;
             write_values(f, self.blocks[block].parameters.iter().cloned())?;
             writeln!(f, "):")?;
 
             for &value in &self.blocks[block].instructions {
-                use back::ssa::Instruction::*;
+                use crate::back::ssa::Instruction::*;
 
                 write!(f, "    ")?;
 
@@ -464,7 +464,7 @@ impl fmt::Debug for Function {
     }
 }
 
-fn write_values<I>(f: &mut fmt::Formatter, values: I) -> fmt::Result where
+fn write_values<I>(f: &mut fmt::Formatter<'_>, values: I) -> fmt::Result where
     I: IntoIterator<Item = Value>
 {
     let mut has_values = false;

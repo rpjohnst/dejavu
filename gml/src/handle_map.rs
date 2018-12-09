@@ -3,7 +3,7 @@ use std::ops::{Index, IndexMut};
 
 /// An Handle is a typed index into a table of some sort of data
 pub trait Handle: Copy + Eq {
-    fn new(usize) -> Self;
+    fn new(_: usize) -> Self;
     fn index(self) -> usize;
 }
 

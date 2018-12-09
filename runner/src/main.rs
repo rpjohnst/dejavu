@@ -1,9 +1,6 @@
-extern crate gml;
-extern crate lib;
-
 use std::collections::HashMap;
 
-use gml::{symbol::Symbol, vm};
+use gml::{self, symbol::Symbol, vm};
 use lib::{real, string, instance, data};
 
 #[derive(Default)]

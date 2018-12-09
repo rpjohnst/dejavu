@@ -1,9 +1,9 @@
 use std::mem;
 use std::str::FromStr;
 
-use symbol::{Symbol, keyword};
-use front::{ast, Lexer, Span, ErrorHandler};
-use front::token::{Token, Delim, BinOp};
+use crate::symbol::{Symbol, keyword};
+use crate::front::{ast, Lexer, Span, ErrorHandler};
+use crate::front::token::{Token, Delim, BinOp};
 
 pub struct Parser<'s, 'e> {
     reader: Lexer<'s>,
@@ -55,8 +55,8 @@ impl<'s, 'e> Parser<'s, 'e> {
     fn parse_statement(&mut self) -> (ast::Stmt, Span) {
         let low = self.span.low;
 
-        use front::token::Token::*;
-        use symbol::keyword::*;
+        use crate::front::token::Token::*;
+        use crate::symbol::keyword::*;
 
         #[allow(non_upper_case_globals)]
         let (stmt, span) = match self.current {
@@ -92,9 +92,9 @@ impl<'s, 'e> Parser<'s, 'e> {
             _ => (),
         }
 
-        use front::token::Token::*;
-        use front::token::BinOp::*;
-        use front::ast::Op::*;
+        use crate::front::token::Token::*;
+        use crate::front::token::BinOp::*;
+        use crate::front::ast::Op::*;
         let op = match self.current {
             Eq | ColonEq => None,
             BinOpEq(Plus) => Some(Add),
@@ -412,8 +412,8 @@ impl<'s, 'e> Parser<'s, 'e> {
     fn parse_prefix_expression(&mut self) -> (ast::Expr, Span, bool) {
         let low = self.span.low;
 
-        use front::token::Token::*;
-        use symbol::keyword::*;
+        use crate::front::token::Token::*;
+        use crate::symbol::keyword::*;
 
         let (current, span) = self.advance_token();
 
@@ -533,8 +533,8 @@ enum Infix {
 
 impl Infix {
     fn from_token(token: Token) -> Option<(Infix, usize)> {
-        use front::ast::Binary::*;
-        use front::ast::Op::*;
+        use crate::front::ast::Binary::*;
+        use crate::front::ast::Op::*;
 
         let op = match token {
             Token::Dot => Infix::Field,
@@ -594,9 +594,9 @@ impl Infix {
 mod tests {
     use std::path::PathBuf;
 
-    use symbol::Symbol;
-    use front::{SourceFile, Span, ErrorHandler, Parser, Lexer};
-    use front::ast::*;
+    use crate::symbol::Symbol;
+    use crate::front::{SourceFile, Span, ErrorHandler, Parser, Lexer};
+    use crate::front::ast::*;
 
     fn setup(source: &str) -> SourceFile {
         SourceFile {

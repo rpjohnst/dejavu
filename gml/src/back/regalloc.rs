@@ -1,8 +1,8 @@
 use std::cmp;
 use std::collections::HashSet;
 
-use handle_map::HandleMap;
-use back::{ssa, analysis::*};
+use crate::handle_map::HandleMap;
+use crate::back::{ssa, analysis::*};
 
 /// A value interference graph.
 ///

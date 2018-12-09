@@ -1,9 +1,9 @@
 use std::mem;
 use std::collections::HashMap;
 
-use handle_map::{Handle, HandleMap};
-use bit_vec::BitVec;
-use back::{ssa, ControlFlow};
+use crate::handle_map::{Handle, HandleMap};
+use crate::bit_vec::BitVec;
+use crate::back::{ssa, ControlFlow};
 
 pub struct Builder {
     pub control_flow: ControlFlow,
@@ -49,8 +49,8 @@ impl Builder {
     }
 
     pub fn read_local(&mut self, function: &mut ssa::Function, block: ssa::Label, local: Local) -> ssa::Value {
-        // TODO: factor out `ensure` call with NLL
-        if let Some(&def) = self.current_defs.ensure(block).get(&local) {
+        let defs = self.current_defs.ensure(block);
+        if let Some(&def) = defs.get(&local) {
             return def;
         }
 
@@ -165,8 +165,8 @@ impl Builder {
     }
 
     pub fn seal_block(&mut self, function: &mut ssa::Function, block: ssa::Label) {
-        // TODO: factor out `ensure` call with NLL
-        let parameters = mem::replace(self.current_args.ensure(block), Vec::default());
+        let args = self.current_args.ensure(block);
+        let parameters = mem::replace(args, Vec::default());
         for (local, parameter) in parameters {
             self.read_predecessors(function, block, parameter, local);
         }

@@ -1,6 +1,6 @@
-use symbol::Symbol;
-use front::{SourceFile, Span};
-use front::token::{Token, BinOp, Delim};
+use crate::symbol::Symbol;
+use crate::front::{SourceFile, Span};
+use crate::front::token::{Token, BinOp, Delim};
 
 pub struct Lexer<'s> {
     source_file: &'s SourceFile,

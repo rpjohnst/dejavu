@@ -1,4 +1,4 @@
-use symbol::Symbol;
+use crate::symbol::Symbol;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Token {

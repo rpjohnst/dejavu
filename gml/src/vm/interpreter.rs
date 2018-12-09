@@ -1,8 +1,8 @@
 use std::{mem, ptr, slice, cmp, fmt, error};
 use std::convert::TryFrom;
 
-use symbol::Symbol;
-use vm::{self, code};
+use crate::symbol::Symbol;
+use crate::vm::{self, code};
 
 /// A single thread of GML execution.
 pub struct Thread {
@@ -62,7 +62,7 @@ pub enum ErrorKind {
 }
 
 impl fmt::Debug for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}+{}:{:?}", self.symbol, self.instruction, self.kind)
     }
 }
@@ -127,22 +127,18 @@ impl Thread {
         let world = constrain(move |_| unsafe { &mut *world });
 
         loop {
+            let registers = &mut self.stack[reg_base..];
+
             match function.instructions[instruction].decode() {
                 (code::Op::Imm, t, constant, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     registers[t].value = function.constants[constant];
                 }
 
                 (code::Op::Move, t, s, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     registers[t] = registers[s];
                 }
 
                 (op @ code::Op::Neg, t, a, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     registers[t].value = match a.data() {
                         vm::Data::Real(a) => Ok(vm::Value::from(-a)),
@@ -154,8 +150,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::Not, t, a, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     registers[t].value = match a.data() {
                         vm::Data::Real(a) => {
@@ -170,8 +164,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::BitNot, t, a, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     registers[t].value = match a.data() {
                         vm::Data::Real(a) => {
@@ -186,8 +178,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::Lt, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -201,8 +191,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::Le, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -216,24 +204,18 @@ impl Thread {
                 }
 
                 (code::Op::Eq, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = vm::Value::from(a == b);
                 }
 
                 (code::Op::Ne, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = vm::Value::from(a != b);
                 }
 
                 (op @ code::Op::Ge, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -247,8 +229,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::Gt, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -262,8 +242,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::Add, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -278,8 +256,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::Sub, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -292,8 +268,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::Mul, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -311,8 +285,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::Div, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -331,8 +303,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::IntDiv, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -352,8 +322,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::Mod, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -372,8 +340,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::And, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -390,8 +356,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::Or, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -408,8 +372,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::Xor, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -426,8 +388,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::BitAnd, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -444,8 +404,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::BitOr, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -462,8 +420,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::BitXor, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -480,8 +436,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::ShiftLeft, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -498,8 +452,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::ShiftRight, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match (a.data(), b.data()) {
@@ -524,8 +476,6 @@ impl Thread {
                 }
 
                 (code::Op::Lookup, t, name, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let name = Self::get_string(function.constants[name]);
                     registers[t].entity = if world(engine).globals.contains(&name) {
                         vm::world::GLOBAL
@@ -537,8 +487,6 @@ impl Thread {
                 // TODO: Replace these with `self`/`other` arguments and locals passed to `Lookup`.
 
                 (code::Op::LoadScope, t, scope, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     registers[t].entity = match scope as i8 as i32 {
                         SELF => self.self_entity,
                         OTHER => self.other_entity,
@@ -551,8 +499,6 @@ impl Thread {
                 }
 
                 (code::Op::StoreScope, s, scope, _) => {
-                    let registers = &self.stack[reg_base..];
-
                     let s = unsafe { registers[s].entity };
                     match scope as i8 as i32 {
                         SELF => self.self_entity = s,
@@ -565,8 +511,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::With, ptr, end, scope) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let scope = unsafe { registers[scope].value };
                     let scope = match scope.data() {
                         vm::Data::Real(scope) => Ok(Self::to_i32(scope)),
@@ -598,15 +542,11 @@ impl Thread {
                 }
 
                 (code::Op::LoadPointer, t, ptr, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let ptr = unsafe { registers[ptr].iterator };
                     registers[t].entity = unsafe { *ptr.as_ptr() };
                 }
 
                 (code::Op::NextPointer, t, ptr, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let ptr = unsafe { registers[ptr].iterator };
                     registers[t].iterator = unsafe {
                         ptr::NonNull::new_unchecked(ptr.as_ptr().offset(1))
@@ -614,24 +554,18 @@ impl Thread {
                 }
 
                 (code::Op::NePointer, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].iterator };
                     let b = unsafe { registers[b].iterator };
                     registers[t].value = vm::Value::from(a != b);
                 }
 
                 (code::Op::ExistsEntity, t, entity, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let entity = unsafe { registers[entity].entity };
                     let exists = world(engine).members.contains_key(entity);
                     registers[t].value = vm::Value::from(exists);
                 }
 
                 (op @ code::Op::Read, a, local, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     match a.data() {
                         vm::Data::Real(a) => {
@@ -650,8 +584,6 @@ impl Thread {
                 }
 
                 (code::Op::Write, t, a, b) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let b = unsafe { registers[b].value };
                     registers[t].value = match b.data() {
@@ -664,8 +596,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::ScopeError, scope, _, _) => {
-                    let registers = &self.stack[reg_base..];
-
                     let scope = unsafe { registers[scope].value };
                     match scope.data() {
                         vm::Data::Real(scope) => {
@@ -681,8 +611,6 @@ impl Thread {
                 }
 
                 (code::Op::ToArray, t, a, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     registers[t].value = match a.data() {
                         vm::Data::Array(_) => Ok(a),
@@ -691,8 +619,6 @@ impl Thread {
                 }
 
                 (code::Op::ToScalar, t, a, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     registers[t].value = match a.data() {
                         vm::Data::Array(array) => {
@@ -707,15 +633,11 @@ impl Thread {
                 }
 
                 (code::Op::Release, a, _, _) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     unsafe { a.release() };
                 }
 
                 (code::Op::LoadField, t, entity, field) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
                     let instance = &world(engine).members[entity];
@@ -727,8 +649,6 @@ impl Thread {
                 }
 
                 (code::Op::LoadFieldDefault, t, entity, field) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
                     let instance = &world(engine).members[entity];
@@ -737,8 +657,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::LoadRow, t, a, i) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let i = unsafe { registers[i].value };
                     registers[t].row = match (a.data(), i.data()) {
@@ -759,8 +677,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::LoadIndex, t, r, j) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let r = unsafe { registers[r].row };
                     let j = unsafe { registers[j].value };
                     registers[t].value = match j.data() {
@@ -781,8 +697,6 @@ impl Thread {
                 }
 
                 (code::Op::StoreField, s, entity, field) => {
-                    let registers = &self.stack[reg_base..];
-
                     let s = unsafe { registers[s].value };
                     let entity = unsafe { registers[entity].entity };
                     let field = Self::get_string(function.constants[field]);
@@ -791,8 +705,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::StoreRow, t, a, i) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     let i = unsafe { registers[i].value };
                     registers[t].row = match (a.data(), i.data()) {
@@ -808,8 +720,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::StoreIndex, s, r, j) => {
-                    let registers = &self.stack[reg_base..];
-
                     let s = unsafe { registers[s].value };
                     let r = unsafe { registers[r].row };
                     let j = unsafe { registers[j].value };
@@ -850,19 +760,10 @@ impl Thread {
                     let function = resources.api[&api_symbol];
                     let reg_base = reg_base + base;
 
-                    let limit = reg_base + len;
-
-                    // TODO: move this back inline with NLL
-                    let value;
-                    {
-                        let registers = &self.stack[base..limit];
-                        let arguments = unsafe { mem::transmute::<_, &[vm::Value]>(registers) };
-                        value = function(engine, arguments)
-                            .map_err(|kind| Error { symbol, instruction, kind })?;
-                    }
-
                     let registers = &mut self.stack[reg_base..];
-                    registers[0].value = value;
+                    let arguments = unsafe { mem::transmute::<_, &[vm::Value]>(&registers[..len]) };
+                    registers[0].value = function(engine, arguments)
+                        .map_err(|kind| Error { symbol, instruction, kind })?;
                 }
 
                 (code::Op::CallGet, get, base, _) => {
@@ -875,7 +776,6 @@ impl Thread {
                     let reg_base = reg_base + base;
 
                     let registers = &mut self.stack[reg_base..];
-
                     let entity = unsafe { registers[0].entity };
                     let i = unsafe { registers[1].value };
                     let i = i32::try_from(i).unwrap_or(0) as usize;
@@ -892,7 +792,6 @@ impl Thread {
                     let reg_base = reg_base + base;
 
                     let registers = &self.stack[reg_base..];
-
                     let value = unsafe { registers[0].value };
                     let entity = unsafe { registers[1].entity };
                     let i = unsafe { registers[2].value };
@@ -904,7 +803,6 @@ impl Thread {
                     let (caller, caller_instruction, caller_base) = match self.returns.pop() {
                         Some(frame) => frame,
                         None => {
-                            let registers = &self.stack[reg_base..];
                             let value = unsafe { registers[0].value };
                             return Ok(value);
                         }
@@ -926,8 +824,6 @@ impl Thread {
                 }
 
                 (op @ code::Op::BranchFalse, a, t_low, t_high) => {
-                    let registers = &mut self.stack[reg_base..];
-
                     let a = unsafe { registers[a].value };
                     match a.data() {
                         vm::Data::Real(a) => {

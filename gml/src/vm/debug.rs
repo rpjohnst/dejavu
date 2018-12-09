@@ -2,13 +2,16 @@ use std::fmt;
 use std::collections::HashSet;
 use std::cell::Cell;
 
-use vm;
+use crate::vm;
 
-pub(in vm) struct Value<'b>(pub(in vm) vm::Value, pub(in vm) &'b Cell<HashSet<usize>>);
+pub(in crate::vm) struct Value<'b> {
+    pub(in crate::vm) value: vm::Value,
+    pub(in crate::vm) visited: &'b Cell<HashSet<usize>>,
+}
 
 impl<'b> fmt::Debug for Value<'b> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let Value(value, visited) = *self;
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Value { value, visited } = *self;
         match value.data() {
             vm::Data::Real(value) => write!(f, "{:?}", value),
             vm::Data::String(value) => write!(f, "{}", value),
@@ -20,7 +23,7 @@ impl<'b> fmt::Debug for Value<'b> {
 struct Array<'a, 'b>(&'a vm::Array, &'b Cell<HashSet<usize>>);
 
 impl<'a, 'b> fmt::Debug for Array<'a, 'b> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Array(array, visited) = *self;
         let raw = &*array.data as *const _ as usize;
         if begin(visited, raw) {
@@ -51,9 +54,9 @@ impl<'a, 'b> fmt::Debug for Array<'a, 'b> {
 struct Row<'a, 'b>(&'a Vec<vm::Value>, &'b Cell<HashSet<usize>>);
 
 impl<'a, 'b> fmt::Debug for Row<'a, 'b> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Row(row, visited) = *self;
-        f.debug_set().entries(row.iter().map(|&value| Value(value, visited))).finish()?;
+        f.debug_set().entries(row.iter().map(|&value| Value { value, visited })).finish()?;
 
         Ok(())
     }
@@ -61,7 +64,7 @@ impl<'a, 'b> fmt::Debug for Row<'a, 'b> {
 
 #[cfg(test)]
 mod tests {
-    use vm;
+    use crate::vm;
 
     #[test]
     fn recursive() {

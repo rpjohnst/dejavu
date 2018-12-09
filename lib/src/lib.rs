@@ -1,6 +1,6 @@
 #![feature(try_from)]
 
-extern crate gml;
+use gml;
 
 pub mod real;
 pub mod string;

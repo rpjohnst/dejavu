@@ -1,11 +1,11 @@
 use std::{i8, u8, u16, slice};
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
 
-use bit_vec::BitVec;
-use handle_map::{Handle, HandleMap};
-use symbol::Symbol;
-use back::{ssa, analysis::*, regalloc::*};
-use vm::{self, code};
+use crate::bit_vec::BitVec;
+use crate::handle_map::{Handle, HandleMap};
+use crate::symbol::Symbol;
+use crate::back::{ssa, analysis::*, regalloc::*};
+use crate::vm::{self, code};
 
 pub struct Codegen {
     function: code::Function,
@@ -63,7 +63,7 @@ impl Codegen {
         self.block_offsets.insert(block, self.function.instructions.len());
 
         for &value in &program.blocks[block].instructions {
-            use back::ssa::Instruction::*;
+            use crate::back::ssa::Instruction::*;
 
             // TODO: move this logic to live range splitting
             if let Unary { op: ssa::Opcode::Return, arg } = program.values[value] {

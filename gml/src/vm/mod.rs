@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use symbol::Symbol;
+use crate::symbol::Symbol;
 
-pub use vm::interpreter::{Thread, Error, ErrorKind, SELF, OTHER, ALL, NOONE, GLOBAL};
-pub use vm::world::World;
-pub use vm::entity_map::{Entity, EntityAllocator, EntityMap};
-pub use vm::value::{Type, Value, Data};
-pub use vm::array::{Array, Row};
+pub use crate::vm::interpreter::{Thread, Error, ErrorKind, SELF, OTHER, ALL, NOONE, GLOBAL};
+pub use crate::vm::world::World;
+pub use crate::vm::entity_map::{Entity, EntityAllocator, EntityMap};
+pub use crate::vm::value::{Type, Value, Data};
+pub use crate::vm::array::{Array, Row};
 
 pub mod code;
 pub mod debug;

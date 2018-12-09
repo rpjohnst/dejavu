@@ -1,8 +1,8 @@
 use std::{mem, fmt};
 use std::convert::TryFrom;
 
-use symbol::Symbol;
-use vm;
+use crate::symbol::Symbol;
+use crate::vm;
 
 /// A GML value.
 ///
@@ -141,9 +141,9 @@ impl From<bool> for Value {
 }
 
 impl fmt::Debug for Value {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let visited = Default::default();
-        vm::debug::Value(*self, &visited).fmt(f)
+        vm::debug::Value { value: *self, visited: &visited }.fmt(f)
     }
 }
 

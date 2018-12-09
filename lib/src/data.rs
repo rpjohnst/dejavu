@@ -86,7 +86,7 @@ impl From<Error> for vm::ErrorKind {
 }
 
 impl fmt::Display for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Error::Resource(kind, id) => {
                 write!(fmt, "The {:?} with id {} does not exist.", kind, id)?;

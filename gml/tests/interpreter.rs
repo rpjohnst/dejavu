@@ -1,7 +1,5 @@
 #![feature(try_from)]
 
-extern crate gml;
-
 use std::collections::HashMap;
 use std::convert::TryFrom;
 
@@ -393,14 +391,22 @@ fn ffi() -> Result<(), vm::Error> {
     let add = Symbol::intern("add");
     items.insert(add, Item::Native(Engine::native_add, 2, false));
 
+    let caller = Symbol::intern("caller");
+    items.insert(caller, Item::Script("{
+        var a, b, c;
+        return call()
+    }"));
+
     let call = Symbol::intern("call");
-    items.insert(call, Item::Script("return add(3, 5) + 8"));
+    items.insert(call, Item::Script("{
+        return add(3, 5) + 8
+    }"));
 
     let resources = build(items);
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
-    assert_eq!(thread.execute(&mut engine, &resources, call, &[])?, vm::Value::from(16.0));
+    assert_eq!(thread.execute(&mut engine, &resources, caller, &[])?, vm::Value::from(16.0));
     Ok(())
 }
 

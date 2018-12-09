@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-use bit_vec::BitVec;
-use handle_map::{Handle, HandleMap};
-use back::ssa;
+use crate::bit_vec::BitVec;
+use crate::handle_map::{Handle, HandleMap};
+use crate::back::ssa;
 
 /// A control flow graph for a function, as the successors and predecessors of each basic block.
 pub struct ControlFlow {

@@ -2,16 +2,16 @@ use std::mem;
 use std::rc::Rc;
 use std::cell::UnsafeCell;
 use std::ptr::NonNull;
-use vm;
+use crate::vm;
 
 #[derive(Clone)]
 pub struct Array {
-    pub(in vm) data: Rc<UnsafeCell<Vec<Vec<vm::Value>>>>,
+    pub(in crate::vm) data: Rc<UnsafeCell<Vec<Vec<vm::Value>>>>,
 }
 
 #[derive(Copy, Clone)]
 pub struct Row {
-    pub(in vm) data: NonNull<Vec<vm::Value>>,
+    pub(in crate::vm) data: NonNull<Vec<vm::Value>>,
 }
 
 #[derive(Copy, Clone)]

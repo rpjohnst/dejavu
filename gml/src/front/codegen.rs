@@ -1,9 +1,9 @@
 use std::{mem, cmp, iter};
 use std::collections::HashMap;
 
-use symbol::{Symbol, keyword};
-use front::{self, ast, Span, ErrorHandler};
-use back::ssa;
+use crate::symbol::{Symbol, keyword};
+use crate::front::{self, ast, Span, ErrorHandler};
+use crate::back::ssa;
 
 pub struct Codegen<'p, 'e> {
     function: ssa::Function,
@@ -123,11 +123,9 @@ impl<'p, 'e> Codegen<'p, 'e> {
         let entry_block = self.current_block;
         self.seal_block(entry_block);
 
-        // TODO: move this back inline with NLL
-        let local = self.return_value;
         let op = ssa::Opcode::Constant;
         let zero = self.emit_initializer(ssa::Instruction::UnaryReal { op, real: 0.0 });
-        self.write_local(local, zero);
+        self.write_local(self.return_value, zero);
 
         self.emit_statement(program);
 
@@ -140,9 +138,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
             let value = self.read_local(local);
             self.emit_unary(ssa::Opcode::Release, value);
         }
-        // TODO: move this back inline with NLL
-        let local = self.return_value;
-        let return_value = self.read_local(local);
+        let return_value = self.read_local(self.return_value);
         self.emit_unary(ssa::Opcode::Return, return_value);
 
         front::ssa::Builder::finish(&mut self.function);
@@ -459,10 +455,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
             ast::Stmt::Return(box ref expr) => {
                 let dead_block = self.make_block();
 
-                // TODO: move this back inline with NLL
-                let local = self.return_value;
                 let expr = self.emit_value(expr);
-                self.write_local(local, expr);
+                self.write_local(self.return_value, expr);
                 self.emit_jump(ssa::EXIT);
 
                 self.current_block = dead_block;
@@ -852,7 +846,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
     /// Iterate over each entity in a scope for writing. (Helper for `emit_store`.)
     fn emit_store_scope<F>(&mut self, scope: ssa::Value, f: F) where
-        F: FnOnce(&mut Codegen, ssa::Value)
+        F: FnOnce(&mut Codegen<'_, '_>, ssa::Value)
     {
         // TODO: gms errors on empty iteration
         let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope);
@@ -937,7 +931,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
     }
 
     fn with_loop<F>(&mut self, next: ssa::Label, exit: ssa::Label, f: F) where
-        F: FnOnce(&mut Codegen)
+        F: FnOnce(&mut Codegen<'_, '_>)
     {
         let old_next = mem::replace(&mut self.current_next, Some(next));
         let old_exit = mem::replace(&mut self.current_exit, Some(exit));
@@ -951,7 +945,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
     fn with_switch<F>(
         &mut self, switch: ssa::Value, expr: ssa::Label, exit: ssa::Label,
         f: F
-    ) where F: FnOnce(&mut Codegen) {
+    ) where F: FnOnce(&mut Codegen<'_, '_>) {
         let old_switch = mem::replace(&mut self.current_switch, Some(switch));
         let old_expr = mem::replace(&mut self.current_expr, Some(expr));
         let old_default = mem::replace(&mut self.current_default, None);

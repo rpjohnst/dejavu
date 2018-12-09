@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use index_map::IndexMap;
-use symbol::Symbol;
-use vm;
+use crate::index_map::IndexMap;
+use crate::symbol::Symbol;
+use crate::vm;
 
 pub struct World {
     pub entities: vm::EntityAllocator,
