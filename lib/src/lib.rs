@@ -1,6 +1,3 @@
-#![feature(try_from)]
-
-use gml;
 
 pub mod real;
 pub mod string;

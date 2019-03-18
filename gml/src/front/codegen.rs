@@ -8,7 +8,7 @@ use crate::back::ssa;
 pub struct Codegen<'p, 'e> {
     function: ssa::Function,
     builder: front::ssa::Builder,
-    errors: &'e ErrorHandler,
+    errors: &'e mut dyn ErrorHandler,
 
     prototypes: &'p HashMap<Symbol, ssa::Prototype>,
 
@@ -89,7 +89,9 @@ const GLOBAL: f64 = -5.0;
 const LOCAL: f64 = -7.0;
 
 impl<'p, 'e> Codegen<'p, 'e> {
-    pub fn new(prototypes: &'p HashMap<Symbol, ssa::Prototype>, errors: &'e ErrorHandler) -> Self {
+    pub fn new(
+        prototypes: &'p HashMap<Symbol, ssa::Prototype>, errors: &'e mut dyn ErrorHandler
+    ) -> Self {
         let function = ssa::Function::new();
 
         let mut builder = front::ssa::Builder::new();

@@ -4,13 +4,12 @@
 #![feature(slice_patterns)]
 #![feature(range_contains)]
 #![feature(extern_types)]
-#![feature(try_from)]
 
 use std::path::PathBuf;
 use std::collections::HashMap;
 
 use crate::symbol::Symbol;
-use crate::front::{Lexer, Parser, SourceFile, ErrorHandler};
+use crate::front::{SourceFile, Lexer, Parser, ErrorHandler};
 use crate::back::ssa;
 use crate::vm::code;
 
@@ -34,7 +33,10 @@ pub enum Item<E> {
 }
 
 /// Build a GML project.
-pub fn build<E: Default>(items: HashMap<Symbol, Item<E>>) -> vm::Resources<E> {
+pub fn build<E: Default, H: ErrorHandler, F: FnMut(Symbol, &SourceFile) -> H>(
+    items: HashMap<Symbol, Item<E>>,
+    mut errors: F
+) -> vm::Resources<E> {
     let prototypes: HashMap<Symbol, ssa::Prototype> = items.iter()
         .map(|(&name, resource)| match *resource {
             Item::Script(_) => (name, ssa::Prototype::Script),
@@ -47,7 +49,12 @@ pub fn build<E: Default>(items: HashMap<Symbol, Item<E>>) -> vm::Resources<E> {
     for (name, item) in items.into_iter() {
         match item {
             Item::Script(source) => {
-                resources.scripts.insert(name, compile(&prototypes, name, source));
+                let source = SourceFile {
+                    name: PathBuf::from(&*name),
+                    source: String::from(source),
+                };
+                let mut errors = errors(name, &source);
+                resources.scripts.insert(name, compile(&prototypes, source, &mut errors));
             }
             Item::Native(function, _, _) => {
                 resources.api.insert(name, function);
@@ -63,17 +70,13 @@ pub fn build<E: Default>(items: HashMap<Symbol, Item<E>>) -> vm::Resources<E> {
 }
 
 fn compile(
-    prototypes: &HashMap<Symbol, ssa::Prototype>, name: Symbol, source: &str
+    prototypes: &HashMap<Symbol, ssa::Prototype>, source: SourceFile,
+    errors: &mut dyn ErrorHandler
 ) -> code::Function {
-    let source = SourceFile {
-        name: PathBuf::from(&*name),
-        source: String::from(source),
-    };
-    let errors = ErrorHandler;
     let reader = Lexer::new(&source);
-    let mut parser = Parser::new(reader, &errors);
+    let mut parser = Parser::new(reader, errors);
     let program = parser.parse_program();
-    let codegen = front::Codegen::new(prototypes, &errors);
+    let codegen = front::Codegen::new(prototypes, errors);
     let program = codegen.compile(&program);
     let codegen = back::Codegen::new();
     codegen.compile(&program)
