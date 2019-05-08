@@ -19,9 +19,10 @@ impl Default for State {
 #[gml::bind(Api)]
 impl State {
     /// Emulate Delphi's LCG to advance the current random state.
-    fn random_next(&mut self) -> Wrapping<i32> {
+    fn random_next(&mut self) -> u32 {
         self.random_seed = self.random_seed * Wrapping(0x8088405) + Wrapping(1);
-        self.random_seed
+        let Wrapping(seed) = self.random_seed;
+        seed as u32
     }
 
     /// Emulate Delphi's LCG to produce a random value in the range [0, x).
@@ -30,7 +31,7 @@ impl State {
     /// Because the seed is in the range [0, 2^32), it can be viewed as the fractional part of a
     /// 64-bit fixed-point number in the range [0, 1).
     fn random_u32(&mut self, x: u32) -> u32 {
-        let Wrapping(seed) = self.random_next();
+        let seed = self.random_next();
         (seed as u64 * x as u64 >> 32) as u32
     }
 
@@ -38,7 +39,7 @@ impl State {
     ///
     /// This works by dividing the seed's value, in the range [0, 2^32), by 2^32.
     fn random_f64(&mut self) -> f64 {
-        let Wrapping(seed) = self.random_next();
+        let seed = self.random_next();
         seed as f64 / 0x1_0000_0000u64 as f64
     }
 
@@ -254,5 +255,26 @@ impl State {
     #[gml::function]
     pub fn is_string(x: vm::Value) -> bool {
         x.data().ty() == vm::Type::String
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn random_sequence() {
+        let mut state = State::default();
+        state.random_set_seed(236732942);
+        assert_eq!(state.irandom(10), 3);
+        assert_eq!(state.random_get_seed(), 1493992007);
+        assert_eq!(state.irandom(10), 5);
+        assert_eq!(state.random_get_seed(), 2057512804);
+        assert_eq!(state.irandom(10), 9);
+        assert_eq!(state.random_get_seed(), -526428939);
+        assert_eq!(state.irandom(10), 9);
+        assert_eq!(state.random_get_seed(), -627901238);
+        assert_eq!(state.irandom(10), 2);
+        assert_eq!(state.random_get_seed(), 1166481395);
     }
 }
