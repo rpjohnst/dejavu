@@ -830,7 +830,8 @@ impl Thread {
                     instruction = caller_instruction;
                     reg_base = caller_base;
 
-                    self.stack.truncate(reg_base + function.locals as usize);
+                    let default = Register { value: vm::Value::from(0.0) };
+                    self.stack.resize(reg_base + function.locals as usize, default);
 
                     continue;
                 }

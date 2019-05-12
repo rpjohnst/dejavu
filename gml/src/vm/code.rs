@@ -160,7 +160,10 @@ impl fmt::Debug for Function {
                 Op::LoadIndex | Op::LoadRow | Op::StoreRow =>
                     writeln!(f, "  %{:?} = {:?} %{:?}[%{:?}]", a, op, b, c)?,
                 Op::StoreIndex => writeln!(f, "  {:?} %{:?}, %{:?}[%{:?}]", op, a, b, c)?,
-                Op::Call => writeln!(f, "  {:?} {:?}(%{:?} +{:?})", op, self.constants[a], b, c)?,
+                Op::Call | Op::CallApi | Op::CallGet =>
+                    writeln!(f, "  %{:?} = {:?} {:?}(%{:?} +{:?})", b, op, self.constants[a], b, c)?,
+                Op::CallSet =>
+                    writeln!(f, "  {:?} {:?}(%{:?} +{:?})", op, self.constants[a], b, c)?,
                 Op::Ret => writeln!(f, "  {:?}", op)?,
                 Op::Jump => writeln!(f, "  {:?} {:?}", op, a)?,
                 Op::BranchFalse => writeln!(f, "  {:?} %{:?}, {:?}", op, a, b)?,
