@@ -5,7 +5,7 @@ use crate::front::Span;
 pub enum Stmt {
     Error(Expr),
 
-    Assign(Option<Op>, Box<(Expr, Span)>, Box<(Expr, Span)>),
+    Assign((Option<Op>, Span), Box<(Expr, Span)>, Box<(Expr, Span)>),
     Invoke(Call),
     Declare(Declare, Box<[(Symbol, Span)]>),
     Block(Box<[(Stmt, Span)]>),
@@ -39,8 +39,8 @@ pub enum Jump {
 #[derive(PartialEq, Debug)]
 pub enum Expr {
     Value(Value),
-    Unary(Unary, Box<(Expr, Span)>),
-    Binary(Binary, Box<(Expr, Span)>, Box<(Expr, Span)>),
+    Unary((Unary, Span), Box<(Expr, Span)>),
+    Binary((Binary, Span), Box<(Expr, Span)>, Box<(Expr, Span)>),
     Field(Box<(Expr, Span)>, (Symbol, Span)),
     Index(Box<(Expr, Span)>, Box<[(Expr, Span)]>),
     Call(Call),

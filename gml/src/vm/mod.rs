@@ -19,6 +19,7 @@ mod array;
 #[derive(Default)]
 pub struct Resources<E: ?Sized> {
     pub scripts: HashMap<Symbol, code::Function>,
+    pub debug: HashMap<Symbol, code::Debug>,
 
     pub api: HashMap<Symbol, ApiFunction<E>>,
     pub get: HashMap<Symbol, GetFunction<E>>,

@@ -20,6 +20,29 @@ impl Function {
     }
 }
 
+pub struct Debug {
+    pub mappings: Vec<SourceMap>,
+}
+
+pub struct SourceMap {
+    pub offset: u32,
+    pub location: u32,
+}
+
+impl Debug {
+    pub fn new() -> Debug {
+        Debug { mappings: vec![] }
+    }
+
+    pub fn get_location(&self, offset: u32) -> u32 {
+        let i = match self.mappings.binary_search_by_key(&offset, |map| map.offset) {
+            Ok(i) => i,
+            Err(i) => i - 1,
+        };
+        self.mappings[i].location
+    }
+}
+
 /// An encoded instruction.
 ///
 /// Fields use this structure, stored in little-endian order:

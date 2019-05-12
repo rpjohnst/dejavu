@@ -1,4 +1,4 @@
-use std::{i8, u8, u16, slice};
+use std::{i8, u8, u16, u32, slice};
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
 
 use crate::bit_vec::BitVec;
@@ -9,6 +9,7 @@ use crate::vm::{self, code};
 
 pub struct Codegen {
     function: code::Function,
+    debug: code::Debug,
 
     registers: HandleMap<ssa::Value, usize>,
     register_count: usize,
@@ -25,6 +26,7 @@ impl Codegen {
     pub fn new() -> Codegen {
         Codegen {
             function: code::Function::new(),
+            debug: code::Debug::new(),
 
             registers: HandleMap::new(),
             register_count: 0,
@@ -38,7 +40,7 @@ impl Codegen {
         }
     }
 
-    pub fn compile(mut self, program: &ssa::Function) -> code::Function {
+    pub fn compile(mut self, program: &ssa::Function) -> (code::Function, code::Debug) {
         let control_flow = ControlFlow::compute(program);
         let liveness = Liveness::compute(program, &control_flow);
         let interference = Interference::build(program, &liveness);
@@ -55,15 +57,25 @@ impl Codegen {
         self.function.params = param_count as u32;
         self.function.locals = self.register_count as u32;
 
-        self.function
+        (self.function, self.debug)
     }
 
     fn emit_blocks(&mut self, program: &ssa::Function, block: ssa::Label) {
         self.visited.set(block.index());
         self.block_offsets.insert(block, self.function.instructions.len());
 
+        let mut last_location = u32::MAX;
+
         for &value in &program.blocks[block].instructions {
             use crate::back::ssa::Instruction::*;
+
+            // Emit source positions.
+            let offset = self.function.instructions.len() as u32;
+            let location = program.locations[value] as u32;
+            if location != last_location {
+                self.debug.mappings.push(code::SourceMap { offset, location });
+                last_location = location;
+            }
 
             // TODO: move this logic to live range splitting
             if let Unary { op: ssa::Opcode::Return, arg } = program.values[value] {

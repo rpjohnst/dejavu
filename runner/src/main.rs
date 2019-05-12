@@ -136,5 +136,14 @@ fn main() {
     let entity = engine.world.create_instance(object_index, id);
     engine.instance.create_instance(entity, instance::Instance { object_index, id, persistent });
 
-    let _ = thread.execute(&mut engine, &resources, main, &[]);
+    if let Err(error) = thread.execute(&mut engine, &resources, main, &[]) {
+        let location = resources.debug[&error.symbol].get_location(error.instruction as u32);
+        let source = match items[&error.symbol] {
+            gml::Item::Script(source) => source,
+            _ => "",
+        };
+        let lines = gml::front::compute_lines(source);
+        let (line, column) = gml::front::get_position(&lines, location as usize);
+        println!("error: {}:{}:{}: {}", error.symbol, line, column, error.kind);
+    }
 }

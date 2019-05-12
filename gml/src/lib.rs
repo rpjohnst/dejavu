@@ -49,7 +49,9 @@ pub fn build<E: Default, H: ErrorHandler, F: FnMut(Symbol, &str) -> H>(
         match *item {
             Item::Script(source) => {
                 let mut errors = errors(name, source);
-                resources.scripts.insert(name, compile(&prototypes, source, &mut errors));
+                let (function, debug) = compile(&prototypes, source, &mut errors);
+                resources.scripts.insert(name, function);
+                resources.debug.insert(name, debug);
             }
             Item::Native(function, _, _) => {
                 resources.api.insert(name, function);
@@ -67,7 +69,7 @@ pub fn build<E: Default, H: ErrorHandler, F: FnMut(Symbol, &str) -> H>(
 fn compile(
     prototypes: &HashMap<Symbol, ssa::Prototype>, source: &str,
     errors: &mut dyn ErrorHandler
-) -> code::Function {
+) -> (code::Function, code::Debug) {
     let reader = Lexer::new(source);
     let mut parser = Parser::new(reader, errors);
     let program = parser.parse_program();

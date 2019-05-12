@@ -11,9 +11,10 @@ use crate::symbol::Symbol;
 pub struct Function {
     pub blocks: HandleMap<Label, Block>,
     pub values: HandleMap<Value, Instruction>,
-
     // TODO: move this to register allocation
     pub return_def: Value,
+
+    pub locations: HandleMap<Value, usize>,
 }
 
 /// A handle to a basic block.
@@ -204,8 +205,10 @@ impl Function {
         let op = Opcode::Constant;
         let return_def = values.push(Instruction::UnaryReal { op, real: 0.0 });
 
+        let locations = HandleMap::new();
+
         // Create the function with fixed entry and exit labels.
-        let mut function = Function { blocks, values, return_def };
+        let mut function = Function { blocks, values, return_def, locations };
         function.make_block();
         function.make_block();
 
@@ -227,8 +230,11 @@ impl Function {
         value
     }
 
-    pub fn emit_instruction(&mut self, block: Label, instruction: Instruction) -> Value {
+    pub fn emit_instruction(&mut self, block: Label, instruction: Instruction, location: usize) ->
+        Value
+    {
         let value = self.values.push(instruction);
+        *self.locations.ensure(value) = location;
         self.blocks[block].instructions.push(value);
         value
     }

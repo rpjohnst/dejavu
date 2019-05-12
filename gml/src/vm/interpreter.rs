@@ -34,9 +34,9 @@ pub union Register {
 }
 
 pub struct Error {
-    symbol: Symbol,
-    instruction: usize,
-    kind: ErrorKind,
+    pub symbol: Symbol,
+    pub instruction: usize,
+    pub kind: ErrorKind,
 }
 
 #[derive(Debug)]
@@ -64,6 +64,23 @@ pub enum ErrorKind {
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}+{}:{:?}", self.symbol, self.instruction, self.kind)
+    }
+}
+
+impl fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use ErrorKind::*;
+        match *self {
+            TypeUnary(_, _) => write!(f, "wrong type of arguments to unary operator"),
+            TypeBinary(_, _, _) => write!(f, "wrong type of arguments to binary operator"),
+            DivideByZero => write!(f, "division by 0"),
+            Arity(_) => write!(f, "wrong number of arguments to function or script"),
+            Scope(_) => write!(f, "scope does not exist"),
+            Name(symbol) => write!(f, "unknown variable {}", symbol),
+            Write(symbol) => write!(f, "cannot assign to the variable {}", symbol),
+            Bounds(_) => write!(f, "array index out of bounds"),
+            Other(ref error) => error.fmt(f),
+        }
     }
 }
 

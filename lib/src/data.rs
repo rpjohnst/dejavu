@@ -85,14 +85,24 @@ impl From<Error> for vm::ErrorKind {
     }
 }
 
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Type::List => write!(f, "list"),
+            Type::Map => write!(f, "map"),
+            Type::Grid => write!(f, "grid"),
+        }
+    }
+}
+
 impl fmt::Display for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Error::Resource(kind, id) => {
-                write!(fmt, "The {:?} with id {} does not exist.", kind, id)?;
+                write!(f, "the {} with id {} does not exist", kind, id)?;
             }
             Error::KeyExists(key) => {
-                write!(fmt, "An entry with key {:?} already exists in the map.", key)?;
+                write!(f, "an entry with key {:?} already exists in the map", key)?;
             }
         }
         Ok(())

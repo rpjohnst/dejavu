@@ -96,6 +96,7 @@ impl<'s, 'e> Parser<'s, 'e> {
         use crate::front::token::Token::*;
         use crate::front::token::BinOp::*;
         use crate::front::ast::Op::*;
+        let op_span = self.span;
         let op = match self.current {
             Eq | ColonEq => None,
             BinOpEq(Plus) => Some(Add),
@@ -118,7 +119,9 @@ impl<'s, 'e> Parser<'s, 'e> {
         let high = right_span.high;
 
         let span = Span { low: low, high: high };
-        (ast::Stmt::Assign(op, Box::new((place, left_span)), Box::new((value, right_span))), span)
+        (ast::Stmt::Assign(
+            (op, op_span), Box::new((place, left_span)), Box::new((value, right_span))
+        ), span)
     }
 
     fn parse_declare(&mut self) -> (ast::Stmt, Span) {
@@ -397,12 +400,13 @@ impl<'s, 'e> Parser<'s, 'e> {
                 }
 
                 (_, Infix::Binary(op)) => {
+                    let op_span = self.span;
                     self.advance_token();
 
                     let (right, right_span) = self.parse_expression(precedence + 1);
 
                     left = ast::Expr::Binary(
-                        op, Box::new((left, left_span)), Box::new((right, right_span))
+                        (op, op_span), Box::new((left, left_span)), Box::new((right, right_span))
                     );
                     left_span = Span { low: left_span.low, high: right_span.high };
                 }
@@ -451,6 +455,7 @@ impl<'s, 'e> Parser<'s, 'e> {
             }
 
             BinOp(self::BinOp::Plus) | BinOp(self::BinOp::Minus) | Bang | Keyword(Not) | Tilde => {
+                let op_span = span;
                 let op = match current {
                     BinOp(self::BinOp::Plus) => ast::Unary::Positive,
                     BinOp(self::BinOp::Minus) => ast::Unary::Negate,
@@ -463,7 +468,7 @@ impl<'s, 'e> Parser<'s, 'e> {
                 let high = expr_span.high;
 
                 let span = Span { low: low, high: high };
-                (ast::Expr::Unary(op, Box::new((expr, expr_span))), span, true)
+                (ast::Expr::Unary((op, op_span), Box::new((expr, expr_span))), span, true)
             }
 
             OpenDelim(Delim::Paren) => {
@@ -632,14 +637,14 @@ mod tests {
                     vec![(x, span(6, 7))].into_boxed_slice(),
                 ), span(2, 8)), 
                 (Stmt::Assign(
-                    None,
+                    (None, span(11, 12)),
                     Box::new((Expr::Value(Value::Ident(x)), span(9, 10))),
                     Box::new((Expr::Value(Value::Real(3.0)), span(13, 14))),
                 ), span(9, 14)),
                 (Stmt::Invoke(Call(
                     (show_message, span(15, 27)),
                     vec![(Expr::Binary(
-                        Binary::Op(Op::Multiply), 
+                        (Binary::Op(Op::Multiply), span(30, 31)),
                         Box::new((Expr::Value(Value::Ident(x)), span(28, 29))),
                         Box::new((Expr::Value(Value::Ident(y)), span(32, 33))),
                     ), span(28, 33))].into_boxed_slice(),
@@ -659,13 +664,13 @@ mod tests {
         let z = Symbol::intern("z");
         assert_eq!(parser.parse_expression(0), (
             Expr::Binary(
-                Binary::Op(Op::Add),
+                (Binary::Op(Op::Add), span(2, 3)),
                 Box::new((Expr::Value(Value::Ident(x)), span(0, 1))),
                 Box::new((Expr::Binary(
-                    Binary::Op(Op::Multiply),
+                    (Binary::Op(Op::Multiply), span(6, 7)),
                     Box::new((Expr::Value(Value::Ident(y)), span(4, 5))),
                     Box::new((Expr::Binary(
-                        Binary::Op(Op::Add),
+                        (Binary::Op(Op::Add), span(11, 12)),
                         Box::new((Expr::Value(Value::Real(3.0)), span(9, 10))),
                         Box::new((Expr::Value(Value::Ident(z)), span(13, 14))),
                     ), span(9, 14))),
