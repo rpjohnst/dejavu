@@ -13,7 +13,7 @@ fn arguments() -> Result<(), vm::Error> {
         return argument0 + argument1
     }"));
 
-    let resources = build(items, ErrorPrinter::new);
+    let resources = build(&items, ErrorPrinter::new);
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
@@ -43,7 +43,7 @@ fn member() -> Result<(), vm::Error> {
         return c
     }"));
 
-    let resources = build(items, ErrorPrinter::new);
+    let resources = build(&items, ErrorPrinter::new);
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
@@ -82,7 +82,7 @@ fn builtin() -> Result<(), vm::Error> {
         return global_array[1]
     }"));
 
-    let resources = build(items, ErrorPrinter::new);
+    let resources = build(&items, ErrorPrinter::new);
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
@@ -116,7 +116,7 @@ fn global() -> Result<(), vm::Error> {
         return self.a + a
     }"));
 
-    let resources = build(items, ErrorPrinter::new);
+    let resources = build(&items, ErrorPrinter::new);
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
@@ -150,7 +150,7 @@ fn with() -> Result<(), vm::Error> {
         return a.n + b.n + a.m + b.m
     }"));
 
-    let resources = build(items, ErrorPrinter::new);
+    let resources = build(&items, ErrorPrinter::new);
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
@@ -178,7 +178,7 @@ fn array() -> Result<(), vm::Error> {
         return a + a[1] + b[0] + b[1] + b[2] + c + c[1, 1]
     }"));
 
-    let resources = build(items, ErrorPrinter::new);
+    let resources = build(&items, ErrorPrinter::new);
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
@@ -202,7 +202,7 @@ fn conditional_initialization() -> Result<(), vm::Error> {
         return t
     }"));
 
-    build(items, ErrorPrinter::new);
+    build(&items, ErrorPrinter::new);
     Ok(())
 }
 
@@ -220,7 +220,7 @@ fn dead_undef() -> Result<(), vm::Error> {
         return i
     }"));
 
-    build(items, ErrorPrinter::new);
+    build(&items, ErrorPrinter::new);
     Ok(())
 }
 
@@ -239,7 +239,7 @@ fn for_loop() -> Result<(), vm::Error> {
         return j
     }"));
 
-    let resources = build(items, ErrorPrinter::new);
+    let resources = build(&items, ErrorPrinter::new);
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
@@ -267,7 +267,7 @@ fn switch() -> Result<(), vm::Error> {
         return i
     }"));
 
-    let resources = build(items, ErrorPrinter::new);
+    let resources = build(&items, ErrorPrinter::new);
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
@@ -297,7 +297,7 @@ fn switch_empty() -> Result<(), vm::Error> {
         }
     }"));
 
-    build(items, ErrorPrinter::new);
+    build(&items, ErrorPrinter::new);
     Ok(())
 }
 
@@ -320,7 +320,7 @@ fn switch_fallthrough() -> Result<(), vm::Error> {
         return i
     }"));
 
-    let resources = build(items, ErrorPrinter::new);
+    let resources = build(&items, ErrorPrinter::new);
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
@@ -350,7 +350,7 @@ fn call_script() -> Result<(), vm::Error> {
     let call = Symbol::intern("call");
     items.insert(call, Item::Script("return id(3) + 5"));
 
-    let resources = build(items, ErrorPrinter::new);
+    let resources = build(&items, ErrorPrinter::new);
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
@@ -372,7 +372,7 @@ fn recurse() -> Result<(), vm::Error> {
         }
     }"));
 
-    let resources = build(items, ErrorPrinter::new);
+    let resources = build(&items, ErrorPrinter::new);
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 
@@ -400,7 +400,7 @@ fn ffi() -> Result<(), vm::Error> {
         return add(3, 5) + 8
     }"));
 
-    let resources = build(items, ErrorPrinter::new);
+    let resources = build(&items, ErrorPrinter::new);
     let mut engine = Engine::default();
     let mut thread = vm::Thread::new();
 

@@ -1,9 +1,9 @@
 use crate::symbol::Symbol;
-use crate::front::{SourceFile, Span};
+use crate::front::Span;
 use crate::front::token::{Token, BinOp, Delim};
 
 pub struct Lexer<'s> {
-    source_file: &'s SourceFile,
+    source: &'s str,
 
     current: Option<char>,
     position: usize,
@@ -11,9 +11,9 @@ pub struct Lexer<'s> {
 }
 
 impl<'s> Lexer<'s> {
-    pub fn new(source_file: &'s SourceFile) -> Lexer<'s> {
+    pub fn new(source: &'s str) -> Lexer<'s> {
         let mut lexer = Lexer {
-            source_file: source_file,
+            source,
 
             current: None,
             position: 0,
@@ -97,8 +97,6 @@ impl<'s> Lexer<'s> {
     }
 
     fn scan_ident_or_keyword(&mut self) -> Token {
-        let ref source = self.source_file.source;
-
         let low = self.position;
         self.advance_char();
         while self.current.map(is_ident_continue).unwrap_or(false) {
@@ -106,7 +104,7 @@ impl<'s> Lexer<'s> {
         }
         let high = self.position;
 
-        let symbol = Symbol::intern(&source[low..high]);
+        let symbol = Symbol::intern(&self.source[low..high]);
         if symbol.is_keyword() {
             Token::Keyword(symbol)
         } else {
@@ -115,8 +113,6 @@ impl<'s> Lexer<'s> {
     }
 
     fn scan_real(&mut self) -> Token {
-        let ref source = self.source_file.source;
-
         let low = self.position;
 
         let radix = match self.current {
@@ -145,13 +141,11 @@ impl<'s> Lexer<'s> {
 
         let high = self.position;
 
-        let symbol = Symbol::intern(&source[low..high]);
+        let symbol = Symbol::intern(&self.source[low..high]);
         Token::Real(symbol)
     }
 
     fn scan_string(&mut self) -> Token {
-        let ref source = self.source_file.source;
-
         let delim = self.current.unwrap();
 
         let low = self.position;
@@ -164,7 +158,7 @@ impl<'s> Lexer<'s> {
         self.advance_char();
         let high = self.position;
 
-        let symbol = Symbol::intern(&source[low..high]);
+        let symbol = Symbol::intern(&self.source[low..high]);
         Token::String(symbol)
     }
 
@@ -252,9 +246,7 @@ impl<'s> Lexer<'s> {
     }
 
     fn next_char(&self) -> Option<char> {
-        let ref source = self.source_file.source;
-
-        source[self.next_position..].chars().next()
+        self.source[self.next_position..].chars().next()
     }
 }
 
@@ -287,15 +279,7 @@ fn is_operator(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
     use super::*;
-
-    fn setup(source: &str) -> SourceFile {
-        SourceFile {
-            name: PathBuf::from("<test>"),
-            source: String::from(source),
-        }
-    }
 
     fn ident(id: &str) -> Token {
         Token::Ident(Symbol::intern(id))
@@ -317,8 +301,7 @@ mod tests {
 
     #[test]
     fn spans() {
-        let source = setup("/* comment */ var foo; foo = 3");
-        let mut lexer = Lexer::new(&source);
+        let mut lexer = Lexer::new("/* comment */ var foo; foo = 3");
 
         assert_eq!(lexer.read_token(), (keyword("var"), span(14, 17)));
         assert_eq!(lexer.read_token(), (ident("foo"), span(18, 21)));

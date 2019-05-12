@@ -119,7 +119,7 @@ fn main() {
         show_debug_message("instance_number(1) =>", instance_number(1))
     }"#));
 
-    let resources = gml::build(items, ErrorPrinter::new);
+    let resources = gml::build(&items, ErrorPrinter::new);
     let mut engine = Engine::default();
     let mut thread = gml::vm::Thread::new();
 

@@ -600,19 +600,13 @@ impl Infix {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use crate::symbol::Symbol;
-    use crate::front::{SourceFile, Span, Lexer, Parser, ErrorPrinter};
+    use crate::front::{Span, Lexer, Parser, ErrorPrinter};
     use crate::front::ast::*;
 
-    fn setup(source: &str) -> (SourceFile, ErrorPrinter) {
-        let source = SourceFile {
-            name: PathBuf::from("<test>"),
-            source: String::from(source),
-        };
-        let errors = ErrorPrinter::new(Symbol::intern("<test>"), &source);
-        (source, errors)
+    fn setup(source: &str) -> (ErrorPrinter, Lexer<'_>) {
+        let errors = ErrorPrinter::new(Symbol::intern("<test>"), source);
+        (errors, Lexer::new(source))
     }
 
     fn span(low: usize, high: usize) -> Span {
@@ -621,12 +615,11 @@ mod tests {
 
     #[test]
     fn program() {
-        let (source, mut errors) = setup("{ \
+        let (mut errors, reader) = setup("{ \
             var x; \
             x = 3 \
             show_message(x * y) \
         }");
-        let reader = Lexer::new(&source);
         let mut parser = Parser::new(reader, &mut errors);
 
         let x = Symbol::intern("x");
@@ -658,8 +651,7 @@ mod tests {
 
     #[test]
     fn precedence() {
-        let (source, mut errors) = setup("x + y * (3 + z)");
-        let reader = Lexer::new(&source);
+        let (mut errors, reader) = setup("x + y * (3 + z)");
         let mut parser = Parser::new(reader, &mut errors);
 
         let x = Symbol::intern("x");

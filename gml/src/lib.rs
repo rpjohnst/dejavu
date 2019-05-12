@@ -5,11 +5,10 @@
 #![feature(range_contains)]
 #![feature(extern_types)]
 
-use std::path::PathBuf;
 use std::collections::HashMap;
 
 use crate::symbol::Symbol;
-use crate::front::{SourceFile, Lexer, Parser, ErrorHandler};
+use crate::front::{Lexer, Parser, ErrorHandler};
 use crate::back::ssa;
 use crate::vm::code;
 
@@ -33,8 +32,8 @@ pub enum Item<E> {
 }
 
 /// Build a GML project.
-pub fn build<E: Default, H: ErrorHandler, F: FnMut(Symbol, &SourceFile) -> H>(
-    items: HashMap<Symbol, Item<E>>,
+pub fn build<E: Default, H: ErrorHandler, F: FnMut(Symbol, &str) -> H>(
+    items: &HashMap<Symbol, Item<E>>,
     mut errors: F
 ) -> vm::Resources<E> {
     let prototypes: HashMap<Symbol, ssa::Prototype> = items.iter()
@@ -46,14 +45,10 @@ pub fn build<E: Default, H: ErrorHandler, F: FnMut(Symbol, &SourceFile) -> H>(
         .collect();
 
     let mut resources = vm::Resources::default();
-    for (name, item) in items.into_iter() {
-        match item {
+    for (&name, item) in items.iter() {
+        match *item {
             Item::Script(source) => {
-                let source = SourceFile {
-                    name: PathBuf::from(&*name),
-                    source: String::from(source),
-                };
-                let mut errors = errors(name, &source);
+                let mut errors = errors(name, source);
                 resources.scripts.insert(name, compile(&prototypes, source, &mut errors));
             }
             Item::Native(function, _, _) => {
@@ -70,10 +65,10 @@ pub fn build<E: Default, H: ErrorHandler, F: FnMut(Symbol, &SourceFile) -> H>(
 }
 
 fn compile(
-    prototypes: &HashMap<Symbol, ssa::Prototype>, source: SourceFile,
+    prototypes: &HashMap<Symbol, ssa::Prototype>, source: &str,
     errors: &mut dyn ErrorHandler
 ) -> code::Function {
-    let reader = Lexer::new(&source);
+    let reader = Lexer::new(source);
     let mut parser = Parser::new(reader, errors);
     let program = parser.parse_program();
     let codegen = front::Codegen::new(prototypes, errors);
