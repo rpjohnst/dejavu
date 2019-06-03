@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 
 use gml::{self, symbol::Symbol, front::ErrorPrinter, vm};
-use lib::{real, string, instance, data};
+use lib::{real, string, show, instance, data};
 
 #[derive(Default)]
 struct Engine {
     world: vm::World,
     real: real::State,
     string: string::State,
+    show: show::State,
     instance: instance::State,
     data: data::State,
 }
@@ -31,6 +32,13 @@ impl string::Api for Engine {
     }
 }
 
+impl show::Api for Engine {
+    fn state(&self) -> (&show::State, &vm::World) { (&self.show, &self.world) }
+    fn state_mut(&mut self) -> (&mut show::State, &mut vm::World) {
+        (&mut self.show, &mut self.world)
+    }
+}
+
 impl instance::Api for Engine {
     fn state(&self) -> (&instance::State, &vm::World) { (&self.instance, &self.world) }
     fn state_mut(&mut self) -> (&mut instance::State, &mut vm::World) {
@@ -45,26 +53,15 @@ impl data::Api for Engine {
     }
 }
 
-impl Engine {
-    fn show_debug_message(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
-        for argument in arguments {
-            eprint!("{:?} ", argument);
-        }
-        eprintln!();
-        Ok(vm::Value::from(0))
-    }
-}
 
 fn main() {
     let mut items = HashMap::new();
 
     <Engine as real::Api>::register(&mut items);
     <Engine as string::Api>::register(&mut items);
+    <Engine as show::Api>::register(&mut items);
     <Engine as instance::Api>::register(&mut items);
     <Engine as data::Api>::register(&mut items);
-
-    let show_debug_message = Symbol::intern("show_debug_message");
-    items.insert(show_debug_message, gml::Item::Native(Engine::show_debug_message, 0, true));
 
     let main = Symbol::intern("main");
     items.insert(main, gml::Item::Script(r#"{
