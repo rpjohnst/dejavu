@@ -3,4 +3,5 @@ members = [
     "gml",
     "engine",
     "runner",
+    "playground",
 ]

@@ -1,0 +1,123 @@
+/* Full page */
+body {
+  display: grid;
+  margin: 0;
+
+  font: 16px Helvetica Neue, Helvetica, Arial, sans-serif;
+  line-height: 1.42856;
+  color: #333;
+}
+.row > * {
+  box-sizing: border-box;
+  max-width: 960px;
+  margin: 0 auto;
+}
+.left { grid-column: 1; }
+.right { grid-column: -1; }
+h1, h2, h3, h4, h5, h6 { margin: 0; }
+a {
+  color: #ca0042;
+  text-decoration: none;
+}
+a:hover, a:focus {
+  color: #8b0042;
+}
+img {
+  vertical-align: baseline;
+  max-width: 100%;
+}
+header p {
+  margin-top: 0;
+  color: #555;
+}
+table { border-collapse: collapse; }
+thead th { text-align: left; }
+tbody tr:nth-child(odd) { background-color: #eee; }
+th, td {
+  padding: 1px 12px 1px 0;
+  white-space: nowrap;
+}
+pre { font-size: 14px; }
+pre, code {
+  font-family: Consolas, Menlo, DejaVu Sans Mono, monospace;
+}
+
+/* Banner */
+.banner {
+  background-color: #eee;
+  border-bottom: 3px solid #ca0042;
+  margin-bottom: 12px;
+}
+nav {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+
+  line-height: 60px;
+}
+@media (max-width: 640px) {
+  nav { grid-template-columns: none; }
+}
+nav > .header { font-size: 20px; }
+nav ul {
+  display: flex;
+  list-style: none outside none;
+  padding: 0;
+  margin: 0;
+}
+nav a {
+  display: block;
+  padding: 0 12px;
+  height: 60px;
+}
+
+/* Playground */
+body.playground-page {
+  grid-template-rows: auto 1fr auto;
+  min-height: 100vh;
+}
+.playground {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  grid-template-columns: 3fr 2fr;
+
+  height: 100%;
+  max-width: 100%;
+}
+nav.toolbar {
+  grid-column: span 2;
+  line-height: 40px;
+  background-color: #eee;
+}
+nav.toolbar a {
+  height: 40px;
+  cursor: pointer;
+}
+#editor {
+  height: 100%;
+  margin: 0;
+}
+#output {
+  grid-column: 2;
+  font: 12px Monaco, Menlo, Ubuntu Mono, Consolas, source-code-pro, monospace;
+  padding: 0 6px;
+  border-left: 3px solid #eee;
+}
+#output > .error {
+  color: #e11;
+}
+@media (max-width: 640px) {
+  .playground {
+    grid-template-rows: auto 1fr 30%;
+    grid-template-columns: none;
+  }
+  nav.toolbar { grid-column: 1; }
+  #output {
+    grid-column: 1;
+    overflow-y: scroll;
+  }
+}
+
+/* Footer */
+footer p {
+  padding: 0 12px;
+}

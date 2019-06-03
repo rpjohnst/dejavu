@@ -2,7 +2,6 @@
 #![feature(box_patterns)]
 #![feature(box_syntax)]
 #![feature(slice_patterns)]
-#![feature(range_contains)]
 #![feature(extern_types)]
 
 use std::collections::HashMap;
@@ -25,8 +24,8 @@ pub mod back;
 pub mod vm;
 
 /// A GML item definition, used as input to build a project.
-pub enum Item<E> {
-    Script(&'static str),
+pub enum Item<'a, E> {
+    Script(&'a str),
     Native(vm::ApiFunction<E>, usize, bool),
     Member(Option<vm::GetFunction<E>>, Option<vm::SetFunction<E>>),
 }

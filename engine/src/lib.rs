@@ -1,3 +1,7 @@
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[macro_use]
+extern crate wasm_host;
+
 use std::collections::HashMap;
 
 use gml::{self, symbol::Symbol, vm};

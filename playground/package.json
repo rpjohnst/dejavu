@@ -1,0 +1,22 @@
+{
+  "name": "playground",
+  "version": "0.1.0",
+  "author": "Russell Johnston <rpjohnst@gmail.com>",
+  "scripts": {
+    "start": "rollup -c -w",
+    "build": "rollup -c"
+  },
+  "dependencies": {
+    "ace-builds": "^1.4.4",
+    "playground": "file:pkg"
+  },
+  "devDependencies": {
+    "rollup": "^1.12.4",
+    "rollup-plugin-commonjs": "^10.0.0",
+    "rollup-plugin-livereload": "^1.0.0",
+    "rollup-plugin-node-resolve": "^4.2.3",
+    "rollup-plugin-serve": "^1.0.1",
+    "rollup-plugin-terser": "^4.0.4",
+    "rollup-plugin-url": "^2.2.1"
+  }
+}
