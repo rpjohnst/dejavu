@@ -1,5 +1,5 @@
 [package]
-name = "lib"
+name = "engine"
 version = "0.1.0"
 authors = ["Russell Johnston <rpjohnst@gmail.com>"]
 edition = "2018"

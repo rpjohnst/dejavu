@@ -1,67 +1,11 @@
 use std::collections::HashMap;
 
-use gml::{self, symbol::Symbol, front::ErrorPrinter, vm};
-use lib::{real, string, show, instance, data};
-
-#[derive(Default)]
-struct Engine {
-    world: vm::World,
-    real: real::State,
-    string: string::State,
-    show: show::State,
-    instance: instance::State,
-    data: data::State,
-}
-
-impl vm::world::Api for Engine {
-    fn state(&self) -> &vm::World { &self.world }
-    fn state_mut(&mut self) -> &mut vm::World { &mut self.world }
-}
-
-impl real::Api for Engine {
-    fn state(&self) -> (&real::State, &vm::World) { (&self.real, &self.world) }
-    fn state_mut(&mut self) -> (&mut real::State, &mut vm::World) {
-        (&mut self.real, &mut self.world)
-    }
-}
-
-impl string::Api for Engine {
-    fn state(&self) -> (&string::State, &vm::World) { (&self.string, &self.world) }
-    fn state_mut(&mut self) -> (&mut string::State, &mut vm::World) {
-        (&mut self.string, &mut self.world)
-    }
-}
-
-impl show::Api for Engine {
-    fn state(&self) -> (&show::State, &vm::World) { (&self.show, &self.world) }
-    fn state_mut(&mut self) -> (&mut show::State, &mut vm::World) {
-        (&mut self.show, &mut self.world)
-    }
-}
-
-impl instance::Api for Engine {
-    fn state(&self) -> (&instance::State, &vm::World) { (&self.instance, &self.world) }
-    fn state_mut(&mut self) -> (&mut instance::State, &mut vm::World) {
-        (&mut self.instance, &mut self.world)
-    }
-}
-
-impl data::Api for Engine {
-    fn state(&self) -> (&data::State, &vm::World) { (&self.data, &self.world) }
-    fn state_mut(&mut self) -> (&mut data::State, &mut vm::World) {
-        (&mut self.data, &mut self.world)
-    }
-}
-
+use gml::{self, symbol::Symbol, front::ErrorPrinter};
+use engine::{Engine, instance::Instance};
 
 fn main() {
     let mut items = HashMap::new();
-
-    <Engine as real::Api>::register(&mut items);
-    <Engine as string::Api>::register(&mut items);
-    <Engine as show::Api>::register(&mut items);
-    <Engine as instance::Api>::register(&mut items);
-    <Engine as data::Api>::register(&mut items);
+    Engine::register(&mut items);
 
     let main = Symbol::intern("main");
     items.insert(main, gml::Item::Script(r#"{
@@ -124,14 +68,14 @@ fn main() {
     let id = 100001;
     let persistent = false;
     let entity = engine.world.create_instance(object_index, id);
-    engine.instance.create_instance(entity, instance::Instance { object_index, id, persistent });
+    engine.instance.create_instance(entity, Instance { object_index, id, persistent });
     thread.set_self(entity);
 
     let object_index = 1;
     let id = 100002;
     let persistent = false;
     let entity = engine.world.create_instance(object_index, id);
-    engine.instance.create_instance(entity, instance::Instance { object_index, id, persistent });
+    engine.instance.create_instance(entity, Instance { object_index, id, persistent });
 
     if let Err(error) = thread.execute(&mut engine, &resources, main, &[]) {
         let location = resources.debug[&error.symbol].get_location(error.instruction as u32);
