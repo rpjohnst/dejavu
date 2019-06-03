@@ -23,7 +23,7 @@ pub fn compute_lines(source: &str) -> Vec<usize> {
     lines.extend(source.bytes()
         .enumerate()
         .filter(|&(_, b)| b == b'\n')
-        .map(|(i, _)| i));
+        .map(|(i, _)| i + 1));
     lines
 }
 
@@ -33,7 +33,7 @@ pub fn get_position(lines: &[usize], pos: usize) -> (usize, usize) {
         Err(line) => line - 1,
     };
     let column = pos - lines[line];
-    (line + 1, column)
+    (line + 1, column + 1)
 }
 
 pub trait ErrorHandler {
