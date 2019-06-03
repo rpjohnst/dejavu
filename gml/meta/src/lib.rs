@@ -393,16 +393,16 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
             fn state(&self) -> (&#self_ty, &vm::World);
             fn state_mut(&mut self) -> (&mut #self_ty, &mut vm::World);
 
-            fn register(items: &mut std::collections::HashMap<Symbol, gml::Item<Self>>) where
+            fn register(items: &mut std::collections::HashMap<gml::symbol::Symbol, gml::Item<Self>>) where
                 Self: Sized
             {
                 #(items.insert(
-                    Symbol::intern(stringify!(#api_1)),
+                    gml::symbol::Symbol::intern(stringify!(#api_1)),
                     gml::Item::Native(Self::#api_2, #api_arity, #api_variadic),
                 );)*
 
                 #(items.insert(
-                    Symbol::intern(stringify!(#member)),
+                    gml::symbol::Symbol::intern(stringify!(#member)),
                     gml::Item::Member(#get_option, #set_option),
                 );)*
             }

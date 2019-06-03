@@ -1,4 +1,3 @@
-use gml::symbol::Symbol;
 use gml::{self, vm};
 
 #[derive(Default)]
