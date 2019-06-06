@@ -222,8 +222,8 @@ impl<'s> Lexer<'s> {
             ',' => Token::Comma,
             ';' => Token::Semicolon,
             ':' => match self.current {
-                Some('=') => Token::ColonEq,
-                _ => Token::Colon,
+                Some('=') => { self.advance_char(); Token::ColonEq }
+                _ => Token::Colon
             },
 
             c => Token::Unexpected(c),
