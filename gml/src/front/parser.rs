@@ -560,6 +560,7 @@ impl Infix {
                 Token::Eq => Eq,
                 Token::EqEq => Eq,
                 Token::Ne => Ne,
+                Token::LtGt => Ne,
                 Token::Ge => Ge,
                 Token::Gt => Gt,
                 Token::BinOp(op) => Op(from_binop(op)),

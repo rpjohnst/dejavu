@@ -182,6 +182,7 @@ impl<'s> Lexer<'s> {
             '<' => match self.current {
                 Some('=') => { self.advance_char(); Token::Le }
                 Some('<') => { self.advance_char(); Token::Shl }
+                Some('>') => { self.advance_char(); Token::LtGt }
                 _ => Token::Lt
             },
             '=' => match self.current {

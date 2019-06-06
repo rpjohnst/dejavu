@@ -21,6 +21,7 @@ pub enum Token {
     Le,
     EqEq,
     Ne,
+    LtGt,
     Ge,
     Gt,
 
@@ -88,6 +89,7 @@ impl fmt::Display for Token {
             Token::Le => write!(fmt, "<=")?,
             Token::EqEq => write!(fmt, "==")?,
             Token::Ne => write!(fmt, "!=")?,
+            Token::LtGt => write!(fmt, "<>")?,
             Token::Ge => write!(fmt, ">=")?,
             Token::Gt => write!(fmt, "<")?,
 
