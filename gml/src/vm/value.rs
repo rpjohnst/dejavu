@@ -11,18 +11,18 @@ use crate::vm;
 /// payloads.
 ///
 /// To avoid ambiguity, NaNs are canonicalized. The hardware seems to use positive qNaN with a zero
-/// payload (0x7fff8_0000_0000_0000), so other types are encoded as negative NaNs, leaving 51 bits
-/// for tag and value. This could be expanded to positive NaNs at the cost of more complicated type
-/// checking.
+/// payload (0x7fff8_0000_0000_0000), so other types are encoded as negative NaNs, leaving 52 bits
+/// for tag and value (including the quiet bit). This could be expanded to positive NaNs at the cost
+/// of more complicated type checking.
 ///
 /// By limiting ourselves to 48-bit pointers (the current limit on x86_64 and AArch64, and a nice
-/// round number for sign extension), we get 3 bits for a tag. This could be expanded to 4 bits by
+/// round number for sign extension), we get 4 bits for a tag. This could be expanded to 5 bits by
 /// exploiting the fact that typical kernels only give positive addresses to user space. For
 /// pointer values only, another 3-5 bits could be taken from the LSB end by aligning allocations.
 ///
-/// 3-bit tag values:
-/// 000 - string
-/// 001 - array
+/// 4-bit tag values:
+/// 0000 - string
+/// 0001 - array
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Value(u64);
 
@@ -45,13 +45,13 @@ impl Value {
         let tag = value >> 48;
         let payload = value & ((1 << 48) - 1);
 
-        if tag & !0x7 != 0xfff8 {
+        if tag & !0xf != 0xfff0 {
             return Data::Real(unsafe { mem::transmute::<_, f64>(value) });
         }
 
-        match tag & 0x7 {
-            0x00 => Data::String(Symbol::from_index(payload as u32)),
-            0x01 => Data::Array(unsafe { vm::Array::clone_from_raw(payload as *const _) }),
+        match tag & 0xf {
+            0x0 => Data::String(Symbol::from_index(payload as u32)),
+            0x1 => Data::Array(unsafe { vm::Array::clone_from_raw(payload as *const _) }),
             _ => unreachable!("corrupt value"),
         }
     }
@@ -61,11 +61,11 @@ impl Value {
         let tag = value >> 48;
         let payload = value & ((1 << 48) - 1);
 
-        if tag & !0x7 != 0xfff8 {
+        if tag & !0xf != 0xfff0 {
             return;
         }
 
-        match tag & 0x7 {
+        match tag & 0xf {
             0x0 => (),
             0x1 => { vm::Array::from_raw(payload as *const _); },
             _ => unreachable!("corrupt value"),
@@ -94,7 +94,7 @@ impl From<f64> for Value {
 
 impl From<Symbol> for Value {
     fn from(value: Symbol) -> Value {
-        let tag = 0xfff8 | 0x0;
+        let tag = 0xfff0 | 0x0;
         let value = value.into_index() as u64;
 
         Value((tag << 48) | value)
@@ -103,7 +103,7 @@ impl From<Symbol> for Value {
 
 impl From<vm::Array> for Value {
     fn from(value: vm::Array) -> Value {
-        let tag = 0xfff8 | 0x1;
+        let tag = 0xfff0 | 0x1;
         let value = value.into_raw() as u64;
 
         Value((tag << 48) | value)
