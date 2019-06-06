@@ -112,8 +112,8 @@ impl Builder {
         match unique {
             Zero => {
                 let parameters = &mut function.blocks[block].parameters;
-                let param = parameters.pop();
-                assert_eq!(param, Some(parameter));
+                let param = parameters.iter().position(|&p| p == parameter).unwrap();
+                parameters.remove(param);
 
                 // this is a garbage value; uninitialized variables are checked elsewhere
                 let op = ssa::Opcode::Constant;
@@ -123,8 +123,8 @@ impl Builder {
 
             One(unique) => {
                 let parameters = &mut function.blocks[block].parameters;
-                let param = parameters.pop();
-                assert_eq!(param, Some(parameter));
+                let param = parameters.iter().position(|&p| p == parameter).unwrap();
+                parameters.remove(param);
 
                 // pre-existing uses of this parameter will be updated after SSA is complete
                 function.values[parameter] = ssa::Instruction::Alias { arg: unique };
