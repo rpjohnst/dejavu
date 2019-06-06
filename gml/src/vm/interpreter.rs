@@ -605,7 +605,7 @@ impl Thread {
                     let b = unsafe { registers[b].value };
                     registers[t].value = match b.data() {
                         vm::Data::Array(b) => {
-                            b.store(0, 0, a);
+                            let _ = b.store(0, 0, a);
                             vm::Value::from(b)
                         }
                         _ => a
@@ -679,7 +679,7 @@ impl Thread {
                     registers[t].row = match (a.data(), i.data()) {
                         (vm::Data::Array(array), vm::Data::Real(i)) => {
                             let i = Self::to_i32(i);
-                            let value = array.load_row(i as usize)
+                            let value = array.load_row(i)
                                 .map_err(|_| {
                                     let kind = ErrorKind::Bounds(i);
                                     Error { symbol, instruction, kind }
@@ -699,7 +699,7 @@ impl Thread {
                     registers[t].value = match j.data() {
                         vm::Data::Real(j) => {
                             let j = Self::to_i32(j);
-                            let value = unsafe { r.load(j as usize) }
+                            let value = unsafe { r.load(j) }
                                 .map_err(|_| {
                                     let kind = ErrorKind::Bounds(j);
                                     Error { symbol, instruction, kind }
@@ -726,8 +726,13 @@ impl Thread {
                     let i = unsafe { registers[i].value };
                     registers[t].row = match (a.data(), i.data()) {
                         (vm::Data::Array(array), vm::Data::Real(i)) => {
-                            let i = Self::to_i32(i) as usize;
-                            Ok(array.store_row(i))
+                            let i = Self::to_i32(i);
+                            let value = array.store_row(i)
+                                .map_err(|_| {
+                                    let kind = ErrorKind::Bounds(i);
+                                    Error { symbol, instruction, kind }
+                                })?;
+                            Ok(value)
                         }
                         (a, i) => {
                             let kind = ErrorKind::TypeBinary(op, a.ty(), i.ty());
@@ -742,8 +747,13 @@ impl Thread {
                     let j = unsafe { registers[j].value };
                     match j.data() {
                         vm::Data::Real(j) => {
-                            let j = Self::to_i32(j) as usize;
-                            Ok(unsafe { r.store(j, s) })
+                            let j = Self::to_i32(j);
+                            unsafe { r.store(j, s) }
+                                .map_err(|_| {
+                                    let kind = ErrorKind::Bounds(j);
+                                    Error { symbol, instruction, kind }
+                                })?;
+                            Ok(())
                         }
                         j => {
                             let kind = ErrorKind::TypeBinary(op, vm::Type::Array, j.ty());

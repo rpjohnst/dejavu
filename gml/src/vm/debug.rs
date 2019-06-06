@@ -67,15 +67,17 @@ mod tests {
     use crate::vm;
 
     #[test]
-    fn recursive() {
+    fn recursive() -> Result<(), vm::array::BoundsError> {
         let array = vm::Array::from_scalar(vm::Value::from(1.0));
         let raw = array.into_raw();
 
         let array = unsafe { vm::Array::clone_from_raw(raw) };
-        array.store(0, 1, vm::Value::from(unsafe { vm::Array::clone_from_raw(raw) }));
-        array.store(0, 2, vm::Value::from(3.0));
+        array.store(0, 1, vm::Value::from(unsafe { vm::Array::clone_from_raw(raw) }))?;
+        array.store(0, 2, vm::Value::from(3.0))?;
 
         let array = vm::Value::from(unsafe { vm::Array::from_raw(raw) });
         assert_eq!(format!("{:?}", array), "{{1.0, {...}, 3.0}}");
+
+        Ok(())
     }
 }

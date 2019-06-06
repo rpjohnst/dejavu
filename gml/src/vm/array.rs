@@ -14,7 +14,7 @@ pub struct Row {
     pub(in crate::vm) data: NonNull<Vec<vm::Value>>,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct BoundsError;
 
 impl Array {
@@ -22,48 +22,41 @@ impl Array {
         Array { data: Rc::new(UnsafeCell::new(vec![vec![value]])) }
     }
 
-    pub fn rows(&self) -> usize {
-        let array = unsafe { &*self.data.get() };
-        let rows = array.len();
-
-        rows
-    }
-
-    pub fn cols(&self, row: usize) -> usize {
-        let array = unsafe { &*self.data.get() };
-        let cols = array[row].len();
-
-        cols
-    }
-
-    pub fn load(&self, i: usize, j: usize) -> Result<vm::Value, BoundsError> {
+    pub fn load(&self, i: i32, j: i32) -> Result<vm::Value, BoundsError> {
         let row = self.load_row(i)?;
         let value = unsafe { row.load(j)? };
 
         Ok(value)
     }
 
-    pub fn store(&self, i: usize, j: usize, value: vm::Value) {
-        let row = self.store_row(i);
-        unsafe { row.store(j, value) };
+    pub fn store(&self, i: i32, j: i32, value: vm::Value) -> Result<(), BoundsError> {
+        let row = self.store_row(i)?;
+        unsafe { row.store(j, value)? };
+
+        Ok(())
     }
 
-    pub fn load_row(&self, i: usize) -> Result<Row, BoundsError> {
+    pub fn load_row(&self, i: i32) -> Result<Row, BoundsError> {
         let array = unsafe { &*self.data.get() };
-        let row = array.get(i).ok_or(BoundsError)?;
+        let row = array.get(i as usize).ok_or(BoundsError)?;
 
-        Ok(unsafe { mem::transmute::<*const Vec<vm::Value>, Row>(row) })
+        unsafe { Ok(mem::transmute::<*const Vec<vm::Value>, Row>(row)) }
     }
 
-    pub fn store_row(&self, i: usize) -> Row {
+    pub fn store_row(&self, i: i32) -> Result<Row, BoundsError> {
         let array = unsafe { &mut *self.data.get() };
 
+        if i < 0 {
+            return Err(BoundsError);
+        }
+
+        let i = i as usize;
         if i >= array.len() {
             array.resize(i + 1, vec![]);
         }
         let row = &mut array[i];
 
-        unsafe { mem::transmute::<*mut Vec<vm::Value>, Row>(row) }
+        unsafe { Ok(mem::transmute::<*mut Vec<vm::Value>, Row>(row)) }
     }
 
     pub fn into_raw(self) -> *const UnsafeCell<Vec<Vec<vm::Value>>> {
@@ -88,19 +81,26 @@ impl Array {
 }
 
 impl Row {
-    pub unsafe fn load(&self, j: usize) -> Result<vm::Value, BoundsError> {
+    pub unsafe fn load(&self, j: i32) -> Result<vm::Value, BoundsError> {
         let row = self.data.as_ref();
-        let value = row.get(j).ok_or(BoundsError)?;
+        let value = row.get(j as usize).ok_or(BoundsError)?;
 
         Ok(*value)
     }
 
-    pub unsafe fn store(&self, j: usize, value: vm::Value) {
+    pub unsafe fn store(&self, j: i32, value: vm::Value) -> Result<(), BoundsError> {
         let row = &mut *self.data.as_ptr();
 
+        if j < 0 {
+            return Err(BoundsError);
+        }
+
+        let j = j as usize;
         if j >= row.len() {
             row.resize(j + 1, vm::Value::from(0.0));
         }
         row[j] = value;
+
+        Ok(())
     }
 }
