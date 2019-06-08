@@ -38,6 +38,7 @@ pub enum Jump {
 
 #[derive(PartialEq, Debug)]
 pub enum Expr {
+    Error,
     Value(Value),
     Unary((Unary, Span), Box<(Expr, Span)>),
     Binary((Binary, Span), Box<(Expr, Span)>, Box<(Expr, Span)>),

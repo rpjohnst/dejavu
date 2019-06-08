@@ -90,6 +90,7 @@ impl<'s, 'e> Parser<'s, 'e> {
 
         match place {
             ast::Expr::Call(call) => return (ast::Stmt::Invoke(call), left_span),
+            ast::Expr::Error => return (ast::Stmt::Error(place), left_span),
             _ => (),
         }
 
@@ -109,8 +110,7 @@ impl<'s, 'e> Parser<'s, 'e> {
             _ => {
                 let message = format!("unexpected {}; expected assignment operator", self.current);
                 self.errors.error(self.span, &message);
-                let (expr, expr_span) = self.parse_term();
-                return (ast::Stmt::Error(expr), expr_span);
+                return (ast::Stmt::Error(place), left_span);
             }
         };
         self.advance_token();
@@ -431,18 +431,18 @@ impl<'s, 'e> Parser<'s, 'e> {
         use crate::front::token::Token::*;
         use crate::symbol::keyword::*;
 
-        let (current, span) = self.advance_token();
-
         #[allow(non_upper_case_globals)]
-        match current {
+        match self.current {
             Ident(symbol) | Keyword(symbol @ True) | Keyword(symbol @ False) |
             Keyword(symbol @ Self_) | Keyword(symbol @ Other) |
             Keyword(symbol @ All) | Keyword(symbol @ NoOne) |
             Keyword(symbol @ Global) | Keyword(symbol @ Local) => {
+                let (_, span) = self.advance_token();
                 (ast::Expr::Value(ast::Value::Ident(symbol)), span, false)
             }
 
             Real(symbol) => {
+                let (_, span) = self.advance_token();
                 let value = match symbol.chars().next() {
                     Some('$') => u64::from_str_radix(&symbol[1..], 16).unwrap_or_else(|_| {
                         self.errors.error(span, "invalid integer literal");
@@ -457,12 +457,13 @@ impl<'s, 'e> Parser<'s, 'e> {
             }
 
             String(symbol) => {
+                let (_, span) = self.advance_token();
                 let symbol = Symbol::intern(&symbol[1..symbol.len() - 1]);
                 (ast::Expr::Value(ast::Value::String(symbol)), span, false)
             }
 
             BinOp(self::BinOp::Plus) | BinOp(self::BinOp::Minus) | Bang | Keyword(Not) | Tilde => {
-                let op_span = span;
+                let (current, op_span) = self.advance_token();
                 let op = match current {
                     BinOp(self::BinOp::Plus) => ast::Unary::Positive,
                     BinOp(self::BinOp::Minus) => ast::Unary::Negate,
@@ -479,6 +480,7 @@ impl<'s, 'e> Parser<'s, 'e> {
             }
 
             OpenDelim(Delim::Paren) => {
+                let (_, _) = self.advance_token();
                 let (expr, expr_span) = self.parse_expression(0);
                 self.expect(CloseDelim(Delim::Paren));
 
@@ -490,7 +492,7 @@ impl<'s, 'e> Parser<'s, 'e> {
                 self.errors.error(self.span, &message);
 
                 let span = Span { low: low, high: low };
-                (ast::Expr::Value(ast::Value::Real(0.0)), span, false)
+                (ast::Expr::Error, span, false)
             }
         }
     }
