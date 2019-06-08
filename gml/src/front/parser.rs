@@ -36,6 +36,10 @@ impl<'s, 'e> Parser<'s, 'e> {
             let mut high = low;
             while self.current != Token::Eof {
                 let (stmt, span) = self.parse_statement();
+                if let ast::Stmt::Error(_) = stmt {
+                    self.skip_to_statement();
+                }
+
                 stmts.push((stmt, span));
                 high = span.high;
             }
@@ -175,6 +179,10 @@ impl<'s, 'e> Parser<'s, 'e> {
             self.current != Token::Eof
         {
             let (stmt, span) = self.parse_statement();
+            if let ast::Stmt::Error(_) = stmt {
+                self.skip_to_statement();
+            }
+
             stmts.push((stmt, span));
         }
 
@@ -543,6 +551,43 @@ impl<'s, 'e> Parser<'s, 'e> {
         let token = mem::replace(&mut self.current, token);
         let span = mem::replace(&mut self.span, span);
         return (token, span);
+    }
+
+    fn skip_to_statement(&mut self) {
+        use crate::front::token::Token::*;
+        use crate::symbol::keyword::*;
+
+        loop {
+            #[allow(non_upper_case_globals)]
+            match self.current {
+                Semicolon => {
+                    self.advance_token();
+                    break;
+                }
+
+                // Possible end of block:
+                Eof | CloseDelim(Delim::Brace) | Keyword(End) |
+
+                // Possible assignment/call:
+                Ident(_) |
+                Keyword(Self_) | Keyword(Other) |
+                Keyword(All) | Keyword(NoOne) |
+                Keyword(Global) | Keyword(Local) |
+                OpenDelim(Delim::Paren) |
+                Keyword(Var) | Keyword(GlobalVar) |
+
+                // Possible statement:
+                OpenDelim(Delim::Brace) | Keyword(Begin) |
+                Keyword(If) |
+                Keyword(Repeat) | Keyword(While) | Keyword(With) | Keyword(Do) | Keyword(For) |
+                Keyword(Break) | Keyword(Continue) | Keyword(Exit) |
+                Keyword(Switch) | Keyword(Case) | Keyword(Default) |
+                Keyword(Return) => { break; }
+
+
+                _ => { self.advance_token(); }
+            }
+        }
     }
 }
 
