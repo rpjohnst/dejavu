@@ -558,6 +558,7 @@ impl Infix {
                 Token::Lt => Lt,
                 Token::Le => Le,
                 Token::Eq => Eq,
+                Token::ColonEq => Eq,
                 Token::EqEq => Eq,
                 Token::Ne => Ne,
                 Token::LtGt => Ne,
