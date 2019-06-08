@@ -379,9 +379,7 @@ impl<'s, 'e> Parser<'s, 'e> {
                     parens = false;
                 }
 
-                (&ast::Expr::Value(ast::Value::Ident(_)), Infix::Field) |
-                (&ast::Expr::Field(..), Infix::Field) |
-                (&ast::Expr::Index(..), Infix::Field) => {
+                (_, Infix::Field) => {
                     self.advance_token();
 
                     let (field, field_span) = if let Token::Ident(field) = self.current {
