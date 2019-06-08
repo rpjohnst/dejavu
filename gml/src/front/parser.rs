@@ -148,6 +148,15 @@ impl<'s, 'e> Parser<'s, 'e> {
             }
         }
 
+        if self.current == Token::Eq || self.current == Token::ColonEq {
+            // TODO: gms allows this
+            let message = format!("unexpected {}; expected ;", self.current);
+            self.errors.error(self.span, &message);
+
+            self.advance_token();
+            self.parse_expression(0);
+        }
+
         let high = self.span.high;
         self.expect(Token::Semicolon);
 
