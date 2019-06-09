@@ -41,6 +41,7 @@ impl<'s> Lexer<'s> {
         } else if self.current.map(is_operator).unwrap_or(false) {
             self.scan_operator()
         } else if let Some(c) = self.current {
+            self.advance_char();
             Token::Unexpected(c)
         } else {
             Token::Eof

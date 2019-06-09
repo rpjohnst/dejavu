@@ -584,7 +584,6 @@ impl<'s, 'e> Parser<'s, 'e> {
                 Keyword(Switch) | Keyword(Case) | Keyword(Default) |
                 Keyword(Return) => { break; }
 
-
                 _ => { self.advance_token(); }
             }
         }
