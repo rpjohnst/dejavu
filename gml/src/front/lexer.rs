@@ -1,47 +1,36 @@
+use std::str;
 use crate::symbol::Symbol;
 use crate::front::Span;
 use crate::front::token::{Token, BinOp, Delim};
 
 pub struct Lexer<'s> {
-    source: &'s str,
-
-    current: Option<char>,
+    source: &'s [u8],
     position: usize,
-    next_position: usize,
 }
 
 impl<'s> Lexer<'s> {
-    pub fn new(source: &'s str) -> Lexer<'s> {
-        let mut lexer = Lexer {
-            source,
-
-            current: None,
-            position: 0,
-            next_position: 0,
-        };
-
-        lexer.advance_char();
-        lexer
+    pub fn new(source: &'s [u8]) -> Lexer<'s> {
+        Lexer { source, position: 0 }
     }
 
     pub fn read_token(&mut self) -> (Token, Span) {
         self.scan_whitespace_or_comment();
 
         let low = self.position;
-        let token = if self.current.map(is_ident_start).unwrap_or(false) {
+        let token = if is_ident_start(self.current()) {
             self.scan_ident_or_keyword()
         } else if
-            self.current.map(is_digit).unwrap_or(false) ||
-            self.current == Some('$') ||
-            (self.current == Some('.') && self.next_char().map(is_digit).unwrap_or(false))
+            is_digit(self.current()) ||
+            self.current() == Some(b'$') ||
+            (self.current() == Some(b'.') && is_digit(self.next_char()))
         {
             self.scan_real()
-        } else if self.current.map(|ref c| ['"', '\''].contains(c)).unwrap_or(false) {
+        } else if [Some(b'"'), Some(b'\'')].contains(&self.current()) {
             self.scan_string()
-        } else if self.current.map(is_operator).unwrap_or(false) {
+        } else if is_operator(self.current()) {
             self.scan_operator()
-        } else if let Some(c) = self.current {
-            self.advance_char();
+        } else if let Some(c) = self.current() {
+            self.advance_byte();
             Token::Unexpected(c)
         } else {
             Token::Eof
@@ -52,60 +41,58 @@ impl<'s> Lexer<'s> {
     }
 
     fn scan_whitespace_or_comment(&mut self) {
-        while let Some(c) = self.current {
-            match c {
-                '\r' if self.next_char() == Some('\n') => self.advance_char(),
-                c if is_whitespace(c) => (),
+        loop {
+            match self.current() {
+                Some(b' ') | Some(b'\t') | Some(b'\n') | Some(b'\r') => (),
 
-                '/' if self.next_char() == Some('/') => {
-                    self.advance_char();
-                    self.advance_char();
+                Some(b'/') if self.next_char() == Some(b'/') => {
+                    self.advance_byte();
+                    self.advance_byte();
 
-                    while let Some(c) = self.current {
-                        match c {
-                            '\n' => break,
-                            '\r' if self.next_char() == Some('\n') => {
-                                self.advance_char();
-                                break;
-                            }
-                            _ => (),
+                    loop {
+                        if let Some(b'\n') | None = self.current() {
+                            break;
                         }
-                        self.advance_char();
+                        self.advance_byte();
                     }
                 }
 
-                '/' if self.next_char() == Some('*') => {
-                    self.advance_char();
-                    self.advance_char();
+                Some(b'/') if self.next_char() == Some(b'*') => {
+                    self.advance_byte();
+                    self.advance_byte();
 
-                    while let Some(c) = self.current {
-                        match c {
-                            '*' if self.next_char() == Some('/') => {
-                                self.advance_char();
+                    loop {
+                        match self.current() {
+                            None => break,
+                            Some(b'*') if self.next_char() == Some(b'/') => {
+                                self.advance_byte();
                                 break;
                             }
                             _ => (),
                         }
-                        self.advance_char();
+                        self.advance_byte();
                     }
                 }
 
                 _ => break,
             }
 
-            self.advance_char();
+            self.advance_byte();
         }
     }
 
     fn scan_ident_or_keyword(&mut self) -> Token {
+        let source = &self.source[..];
         let low = self.position;
-        self.advance_char();
-        while self.current.map(is_ident_continue).unwrap_or(false) {
-            self.advance_char();
+        self.advance_byte();
+        while is_ident_continue(self.current()) {
+            self.advance_byte();
         }
         let high = self.position;
 
-        let symbol = Symbol::intern(&self.source[low..high]);
+        // Identifiers and keywords are UTF-8 by construction.
+        let ident = str::from_utf8(&source[..high - low]).unwrap();
+        let symbol = Symbol::intern(ident);
         if symbol.is_keyword() {
             Token::Keyword(symbol)
         } else {
@@ -114,168 +101,174 @@ impl<'s> Lexer<'s> {
     }
 
     fn scan_real(&mut self) -> Token {
+        let source = &self.source[..];
         let low = self.position;
 
-        let radix = match self.current {
-            Some('$') => {
-                self.advance_char();
+        let radix = match self.current() {
+            Some(b'$') => {
+                self.advance_byte();
                 16
             }
 
             _ => 10,
         };
 
-        while self.current.map(|c| c.is_digit(radix)).unwrap_or(false) {
-            self.advance_char();
+        while self.current().map(|c| (c as char).is_digit(radix)).unwrap_or(false) {
+            self.advance_byte();
         }
 
         if
             radix == 10 &&
-            self.current == Some('.') &&
-            self.next_char().map(is_digit).unwrap_or(false)
+            self.current() == Some(b'.') &&
+            is_digit(self.next_char())
         {
-            self.advance_char();
-            while self.current.map(|c| c.is_digit(radix)).unwrap_or(false) {
-                self.advance_char();
+            self.advance_byte();
+            while self.current().map(|c| (c as char).is_digit(radix)).unwrap_or(false) {
+                self.advance_byte();
             }
         }
 
         let high = self.position;
 
-        let symbol = Symbol::intern(&self.source[low..high]);
+        // Real literals are UTF-8 by construction.
+        let real = str::from_utf8(&source[..high - low]).unwrap();
+        let symbol = Symbol::intern(real);
         Token::Real(symbol)
     }
 
     fn scan_string(&mut self) -> Token {
-        let delim = self.current.unwrap();
+        let delim = self.current();
 
+        let source = &self.source[..];
         let low = self.position;
-        self.advance_char();
+        self.advance_byte();
 
-        while self.current.map(|c| c != delim).unwrap_or(false) {
-            self.advance_char();
+        while self.current() != delim && self.current() != None {
+            self.advance_byte();
         }
 
-        self.advance_char();
+        self.advance_byte();
         let high = self.position;
 
-        let symbol = Symbol::intern(&self.source[low..high]);
+        // String literals may contain invalid UTF-8.
+        let string = String::from_utf8_lossy(&source[..high - low]);
+        let symbol = Symbol::intern(&string);
         Token::String(symbol)
     }
 
     fn scan_operator(&mut self) -> Token {
-        let c = match self.current {
-            Some(c) => {
-                self.advance_char();
-                c
-            }
-            None => return Token::Eof,
-        };
+        match self.advance_byte() {
+            Some(b'(') => Token::OpenDelim(Delim::Paren),
+            Some(b')') => Token::CloseDelim(Delim::Paren),
+            Some(b'[') => Token::OpenDelim(Delim::Bracket),
+            Some(b']') => Token::CloseDelim(Delim::Bracket),
+            Some(b'{') => Token::OpenDelim(Delim::Brace),
+            Some(b'}') => Token::CloseDelim(Delim::Brace),
 
-        match c {
-            '(' => Token::OpenDelim(Delim::Paren),
-            ')' => Token::CloseDelim(Delim::Paren),
-            '[' => Token::OpenDelim(Delim::Bracket),
-            ']' => Token::CloseDelim(Delim::Bracket),
-            '{' => Token::OpenDelim(Delim::Brace),
-            '}' => Token::CloseDelim(Delim::Brace),
-
-            '<' => match self.current {
-                Some('=') => { self.advance_char(); Token::Le }
-                Some('<') => { self.advance_char(); Token::Shl }
-                Some('>') => { self.advance_char(); Token::LtGt }
+            Some(b'<') => match self.current() {
+                Some(b'=') => { self.advance_byte(); Token::Le }
+                Some(b'<') => { self.advance_byte(); Token::Shl }
+                Some(b'>') => { self.advance_byte(); Token::LtGt }
                 _ => Token::Lt
-            },
-            '=' => match self.current {
-                Some('=') => { self.advance_char(); Token::EqEq }
+            }
+            Some(b'=') => match self.current() {
+                Some(b'=') => { self.advance_byte(); Token::EqEq }
                 _ => Token::Eq
             },
-            '!' => match self.current {
-                Some('=') => { self.advance_char(); Token::Ne }
+            Some(b'!') => match self.current() {
+                Some(b'=') => { self.advance_byte(); Token::Ne }
                 _ => Token::Bang
             },
-            '>' => match self.current {
-                Some('=') => { self.advance_char(); Token::Ge }
-                Some('>') => { self.advance_char(); Token::Shr }
+            Some(b'>') => match self.current() {
+                Some(b'=') => { self.advance_byte(); Token::Ge }
+                Some(b'>') => { self.advance_byte(); Token::Shr }
                 _ => Token::Gt
             },
 
-            '+' => self.scan_binop(BinOp::Plus),
-            '-' => self.scan_binop(BinOp::Minus),
-            '*' => self.scan_binop(BinOp::Star),
-            '/' => self.scan_binop(BinOp::Slash),
+            Some(b'+') => self.scan_binop(BinOp::Plus),
+            Some(b'-') => self.scan_binop(BinOp::Minus),
+            Some(b'*') => self.scan_binop(BinOp::Star),
+            Some(b'/') => self.scan_binop(BinOp::Slash),
 
-            '&' => match self.current {
-                Some('&') => { self.advance_char(); Token::And }
+            Some(b'&') => match self.current() {
+                Some(b'&') => { self.advance_byte(); Token::And }
                 _ => self.scan_binop(BinOp::Ampersand)
             },
-            '|' => match self.current {
-                Some('|') => { self.advance_char(); Token::Or }
+            Some(b'|') => match self.current() {
+                Some(b'|') => { self.advance_byte(); Token::Or }
                 _ => self.scan_binop(BinOp::Pipe)
             },
-            '^' => match self.current {
-                Some('^') => { self.advance_char(); Token::Xor }
+            Some(b'^') => match self.current() {
+                Some(b'^') => { self.advance_byte(); Token::Xor }
                 _ => self.scan_binop(BinOp::Caret)
             },
 
-            '~' => Token::Tilde,
+            Some(b'~') => Token::Tilde,
 
-            '.' => Token::Dot,
-            ',' => Token::Comma,
-            ';' => Token::Semicolon,
-            ':' => match self.current {
-                Some('=') => { self.advance_char(); Token::ColonEq }
+            Some(b'.') => Token::Dot,
+            Some(b',') => Token::Comma,
+            Some(b';') => Token::Semicolon,
+            Some(b':') => match self.current() {
+                Some(b'=') => { self.advance_byte(); Token::ColonEq }
                 _ => Token::Colon
             },
 
-            c => Token::Unexpected(c),
+            Some(c) => Token::Unexpected(c),
+            None => Token::Eof,
         }
     }
 
     fn scan_binop(&mut self, op: BinOp) -> Token {
-        if self.current == Some('=') {
-            self.advance_char();
+        if self.current() == Some(b'=') {
+            self.advance_byte();
             Token::BinOpEq(op)
         } else {
             Token::BinOp(op)
         }
     }
 
-    fn advance_char(&mut self) {
-        self.current = self.next_char();
-        self.position = self.next_position;
-        self.next_position = self.next_position + self.current.map(char::len_utf8).unwrap_or(0);
+    fn advance_byte(&mut self) -> Option<u8> {
+        if let Some((&current, rest)) = self.source.split_first() {
+            self.source = rest;
+            self.position += 1;
+
+            Some(current)
+        } else {
+            None
+        }
     }
 
-    fn next_char(&self) -> Option<char> {
-        self.source[self.next_position..].chars().next()
+    fn current(&self) -> Option<u8> {
+        self.source.get(0).copied()
+    }
+
+    fn next_char(&self) -> Option<u8> {
+        self.source.get(1).copied()
     }
 }
 
-fn is_whitespace(c: char) -> bool {
-    c == ' ' || c == '\t' || c == '\n' || c == '\r'
+fn is_ident_start(c: Option<u8>) -> bool {
+    (Some(b'a') <= c && c <= Some(b'z')) ||
+    (Some(b'A') <= c && c <= Some(b'Z')) ||
+    c == Some(b'_')
 }
 
-fn is_ident_start(c: char) -> bool {
-    ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || c == '_'
-}
-
-fn is_ident_continue(c: char) -> bool {
+fn is_ident_continue(c: Option<u8>) -> bool {
     is_ident_start(c) || is_digit(c)
 }
 
-fn is_digit(c: char) -> bool {
-    '0' <= c && c <= '9'
+fn is_digit(c: Option<u8>) -> bool {
+    Some(b'0') <= c && c <= Some(b'9')
 }
 
-fn is_operator(c: char) -> bool {
+fn is_operator(c: Option<u8>) -> bool {
     [
-        '{', '}', '(', ')', '[', ']',
-        '.', ',', ':', ';',
-        '+', '-', '*', '/',
-        '|', '&', '^', '~',
-        '=', '<', '>',
-        '!',
+        Some(b'{'), Some(b'}'), Some(b'('), Some(b')'), Some(b'['), Some(b']'),
+        Some(b'.'), Some(b','), Some(b':'), Some(b';'),
+        Some(b'+'), Some(b'-'), Some(b'*'), Some(b'/'),
+        Some(b'|'), Some(b'&'), Some(b'^'), Some(b'~'),
+        Some(b'='), Some(b'<'), Some(b'>'),
+        Some(b'!'),
     ].contains(&c)
 }
 
@@ -303,7 +296,7 @@ mod tests {
 
     #[test]
     fn spans() {
-        let mut lexer = Lexer::new("/* comment */ var foo; foo = 3");
+        let mut lexer = Lexer::new(b"/* comment */ var foo; foo = 3");
 
         assert_eq!(lexer.read_token(), (keyword("var"), span(14, 17)));
         assert_eq!(lexer.read_token(), (ident("foo"), span(18, 21)));

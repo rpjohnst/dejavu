@@ -18,9 +18,9 @@ pub struct Span {
     pub high: usize,
 }
 
-pub fn compute_lines(source: &str) -> Vec<usize> {
+pub fn compute_lines(source: &[u8]) -> Vec<usize> {
     let mut lines = vec![0];
-    lines.extend(source.bytes()
+    lines.extend(source.iter().copied()
         .enumerate()
         .filter(|&(_, b)| b == b'\n')
         .map(|(i, _)| i + 1));
@@ -46,7 +46,7 @@ pub struct ErrorPrinter {
 }
 
 impl ErrorPrinter {
-    pub fn new(name: Symbol, source: &str) -> Self {
+    pub fn new(name: Symbol, source: &[u8]) -> Self {
         ErrorPrinter {
             name,
             lines: compute_lines(source),

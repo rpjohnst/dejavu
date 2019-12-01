@@ -25,13 +25,13 @@ pub mod vm;
 
 /// A GML item definition, used as input to build a project.
 pub enum Item<'a, E> {
-    Script(&'a str),
+    Script(&'a [u8]),
     Native(vm::ApiFunction<E>, usize, bool),
     Member(Option<vm::GetFunction<E>>, Option<vm::SetFunction<E>>),
 }
 
 /// Build a GML project.
-pub fn build<E: Default, H: ErrorHandler, F: FnMut(Symbol, &str) -> H>(
+pub fn build<E: Default, H: ErrorHandler, F: FnMut(Symbol, &[u8]) -> H>(
     items: &HashMap<Symbol, Item<E>>,
     mut errors: F
 ) -> vm::Resources<E> {
@@ -66,7 +66,7 @@ pub fn build<E: Default, H: ErrorHandler, F: FnMut(Symbol, &str) -> H>(
 }
 
 fn compile(
-    prototypes: &HashMap<Symbol, ssa::Prototype>, source: &str,
+    prototypes: &HashMap<Symbol, ssa::Prototype>, source: &[u8],
     errors: &mut dyn ErrorHandler
 ) -> (code::Function, code::Debug) {
     let reader = Lexer::new(source);

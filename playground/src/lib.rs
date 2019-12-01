@@ -16,7 +16,7 @@ struct Logger<'a> {
 }
 
 impl<'a> Logger<'a> {
-    pub fn new(name: Symbol, source: &str, count: &'a Cell<u32>) -> Self {
+    pub fn new(name: Symbol, source: &[u8], count: &'a Cell<u32>) -> Self {
         let lines = gml::front::compute_lines(source);
         Logger { name, lines, count }
     }
@@ -41,7 +41,7 @@ pub fn run(source: &str) {
     Engine::register(&mut items);
 
     let script = Symbol::intern("script");
-    items.insert(script, gml::Item::Script(source));
+    items.insert(script, gml::Item::Script(source.as_bytes()));
 
     let error_count = Cell::new(0);
     let resources = gml::build(&items, |symbol, source| Logger::new(symbol, source, &error_count));
@@ -67,7 +67,7 @@ pub fn run(source: &str) {
         let location = resources.debug[&error.symbol].get_location(error.instruction as u32);
         let source = match items[&error.symbol] {
             gml::Item::Script(source) => source,
-            _ => "",
+            _ => b"",
         };
         let lines = gml::front::compute_lines(source);
         let (line, column) = gml::front::get_position(&lines, location as usize);

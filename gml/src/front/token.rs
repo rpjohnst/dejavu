@@ -4,7 +4,7 @@ use crate::symbol::Symbol;
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Token {
     Eof,
-    Unexpected(char),
+    Unexpected(u8),
 
     Ident(Symbol),
     Keyword(Symbol),

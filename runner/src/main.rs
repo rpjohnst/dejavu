@@ -8,7 +8,7 @@ fn main() {
     Engine::register(&mut items);
 
     let main = Symbol::intern("main");
-    items.insert(main, gml::Item::Script(r#"{
+    items.insert(main, gml::Item::Script(br#"{
         show_debug_message("hello world")
 
         var list;
@@ -81,7 +81,7 @@ fn main() {
         let location = resources.debug[&error.symbol].get_location(error.instruction as u32);
         let source = match items[&error.symbol] {
             gml::Item::Script(source) => source,
-            _ => "",
+            _ => b"",
         };
         let lines = gml::front::compute_lines(source);
         let (line, column) = gml::front::get_position(&lines, location as usize);

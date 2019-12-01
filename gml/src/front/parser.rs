@@ -664,7 +664,7 @@ mod tests {
     use crate::front::{Span, Lexer, Parser, ErrorPrinter};
     use crate::front::ast::*;
 
-    fn setup(source: &str) -> (ErrorPrinter, Lexer<'_>) {
+    fn setup(source: &[u8]) -> (ErrorPrinter, Lexer<'_>) {
         let errors = ErrorPrinter::new(Symbol::intern("<test>"), source);
         (errors, Lexer::new(source))
     }
@@ -675,7 +675,7 @@ mod tests {
 
     #[test]
     fn program() {
-        let (mut errors, reader) = setup("{ \
+        let (mut errors, reader) = setup(b"{ \
             var x; \
             x = 3 \
             show_message(x * y) \
@@ -711,7 +711,7 @@ mod tests {
 
     #[test]
     fn precedence() {
-        let (mut errors, reader) = setup("x + y * (3 + z)");
+        let (mut errors, reader) = setup(b"x + y * (3 + z)");
         let mut parser = Parser::new(reader, &mut errors);
 
         let x = Symbol::intern("x");
