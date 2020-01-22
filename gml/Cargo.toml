@@ -6,3 +6,6 @@ edition = "2018"
 
 [dependencies]
 gml-meta = { path = "meta" }
+
+[target.wasm32-unknown-unknown.dependencies]
+wasm-host = { path = "../wasm-host" }

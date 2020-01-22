@@ -16,7 +16,6 @@ mod entity_map;
 mod value;
 mod array;
 
-#[derive(Default)]
 pub struct Resources<E: ?Sized> {
     pub scripts: HashMap<Symbol, code::Function>,
     pub debug: HashMap<Symbol, code::Debug>,
@@ -29,3 +28,16 @@ pub struct Resources<E: ?Sized> {
 pub type ApiFunction<E> = fn(&mut E, &[Value]) -> Result<Value, ErrorKind>;
 pub type GetFunction<E> = fn(&E, Entity, usize) -> Value;
 pub type SetFunction<E> = fn(&mut E, Entity, usize, Value);
+
+impl<E: ?Sized> Default for Resources<E> {
+    fn default() -> Self {
+        Resources {
+            scripts: Default::default(),
+            debug: Default::default(),
+
+            api: Default::default(),
+            get: Default::default(),
+            set: Default::default(),
+        }
+    }
+}

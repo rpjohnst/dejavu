@@ -35,16 +35,16 @@ function exec(string) {
 }
 
 function out_print(string) {
-  const p = document.createElement("div");
-  p.innerText = string;
-  output.appendChild(p);
+  const span = document.createElement("span");
+  span.innerText = string;
+  output.appendChild(span);
 }
 
 function err_print(string) {
-  const p = document.createElement("div");
-  p.className = "error";
-  p.innerText = string;
-  output.appendChild(p);
+  const span = document.createElement("span");
+  span.className = "error";
+  span.innerText = string;
+  output.appendChild(span);
 }
 
 /*

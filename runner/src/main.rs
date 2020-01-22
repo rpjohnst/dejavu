@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use gml::{self, symbol::Symbol, front::ErrorPrinter};
+use gml::symbol::Symbol;
 use engine::{Engine, instance::Instance};
 
 fn main() {
@@ -60,7 +60,7 @@ fn main() {
         show_debug_message("instance_number(1) =>", instance_number(1))
     }"#));
 
-    let resources = gml::build(&items, ErrorPrinter::new);
+    let resources = gml::build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = gml::vm::Thread::new();
 

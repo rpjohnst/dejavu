@@ -1,13 +1,16 @@
 #![feature(optin_builtin_traits)]
 #![feature(box_patterns)]
 #![feature(box_syntax)]
-#![feature(slice_patterns)]
 #![feature(extern_types)]
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[macro_use]
+extern crate wasm_host;
 
 use std::collections::HashMap;
 
 use crate::symbol::Symbol;
-use crate::front::{Lexer, Parser, ErrorHandler};
+use crate::front::{Lexer, Parser, ErrorHandler, ErrorPrinter};
 use crate::back::ssa;
 use crate::vm::code;
 
@@ -31,10 +34,7 @@ pub enum Item<'a, E> {
 }
 
 /// Build a GML project.
-pub fn build<E: Default, H: ErrorHandler, F: FnMut(Symbol, &[u8]) -> H>(
-    items: &HashMap<Symbol, Item<E>>,
-    mut errors: F
-) -> vm::Resources<E> {
+pub fn build<E>(items: &HashMap<Symbol, Item<E>>) -> Result<vm::Resources<E>, (u32, vm::Resources<E>)> {
     let prototypes: HashMap<Symbol, ssa::Prototype> = items.iter()
         .map(|(&name, resource)| match *resource {
             Item::Script(_) => (name, ssa::Prototype::Script),
@@ -44,11 +44,13 @@ pub fn build<E: Default, H: ErrorHandler, F: FnMut(Symbol, &[u8]) -> H>(
         .collect();
 
     let mut resources = vm::Resources::default();
+    let mut error_count = 0;
     for (&name, item) in items.iter() {
         match *item {
             Item::Script(source) => {
-                let mut errors = errors(name, source);
+                let mut errors = ErrorPrinter::new(name, source);
                 let (function, debug) = compile(&prototypes, source, &mut errors);
+                error_count += errors.count;
                 resources.scripts.insert(name, function);
                 resources.debug.insert(name, debug);
             }
@@ -61,8 +63,11 @@ pub fn build<E: Default, H: ErrorHandler, F: FnMut(Symbol, &[u8]) -> H>(
             }
         }
     }
+    if error_count > 0 {
+        return Err((error_count, resources));
+    }
 
-    resources
+    Ok(resources)
 }
 
 fn compile(

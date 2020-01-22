@@ -41,8 +41,9 @@ pub trait ErrorHandler {
 }
 
 pub struct ErrorPrinter {
-    name: Symbol,
-    lines: Vec<usize>,
+    pub name: Symbol,
+    pub lines: Vec<usize>,
+    pub count: u32,
 }
 
 impl ErrorPrinter {
@@ -50,6 +51,7 @@ impl ErrorPrinter {
         ErrorPrinter {
             name,
             lines: compute_lines(source),
+            count: 0,
         }
     }
 }
@@ -58,5 +60,6 @@ impl ErrorHandler for ErrorPrinter {
     fn error(&mut self, span: Span, message: &str) {
         let (line, column) = get_position(&self.lines, span.low);
         eprintln!("error: {}:{}:{}: {}", self.name, line, column, message);
+        self.count += 1;
     }
 }

@@ -99,6 +99,8 @@ nav.toolbar a {
 #output {
   grid-column: 2;
   font: 12px Monaco, Menlo, Ubuntu Mono, Consolas, source-code-pro, monospace;
+  white-space: pre-wrap;
+  margin: 0;
   padding: 0 6px;
   border-left: 3px solid #eee;
 }

@@ -2,33 +2,13 @@
 #[macro_use]
 extern crate wasm_host;
 
-use std::{collections::HashMap, cell::Cell};
+use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 use js_sys::Function;
 
-use gml::{symbol::Symbol, front::{Span, ErrorHandler}};
+use gml::front::{Span, ErrorHandler, ErrorPrinter};
+use gml::symbol::Symbol;
 use engine::{Engine, instance::Instance};
-
-struct Logger<'a> {
-    name: Symbol,
-    lines: Vec<usize>,
-    count: &'a Cell<u32>,
-}
-
-impl<'a> Logger<'a> {
-    pub fn new(name: Symbol, source: &[u8], count: &'a Cell<u32>) -> Self {
-        let lines = gml::front::compute_lines(source);
-        Logger { name, lines, count }
-    }
-}
-
-impl ErrorHandler for Logger<'_> {
-    fn error(&mut self, span: Span, message: &str) {
-        let (line, column) = gml::front::get_position(&self.lines, span.low);
-        eprintln!("error: {}:{}:{}: {}", self.name, line, column, message);
-        self.count.set(self.count.get() + 1);
-    }
-}
 
 #[wasm_bindgen]
 pub fn setup(out: Function, err: Function) {
@@ -43,15 +23,17 @@ pub fn run(source: &str) {
     let script = Symbol::intern("script");
     items.insert(script, gml::Item::Script(source.as_bytes()));
 
-    let error_count = Cell::new(0);
-    let resources = gml::build(&items, |symbol, source| Logger::new(symbol, source, &error_count));
-    if error_count.get() > 1 {
-        eprintln!("aborting due to {} previous errors", error_count.get());
-        return;
-    } else if error_count.get() > 0 {
-        eprintln!("aborting due to previous error");
-        return;
-    }
+    let resources = match gml::build(&items) {
+        Ok(resources) => resources,
+        Err((errors, _)) => {
+            if errors > 1 {
+                eprintln!("aborting due to {} previous errors", errors);
+            } else {
+                eprintln!("aborting due to previous error");
+            }
+            return;
+        }
+    };
 
     let mut engine = Engine::default();
     let mut thread = gml::vm::Thread::new();
@@ -69,8 +51,8 @@ pub fn run(source: &str) {
             gml::Item::Script(source) => source,
             _ => b"",
         };
-        let lines = gml::front::compute_lines(source);
-        let (line, column) = gml::front::get_position(&lines, location as usize);
-        eprintln!("fatal error: {}:{}:{}: {}", error.symbol, line, column, error.kind);
+        let mut errors = ErrorPrinter::new(error.symbol, source);
+        let span = Span { low: location as usize, high: location as usize };
+        errors.error(span, &format!("{}", error.kind));
     }
 }
