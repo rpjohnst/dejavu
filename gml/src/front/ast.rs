@@ -1,6 +1,8 @@
 use crate::symbol::Symbol;
 use crate::front::Span;
 
+pub use crate::front::action_ast::*;
+
 #[derive(PartialEq, Debug)]
 pub enum Stmt {
     Error(Expr),

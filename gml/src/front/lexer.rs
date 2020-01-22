@@ -9,8 +9,8 @@ pub struct Lexer<'s> {
 }
 
 impl<'s> Lexer<'s> {
-    pub fn new(source: &'s [u8]) -> Lexer<'s> {
-        Lexer { source, position: 0 }
+    pub fn new(source: &'s [u8], position: usize) -> Lexer<'s> {
+        Lexer { source, position }
     }
 
     pub fn read_token(&mut self) -> (Token, Span) {
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn spans() {
-        let mut lexer = Lexer::new(b"/* comment */ var foo; foo = 3");
+        let mut lexer = Lexer::new(b"/* comment */ var foo; foo = 3", 0);
 
         assert_eq!(lexer.read_token(), (keyword("var"), span(14, 17)));
         assert_eq!(lexer.read_token(), (ident("foo"), span(18, 21)));

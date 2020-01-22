@@ -369,7 +369,7 @@ impl<'s, 'e> Parser<'s, 'e> {
         (ast::Stmt::Case(expr.map(Box::new)), span)
     }
 
-    fn parse_expression(&mut self, min_precedence: usize) -> (ast::Expr, Span) {
+    pub(crate) fn parse_expression(&mut self, min_precedence: usize) -> (ast::Expr, Span) {
         let (mut left, mut left_span, mut parens) = self.parse_prefix_expression();
         while let Some((op, precedence)) = Infix::from_token(self.current) {
             if precedence < min_precedence {
@@ -661,12 +661,13 @@ impl Infix {
 #[cfg(test)]
 mod tests {
     use crate::symbol::Symbol;
-    use crate::front::{Span, Lexer, Parser, ErrorPrinter};
+    use crate::front::{Span, Lexer, Parser, Lines, ErrorPrinter};
     use crate::front::ast::*;
 
-    fn setup(source: &[u8]) -> (ErrorPrinter, Lexer<'_>) {
-        let errors = ErrorPrinter::new(Symbol::intern("<test>"), source);
-        (errors, Lexer::new(source))
+    fn setup<'s>(source: &'s [u8]) -> (ErrorPrinter, Lexer<'s>) {
+        let lines = Lines::from_script(source);
+        let errors = ErrorPrinter::new(Symbol::intern("<test>"), lines);
+        (errors, Lexer::new(source, 0))
     }
 
     fn span(low: usize, high: usize) -> Span {
