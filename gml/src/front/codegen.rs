@@ -121,7 +121,22 @@ impl<'p, 'e> Codegen<'p, 'e> {
         }
     }
 
-    pub fn compile(mut self, program: &(ast::Stmt, Span)) -> ssa::Function {
+    pub fn compile_event(self, event: &(ast::Action, Span)) -> ssa::Function {
+        let (_, event_span) = *event;
+        self.with_program(event_span.high, move |self_| {
+            self_.emit_action(event);
+        })
+    }
+
+    pub fn compile_program(self, program: &(ast::Stmt, Span)) -> ssa::Function {
+        self.with_program(end_loc(program), move |self_| {
+            self_.emit_statement(program);
+        })
+    }
+
+    fn with_program<F>(mut self, end_loc: usize, program: F) -> ssa::Function where
+        F: FnOnce(&mut Codegen<'_, '_>)
+    {
         let entry_block = self.current_block;
         self.seal_block(entry_block);
 
@@ -129,19 +144,19 @@ impl<'p, 'e> Codegen<'p, 'e> {
         let zero = self.emit_initializer(ssa::Instruction::UnaryReal { op, real: 0.0 });
         self.write_local(self.return_value, zero);
 
-        self.emit_statement(program);
+        program(&mut self);
 
-        self.emit_jump(ssa::EXIT, end_loc(program));
+        self.emit_jump(ssa::EXIT, end_loc);
         self.seal_block(ssa::EXIT);
 
         self.current_block = ssa::EXIT;
         let locals = mem::replace(&mut self.locals, HashMap::default());
         for (_, Local { local, .. }) in locals {
             let value = self.read_local(local);
-            self.emit_unary(ssa::Opcode::Release, value, end_loc(program));
+            self.emit_unary(ssa::Opcode::Release, value, end_loc);
         }
         let return_value = self.read_local(self.return_value);
-        self.emit_unary(ssa::Opcode::Return, return_value, end_loc(program));
+        self.emit_unary(ssa::Opcode::Return, return_value, end_loc);
 
         front::ssa::Builder::finish(&mut self.function);
         self.function.return_def = match self.function.blocks[ssa::ENTRY].parameters.get(0) {
@@ -152,32 +167,144 @@ impl<'p, 'e> Codegen<'p, 'e> {
         self.function
     }
 
+    fn emit_action(&mut self, action: &(ast::Action, Span)) {
+        let (ref action, action_span) = *action;
+        match *action {
+            ast::Action::Normal {
+                ref question, ref execution, target, relative, box ref arguments
+            } => {
+                let target = target.map(|target| target as f64).unwrap_or(SELF);
+                // TODO: argument_relative
+                let _relative = relative.unwrap_or(false);
+
+                // TODO: move into peephole optimizer
+                let value = if target == SELF {
+                    self.emit_action_call(execution, arguments, action_span)
+                } else {
+                    let target = self.emit_real(target as f64, action_span.low);
+                    self.emit_with(target, action_span.low, action_span.low, |self_| {
+                        self_.emit_action_call(execution, arguments, action_span)
+                    })
+                };
+
+                match *question {
+                    Some(box ast::Question { negate, ref true_action, ref false_action }) => {
+                        let value = if negate {
+                            self.emit_unary(ssa::Opcode::Negate, value, action_span.low)
+                        } else {
+                            value
+                        };
+
+                        self.emit_if(
+                            (value, action_span.low),
+                            (|self_| self_.emit_action(true_action), action_end_loc(true_action)),
+                            false_action.as_ref().map(|false_action| (
+                                move |self_: &mut Codegen<'_, '_>| self_.emit_action(false_action),
+                                action_end_loc(false_action)
+                            ))
+                        );
+                    }
+
+                    None => {}
+                }
+            }
+
+            ast::Action::Block { body: box ref actions } => {
+                for action in actions {
+                    self.emit_action(action);
+                }
+            }
+
+            ast::Action::Exit => {
+                self.emit_exit(action_span.low);
+            }
+
+            ast::Action::Repeat { count: box ref expr, body: box ref body } => {
+                self.emit_repeat(expr, body.1.high, |self_| {
+                    self_.emit_action(body);
+                });
+            }
+
+            ast::Action::Variable {
+                target, relative, variable: box ref place, value: box ref value
+            } => {
+                let op = if relative { Some(ast::Op::Add) } else { None };
+                let op = (op, action_span);
+
+                // TODO: move into peephole optimizer
+                if target as f64 == SELF {
+                    self.emit_assign(op, place, value);
+                } else {
+                    let target = self.emit_real(target as f64, action_span.low);
+                    self.emit_with(target, action_span.low, action_span.high, |self_| {
+                        self_.emit_assign(op, place, value);
+                    });
+                }
+            }
+
+            ast::Action::Code { target, code: box ref statement } => {
+                // TODO: move into peephole optimizer
+                if target as f64 == SELF {
+                    self.emit_statement(statement);
+                } else {
+                    let target = self.emit_real(target as f64, action_span.low);
+                    self.emit_with(target, action_span.low, action_span.high, |self_| {
+                        self_.emit_statement(statement);
+                    });
+                }
+            }
+
+            ast::Action::Error => {}
+        }
+    }
+
+    fn emit_action_call(
+        &mut self, exec: &ast::Exec, arguments: &[ast::Argument], span: Span
+    ) -> ssa::Value {
+        let symbol = match *exec {
+            ast::Exec::Function(symbol) => (symbol, span),
+            ast::Exec::Code(box ref _statement) => unimplemented!(),
+        };
+
+        let mut args = vec![];
+        for argument in arguments {
+            let loc = span.low;
+            let value = match *argument {
+                ast::Argument::Expr(box ref expr) => self.emit_value(expr),
+                ast::Argument::String(symbol) => self.emit_string(symbol, loc),
+                ast::Argument::Bool(value) => self.emit_real(value as u64 as f64, loc),
+                ast::Argument::Menu(value) => self.emit_real(value as f64, loc),
+                ast::Argument::Sprite(value) => self.emit_real(value as f64, loc),
+                ast::Argument::Sound(value) => self.emit_real(value as f64, loc),
+                ast::Argument::Background(value) => self.emit_real(value as f64, loc),
+                ast::Argument::Path(value) => self.emit_real(value as f64, loc),
+                ast::Argument::Script(value) => self.emit_real(value as f64, loc),
+                ast::Argument::Object(value) => self.emit_real(value as f64, loc),
+                ast::Argument::Room(value) => self.emit_real(value as f64, loc),
+                ast::Argument::Font(value) => self.emit_real(value as f64, loc),
+                ast::Argument::Color(value) => self.emit_real(value as f64, loc),
+                ast::Argument::Timeline(value) => self.emit_real(value as f64, loc),
+                ast::Argument::FontString(symbol) => self.emit_string(symbol, loc),
+                ast::Argument::Error => self.emit_real(0.0, loc),
+            };
+            args.push(value);
+        }
+
+        self.emit_value_call(symbol, args)
+    }
+
     fn emit_statement(&mut self, statement: &(ast::Stmt, Span)) {
         let (ref statement, statement_span) = *statement;
         match *statement {
-            ast::Stmt::Assign((op, op_span), box ref place, box ref value) => {
-                let (_, place_span) = *place;
-                let place = match self.emit_place(place) {
-                    Ok(place) => place,
-                    Err(PlaceError) => return,
-                };
-
-                let value = if let Some(op) = op {
-                    let place = place.clone();
-                    let left = self.emit_load(place, place_span);
-                    let right = self.emit_value(value);
-
-                    let op = ast::Binary::Op(op);
-                    self.emit_binary(ssa::Opcode::from(op), [left, right], op_span.low)
-                } else {
-                    self.emit_value(value)
-                };
-
-                self.emit_store(place, value, op_span.low);
+            ast::Stmt::Assign(op, box ref place, box ref value) => {
+                self.emit_assign(op, place, value);
             }
 
-            ast::Stmt::Invoke(ref call) => {
-                self.emit_value_call(call, statement_span);
+            ast::Stmt::Invoke(ast::Call(symbol, box ref args)) => {
+                let args: Vec<_> = args.iter()
+                    .map(|argument| self.emit_value(argument))
+                    .collect();
+                self.emit_value_call(symbol, args);
             }
 
             ast::Stmt::Declare(scope, box ref names) => {
@@ -213,60 +340,20 @@ impl<'p, 'e> Codegen<'p, 'e> {
             }
 
             ast::Stmt::If(box ref expr, box ref true_branch, ref false_branch) => {
-                let true_block = self.make_block();
-                let false_block = self.make_block();
-                let merge_block = if false_branch.is_some() {
-                    self.make_block()
-                } else {
-                    false_block
-                };
-
                 let value = self.emit_value(expr);
-                self.emit_branch(value, true_block, false_block, loc(expr));
-                self.seal_block(true_block);
-                self.seal_block(false_block);
-
-                self.current_block = true_block;
-                self.emit_statement(true_branch);
-                self.emit_jump(merge_block, end_loc(true_branch));
-
-                if let Some(box ref false_branch) = *false_branch {
-                    self.current_block = false_block;
-                    self.emit_statement(false_branch);
-                    self.emit_jump(merge_block, end_loc(false_branch));
-                }
-
-                self.seal_block(merge_block);
-                self.current_block = merge_block;
+                self.emit_if(
+                    (value, loc(expr)),
+                    (|self_| self_.emit_statement(true_branch), end_loc(true_branch)),
+                    false_branch.as_ref().map(|false_branch| {
+                        (move |self_: &mut Codegen<'_, '_>| self_.emit_statement(false_branch), end_loc(false_branch))
+                    })
+                );
             }
 
             ast::Stmt::Repeat(box ref expr, box ref body) => {
-                let cond_block = self.make_block();
-                let body_block = self.make_block();
-                let exit_block = self.make_block();
-
-                let iter = self.builder.emit_local();
-                let count = self.emit_value(expr);
-                self.write_local(iter, count);
-                self.emit_jump(cond_block, loc(expr));
-
-                self.current_block = cond_block;
-                let count = self.read_local(iter);
-                let one = self.emit_real(1.0, loc(expr));
-                let next = self.emit_binary(ssa::Opcode::Subtract, [count, one], loc(expr));
-                self.write_local(iter, next);
-                self.emit_branch(count, body_block, exit_block, loc(expr));
-                self.seal_block(body_block);
-
-                self.current_block = body_block;
-                self.with_loop(cond_block, exit_block, |self_| {
+                self.emit_repeat(expr, end_loc(body), |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(cond_block, end_loc(body));
-                self.seal_block(cond_block);
-                self.seal_block(exit_block);
-
-                self.current_block = exit_block;
             }
 
             ast::Stmt::While(box ref expr, box ref body) => {
@@ -346,27 +433,10 @@ impl<'p, 'e> Codegen<'p, 'e> {
             }
 
             ast::Stmt::With(box ref expr, box ref body) => {
-                let with_loc = statement_span.low;
-                let self_value = self.emit_unary_real(ssa::Opcode::LoadScope, SELF, with_loc);
-                let other_value = self.emit_unary_real(ssa::Opcode::LoadScope, OTHER, with_loc);
-                self.emit_binary_real(ssa::Opcode::StoreScope, self_value, OTHER, with_loc);
-
-                let expr = self.emit_value(expr);
-                let With { cond_block, body_block, exit_block, entity } = self.emit_with(expr, with_loc);
-                self.seal_block(body_block);
-
-                self.current_block = body_block;
-                self.emit_binary_real(ssa::Opcode::StoreScope, entity, SELF, with_loc);
-                self.with_loop(cond_block, exit_block, |self_| {
+                let target = self.emit_value(expr);
+                self.emit_with(target, statement_span.low, end_loc(body), |self_| {
                     self_.emit_statement(body);
                 });
-                self.emit_jump(cond_block, end_loc(body));
-                self.seal_block(cond_block);
-                self.seal_block(exit_block);
-
-                self.current_block = exit_block;
-                self.emit_binary_real(ssa::Opcode::StoreScope, self_value, SELF, end_loc(body));
-                self.emit_binary_real(ssa::Opcode::StoreScope, other_value, OTHER, end_loc(body));
             }
 
             ast::Stmt::Switch(box ref expr, box ref body) => {
@@ -449,11 +519,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
             // exit and break/continue outside loops return 0
             ast::Stmt::Jump(_) => {
-                let dead_block = self.make_block();
-
-                self.emit_jump(ssa::EXIT, statement_span.low);
-                self.current_block = dead_block;
-                self.seal_block(dead_block);
+                self.emit_exit(statement_span.low);
             }
 
             ast::Stmt::Return(box ref expr) => {
@@ -469,6 +535,140 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
             ast::Stmt::Error(_) => {}
         }
+    }
+
+    fn emit_assign(
+        &mut self, op: (Option<ast::Op>, Span), place: &(ast::Expr, Span), value: &(ast::Expr, Span)
+    ) {
+        let (op, op_span) = op;
+
+        let (_, place_span) = *place;
+        let place = match self.emit_place(place) {
+            Ok(place) => place,
+            Err(PlaceError) => return,
+        };
+
+        let value = if let Some(op) = op {
+            let place = place.clone();
+            let left = self.emit_load(place, place_span);
+            let right = self.emit_value(value);
+
+            let op = ast::Binary::Op(op);
+            self.emit_binary(ssa::Opcode::from(op), [left, right], op_span.low)
+        } else {
+            self.emit_value(value)
+        };
+
+        self.emit_store(place, value, op_span.low);
+    }
+
+    fn emit_if<T, F>(
+        &mut self,
+        value: (ssa::Value, usize),
+        true_branch: (T, usize),
+        false_branch: Option<(F, usize)>,
+    ) where
+        T: FnOnce(&mut Codegen<'_, '_>),
+        F: FnOnce(&mut Codegen<'_, '_>),
+    {
+        let true_block = self.make_block();
+        let false_block = self.make_block();
+        let merge_block = if false_branch.is_some() {
+            self.make_block()
+        } else {
+            false_block
+        };
+
+        let (value, value_loc) = value;
+        self.emit_branch(value, true_block, false_block, value_loc);
+        self.seal_block(true_block);
+        self.seal_block(false_block);
+
+        self.current_block = true_block;
+        let (true_branch, true_loc) = true_branch;
+        true_branch(self);
+        self.emit_jump(merge_block, true_loc);
+
+        if let Some((false_branch, false_loc)) = false_branch {
+            self.current_block = false_block;
+            false_branch(self);
+            self.emit_jump(merge_block, false_loc);
+        }
+
+        self.seal_block(merge_block);
+        self.current_block = merge_block;
+    }
+
+    fn emit_repeat<F>(&mut self, expr: &(ast::Expr, Span), end_loc: usize, body: F) where
+        F: FnOnce(&mut Codegen<'_, '_>)
+    {
+        let cond_block = self.make_block();
+        let body_block = self.make_block();
+        let exit_block = self.make_block();
+
+        let iter = self.builder.emit_local();
+        let count = self.emit_value(expr);
+        self.write_local(iter, count);
+        self.emit_jump(cond_block, loc(expr));
+
+        self.current_block = cond_block;
+        let count = self.read_local(iter);
+        let one = self.emit_real(1.0, loc(expr));
+        let next = self.emit_binary(ssa::Opcode::Subtract, [count, one], loc(expr));
+        self.write_local(iter, next);
+        self.emit_branch(count, body_block, exit_block, loc(expr));
+        self.seal_block(body_block);
+
+        self.current_block = body_block;
+        self.with_loop(cond_block, exit_block, move |self_| {
+            body(self_);
+        });
+        self.emit_jump(cond_block, end_loc);
+        self.seal_block(cond_block);
+        self.seal_block(exit_block);
+
+        self.current_block = exit_block;
+    }
+
+    fn emit_with<F, R>(
+        &mut self, target: ssa::Value, with_loc: usize, end_loc: usize, body: F
+    ) -> R where
+        F: FnOnce(&mut Codegen<'_, '_>) -> R
+    {
+        let self_value = self.emit_unary_real(ssa::Opcode::LoadScope, SELF, with_loc);
+        let other_value = self.emit_unary_real(ssa::Opcode::LoadScope, OTHER, with_loc);
+        self.emit_binary_real(ssa::Opcode::StoreScope, self_value, OTHER, with_loc);
+
+        let With {
+            cond_block,
+            body_block,
+            exit_block,
+            entity
+        } = self.emit_with_header(target, with_loc);
+        self.seal_block(body_block);
+
+        self.current_block = body_block;
+        self.emit_binary_real(ssa::Opcode::StoreScope, entity, SELF, with_loc);
+        let result = self.with_loop(cond_block, exit_block, move |self_| {
+            body(self_)
+        });
+        self.emit_jump(cond_block, end_loc);
+        self.seal_block(cond_block);
+        self.seal_block(exit_block);
+
+        self.current_block = exit_block;
+        self.emit_binary_real(ssa::Opcode::StoreScope, self_value, SELF, end_loc);
+        self.emit_binary_real(ssa::Opcode::StoreScope, other_value, OTHER, end_loc);
+
+        result
+    }
+
+    fn emit_exit(&mut self, loc: usize) {
+        let dead_block = self.make_block();
+
+        self.emit_jump(ssa::EXIT, loc);
+        self.current_block = dead_block;
+        self.seal_block(dead_block);
     }
 
     fn emit_value(&mut self, expression: &(ast::Expr, Span)) -> ssa::Value {
@@ -505,7 +705,12 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 self.emit_binary(ssa::Opcode::from(op), [left, right], op_span.low)
             }
 
-            ast::Expr::Call(ref call) => self.emit_value_call(call, expr_span),
+            ast::Expr::Call(ast::Call(symbol, box ref args)) => {
+                let args: Vec<_> = args.iter()
+                    .map(|argument| self.emit_value(argument))
+                    .collect();
+                self.emit_value_call(symbol, args)
+            }
 
             _ => {
                 let place = self.emit_place(expression)
@@ -515,8 +720,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
         }
     }
 
-    fn emit_value_call(&mut self, call: &ast::Call, call_span: Span) -> ssa::Value {
-        let ast::Call((symbol, symbol_span), box ref args) = *call;
+    fn emit_value_call(&mut self, symbol: (Symbol, Span), args: Vec<ssa::Value>) -> ssa::Value {
+        let (symbol, symbol_span) = symbol;
 
         let (op, arity, variadic) = match self.prototypes.get(&symbol) {
             Some(&ssa::Prototype::Script) =>
@@ -524,20 +729,17 @@ impl<'p, 'e> Codegen<'p, 'e> {
             Some(&ssa::Prototype::Native { arity, variadic }) =>
                 (ssa::Opcode::CallApi, arity, variadic),
             _ => {
-                self.errors.error(call_span, "unknown function or script");
+                self.errors.error(symbol_span, "unknown function or script");
                 (ssa::Opcode::Call, 0, true)
             }
         };
 
-        let args: Vec<_> = args.iter()
-            .map(|argument| self.emit_value(argument))
-            .collect();
         if args.len() < arity || (!variadic && args.len() > arity) {
             self.errors.error(symbol_span, "wrong number of arguments to function or script");
-            return self.emit_real(0.0, call_span.low);
+            return self.emit_real(0.0, symbol_span.low);
         }
 
-        self.emit_call(op, symbol, args, call_span.low)
+        self.emit_call(op, symbol, args, symbol_span.low)
     }
 
     fn emit_place(&mut self, expression: &(ast::Expr, Span)) -> Result<Place, PlaceError> {
@@ -722,7 +924,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
     /// Resolve a scope to its first entity for reading. (Helper for `emit_load`.)
     fn emit_load_scope(&mut self, scope: ssa::Value, location: usize) -> ssa::Value {
-        let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope, location);
+        let With { cond_block, body_block, exit_block, entity } = self.emit_with_header(scope, location);
         self.seal_block(cond_block);
         self.seal_block(body_block);
         self.seal_block(exit_block);
@@ -854,7 +1056,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
         F: FnOnce(&mut Codegen<'_, '_>, ssa::Value)
     {
         // TODO: gms errors on empty iteration
-        let With { cond_block, body_block, exit_block, entity } = self.emit_with(scope, location);
+        let With { cond_block, body_block, exit_block, entity } = self.emit_with_header(scope, location);
         self.seal_block(body_block);
         self.seal_block(exit_block);
         self.current_block = body_block;
@@ -908,7 +1110,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
     }
 
     /// Loop header for instance iteration.
-    fn emit_with(&mut self, scope: ssa::Value, location: usize) -> With {
+    fn emit_with_header(&mut self, scope: ssa::Value, location: usize) -> With {
         let cond_block = self.make_block();
         let scan_block = self.make_block();
         let body_block = self.make_block();
@@ -937,16 +1139,18 @@ impl<'p, 'e> Codegen<'p, 'e> {
         With { cond_block, body_block, exit_block, entity }
     }
 
-    fn with_loop<F>(&mut self, next: ssa::Label, exit: ssa::Label, f: F) where
-        F: FnOnce(&mut Codegen<'_, '_>)
+    fn with_loop<F, R>(&mut self, next: ssa::Label, exit: ssa::Label, f: F) -> R where
+        F: FnOnce(&mut Codegen<'_, '_>) -> R
     {
         let old_next = mem::replace(&mut self.current_next, Some(next));
         let old_exit = mem::replace(&mut self.current_exit, Some(exit));
 
-        f(self);
+        let result = f(self);
 
         self.current_next = old_next;
         self.current_exit = old_exit;
+
+        result
     }
 
     fn with_switch<F>(
@@ -1112,6 +1316,15 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
         self.builder.insert_edge(self.current_block, true_block);
         self.builder.insert_edge(self.current_block, false_block);
+    }
+}
+
+/// Debug location of the "last" location in an action.
+// TODO: track blocks' actual closing delimiter position?
+fn action_end_loc(&(ref action, span): &(ast::Action, Span)) -> usize {
+    match *action {
+        ast::Action::Block { .. } => span.high - 1,
+        _ => span.low,
     }
 }
 

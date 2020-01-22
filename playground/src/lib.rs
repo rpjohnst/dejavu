@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 use js_sys::Function;
 
-use gml::front::{Span, ErrorHandler, ErrorPrinter};
+use gml::front::{Span, ErrorHandler, Lines, ErrorPrinter};
 use gml::symbol::Symbol;
 use engine::{Engine, instance::Instance};
 
@@ -47,11 +47,12 @@ pub fn run(source: &str) {
 
     if let Err(error) = thread.execute(&mut engine, &resources, script, &[]) {
         let location = resources.debug[&error.symbol].get_location(error.instruction as u32);
-        let source = match items[&error.symbol] {
-            gml::Item::Script(source) => source,
-            _ => b"",
+        let lines = match items[&error.symbol] {
+            gml::Item::Event(source) => Lines::from_event(source),
+            gml::Item::Script(source) => Lines::from_script(source),
+            _ => Lines::from_script(b""),
         };
-        let mut errors = ErrorPrinter::new(error.symbol, source);
+        let mut errors = ErrorPrinter::new(error.symbol, lines);
         let span = Span { low: location as usize, high: location as usize };
         errors.error(span, &format!("{}", error.kind));
     }
