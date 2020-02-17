@@ -419,12 +419,13 @@ struct Engine {
 }
 
 impl vm::world::Api for Engine {
-    fn state(&self) -> &vm::World { &self.world }
-    fn state_mut(&mut self) -> &mut vm::World { &mut self.world }
+    fn receivers(&mut self) -> &mut vm::World { &mut self.world }
 }
 
 impl Engine {
-    fn native_add(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
+    fn native_add(
+        &mut self, _resources: &vm::Resources<Engine>, _entity: vm::Entity, arguments: &[vm::Value]
+    ) -> Result<vm::Value, vm::ErrorKind> {
         let value = match (arguments[0].data(), arguments[1].data()) {
             (vm::Data::Real(a), vm::Data::Real(b)) => vm::Value::from(a + b),
             _ => vm::Value::from(0),
@@ -433,14 +434,14 @@ impl Engine {
         Ok(value)
     }
 
-    fn get_global_scalar(&self, _: vm::Entity, _: usize) -> vm::Value {
+    fn get_global_scalar(&mut self, _: vm::Entity, _: usize) -> vm::Value {
         vm::Value::from(self.global_scalar)
     }
     fn set_global_scalar(&mut self, _: vm::Entity, _: usize, value: vm::Value) {
         self.global_scalar = i32::try_from(value).unwrap_or(0);
     }
 
-    fn get_global_array(&self, _: vm::Entity, i: usize) -> vm::Value {
+    fn get_global_array(&mut self, _: vm::Entity, i: usize) -> vm::Value {
         vm::Value::from(self.global_array[i] as f64)
     }
     fn set_global_array(&mut self, _: vm::Entity, i: usize, value: vm::Value) {
@@ -455,7 +456,7 @@ struct Instance {
 }
 
 impl Instance {
-    pub fn get_scalar(engine: &Engine, entity: vm::Entity, _: usize) -> vm::Value {
+    pub fn get_scalar(engine: &mut Engine, entity: vm::Entity, _: usize) -> vm::Value {
         let instance = &engine.instances[&entity];
         vm::Value::from(instance.scalar as f64)
     }
@@ -464,7 +465,7 @@ impl Instance {
         instance.scalar = f64::try_from(value).unwrap_or(0.0) as f32;
     }
 
-    pub fn get_array(engine: &Engine, entity: vm::Entity, i: usize) -> vm::Value {
+    pub fn get_array(engine: &mut Engine, entity: vm::Entity, i: usize) -> vm::Value {
         let instance = &engine.instances[&entity];
         vm::Value::from(instance.array[i])
     }

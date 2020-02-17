@@ -2,11 +2,13 @@ extern crate proc_macro;
 
 use std::iter;
 use std::collections::HashMap;
+use indexmap::IndexMap;
 use proc_macro::TokenStream;
 use proc_macro2;
 use syn::{
     self, parse_quote, parenthesized, punctuated,
-    ItemImpl, ImplItemMethod, Attribute, Signature, FnArg, PatType, ReturnType, Type, Ident
+    ItemImpl, ImplItemMethod, Attribute, Signature, FnArg, PatType, ReturnType,
+    Type, TypeReference, Path, Ident
 };
 use syn::parse::{Parse, ParseStream, Result, Error};
 use syn::visit_mut::VisitMut;
@@ -16,6 +18,12 @@ use quote::quote;
 struct ItemBindings {
     functions: Vec<Function>,
     members: HashMap<Ident, Member>,
+
+    /// Ordered map from receiver types to their variable names.
+    ///
+    /// The order needs to be consistent because it determines the order of things in the output,
+    /// like tuple type elements.
+    receivers: IndexMap<Receiver, Ident>,
 }
 
 struct Function {
@@ -35,15 +43,19 @@ struct Member {
 struct Property {
     name: Ident,
     receivers: Vec<Receiver>,
-    entity: Option<()>,
     index: Option<()>,
     value: Option<Parameter>,
 }
 
-#[derive(Copy, Clone)]
+/// A "receiver" type for a method or property.
+#[derive(Clone, Eq, PartialEq, Hash)]
 enum Receiver {
-    Self_,
-    World,
+    /// A reference to an engine module (including the bound API's self type).
+    Engine(Type),
+    /// A reference to vm::Resources.
+    Resources,
+    /// The GML-level `self` entity for the call.
+    Entity,
 }
 
 #[derive(Copy, Clone)]
@@ -63,17 +75,24 @@ impl ItemBindings {
         let mut bindings = ItemBindings {
             functions: Vec::new(),
             members: HashMap::new(),
-        };
-        let mut errors = Vec::new();
 
+            receivers: IndexMap::default(),
+        };
+
+        let mut errors = Vec::new();
         {
             let mut visit = VisitBindings {
                 bindings: &mut bindings,
                 errors: &mut errors,
+
+                self_ty: (*item.self_ty).clone(),
+
+                function: parse_quote!(gml::function),
+                get: parse_quote!(gml::get),
+                set: parse_quote!(gml::set),
             };
             syn::visit_mut::visit_item_impl_mut(&mut visit, item);
         }
-
         if !errors.is_empty() {
             return Err(errors);
         }
@@ -85,6 +104,12 @@ impl ItemBindings {
 struct VisitBindings<'a> {
     bindings: &'a mut ItemBindings,
     errors: &'a mut Vec<Error>,
+
+    self_ty: Type,
+
+    function: Path,
+    get: Path,
+    set: Path,
 }
 
 impl VisitMut for VisitBindings<'_> {
@@ -96,17 +121,20 @@ impl VisitMut for VisitBindings<'_> {
 
 impl VisitBindings<'_> {
     fn process_attribute(&mut self, attr: &Attribute, sig: &Signature) -> bool {
-        if attr.path == parse_quote!(gml::function) {
-            let function = match Function::parse(sig) {
+        if attr.path == self.function {
+            let function = match Function::parse(&self.self_ty, sig) {
                 Ok(function) => function,
                 Err(err) => {
                     self.errors.push(err);
                     return true;
                 }
             };
+
+            self.extend_receivers(&function.receivers[..]);
+
             self.bindings.functions.push(function);
             true
-        } else if attr.path == parse_quote!(gml::get) {
+        } else if attr.path == self.get || attr.path == self.set {
             let meta: PropertyMeta = match syn::parse2(attr.tokens.clone()) {
                 Ok(meta) => meta,
                 Err(err) => {
@@ -114,44 +142,51 @@ impl VisitBindings<'_> {
                     return true;
                 }
             };
-            let property = match Property::parse(sig) {
+            let property = match Property::parse(&self.self_ty, sig) {
                 Ok(property) => property,
                 Err(err) => {
                     self.errors.push(err);
                     return true;
                 }
             };
+
+            self.extend_receivers(&property.receivers[..]);
+
             let member = self.bindings.members.entry(meta.name.clone()).or_default();
-            if member.getter.is_some() {
-                self.errors.push(Error::new(meta.name.span(), "getter is defined multiple times"));
-                return true;
-            }
-            member.getter = Some(property);
-            true
-        } else if attr.path == parse_quote!(gml::set) {
-            let meta: PropertyMeta = match syn::parse2(attr.tokens.clone()) {
-                Ok(meta) => meta,
-                Err(err) => {
-                    self.errors.push(err);
+            if attr.path == self.get {
+                if member.getter.is_some() {
+                    let message = "getter is defined multiple times";
+                    self.errors.push(Error::new(meta.name.span(), message));
                     return true;
                 }
-            };
-            let property = match Property::parse(sig) {
-                Ok(property) => property,
-                Err(err) => {
-                    self.errors.push(err);
+                member.getter = Some(property);
+            } else if attr.path == self.set {
+                if member.setter.is_some() {
+                    let message = "setter is defined multiple times";
+                    self.errors.push(Error::new(meta.name.span(), message));
                     return true;
                 }
-            };
-            let member = self.bindings.members.entry(meta.name.clone()).or_default();
-            if member.setter.is_some() {
-                self.errors.push(Error::new(meta.name.span(), "setter is defined multiple times"));
-                return true;
+                member.setter = Some(property);
             }
-            member.setter = Some(property);
             true
         } else {
             false
+        }
+    }
+
+    fn extend_receivers(&mut self, receivers: &[Receiver]) {
+        for receiver in receivers {
+            let id = self.bindings.receivers.len();
+            self.bindings.receivers.entry(receiver.clone()).or_insert_with(move || {
+                match receiver {
+                    Receiver::Engine(_) => {
+                        let ident = &format!("receiver_{}", id);
+                        Ident::new(ident, proc_macro2::Span::call_site())
+                    }
+                    Receiver::Resources => Ident::new("resources", proc_macro2::Span::call_site()),
+                    Receiver::Entity => Ident::new("entity", proc_macro2::Span::call_site()),
+                }
+            });
         }
     }
 }
@@ -169,11 +204,11 @@ impl Parse for PropertyMeta {
 }
 
 impl Function {
-    fn parse(sig: &Signature) -> Result<Self> {
+    fn parse(self_ty: &Type, sig: &Signature) -> Result<Self> {
         let name = sig.ident.clone();
         let mut inputs = sig.inputs.iter().peekable();
 
-        let receivers = parse_receivers(&mut inputs);
+        let receivers = parse_receivers(self_ty, &mut inputs);
         let mut parameters = Vec::new();
         let mut rest = None;
 
@@ -213,22 +248,17 @@ impl Function {
 }
 
 impl Property {
-    fn parse(sig: &Signature) -> Result<Self> {
+    fn parse(self_ty: &Type, sig: &Signature) -> Result<Self> {
         let name = sig.ident.clone();
         let mut inputs = sig.inputs.iter().peekable();
 
-        let receivers = parse_receivers(&mut inputs);
-        let mut entity = None;
+        let receivers = parse_receivers(self_ty, &mut inputs);
         let mut index = None;
         let mut value = None;
 
-        let entity_ty = parse_quote!(vm::Entity);
         let usize_ty = parse_quote!(usize);
         while let Some(&param) = inputs.peek() {
             match *param {
-                FnArg::Typed(PatType { ref ty, .. }) if *ty == entity_ty =>
-                    entity = Some(()),
-
                 FnArg::Typed(PatType { ref ty, .. }) if *ty == usize_ty =>
                     index = Some(()),
 
@@ -256,26 +286,43 @@ impl Property {
             return Err(Error::new(param.span(), "unexpected parameter"));
         }
 
-        Ok(Property { name, receivers, entity, index, value })
+        Ok(Property { name, receivers, index, value })
     }
 }
 
-fn parse_receivers(inputs: &mut iter::Peekable<punctuated::Iter<'_, FnArg>>) -> Vec<Receiver> {
-    let mut receivers = Vec::new();
+fn parse_receivers(
+    self_ty: &Type, inputs: &mut iter::Peekable<punctuated::Iter<'_, FnArg>>
+) -> Vec<Receiver> {
+    let mut receivers = Vec::default();
 
-    let self_ref = parse_quote!(&self);
-    let self_mut = parse_quote!(&mut self);
-    let world_ref = parse_quote!(&vm::World);
-    let world_mut = parse_quote!(&mut vm::World);
+    let entity = parse_quote!(vm::Entity);
+    let resources = parse_quote!(vm::Resources);
     while let Some(&param) = inputs.peek() {
         match *param {
-            _ if *param == self_ref || *param == self_mut =>
-                receivers.push(Receiver::Self_),
+            FnArg::Receiver(_) => {
+                receivers.push(Receiver::Engine(self_ty.clone()));
+            }
 
-            FnArg::Typed(PatType { ref ty, .. }) if *ty == world_ref || *ty == world_mut =>
-                receivers.push(Receiver::World),
+            FnArg::Typed(PatType { ref ty, .. }) if **ty == entity => {
+                receivers.push(Receiver::Entity);
+            }
 
-            _ => break,
+            FnArg::Typed(PatType { ref ty, .. }) => {
+                let target = match **ty {
+                    Type::Reference(TypeReference { ref elem, .. }) => elem,
+                    _ => break,
+                };
+                match **target {
+                    Type::Path(_) => {}
+                    _ => break
+                };
+
+                if **target == resources {
+                    receivers.push(Receiver::Resources);
+                } else {
+                    receivers.push(Receiver::Engine((**target).clone()));
+                }
+            }
         }
         inputs.next();
     }
@@ -302,13 +349,24 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
     // Generate the API glue trait.
 
     let self_ty = &input.self_ty;
+    let receiver_tys = bindings.receivers.iter().filter_map(|(receiver, _)| match *receiver {
+        Receiver::Engine(ref ty) => Some(quote! { #ty }),
+        _ => None,
+    });
+    let receiver_idents = {
+        let receivers = bindings.receivers.iter().filter_map(|(receiver, ident)| match *receiver {
+            Receiver::Engine(_) => Some(ident),
+            _ => None,
+        });
+        quote! { #(#receivers,)* }
+    };
 
     let api = bindings.functions.iter().map(|function| &function.name);
     let api_binding = api.clone();
     let api_arity = bindings.functions.iter().map(|function| function.parameters.len());
     let api_variadic = bindings.functions.iter().map(|function| function.rest.is_some());
     let api_receivers = bindings.functions.iter().map(|function| {
-        let receivers = function.receivers.iter();
+        let receivers = function.receivers.iter().map(|receiver| &bindings.receivers[receiver]);
         quote! { #(#receivers,)* }
     });
     let api_arguments = bindings.functions.iter().map(|function| {
@@ -339,12 +397,8 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
     ));
     let get = getter.clone().flatten().map(|getter| &getter.name);
     let get_receivers = getter.clone().flatten().map(|getter| {
-        let receivers = getter.receivers.iter();
+        let receivers = getter.receivers.iter().map(|receiver| &bindings.receivers[receiver]);
         quote! { #(#receivers,)* }
-    });
-    let get_entity = getter.clone().flatten().map(|getter| {
-        let entity = getter.entity.iter().map(|()| quote! { entity });
-        quote! { #(#entity,)* }
     });
     let get_index = getter.clone().flatten().map(|getter| {
         let index = getter.index.iter().map(|()| quote! { index });
@@ -358,12 +412,8 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
     ));
     let set = setter.clone().flatten().map(|setter| &setter.name);
     let set_receivers = setter.clone().flatten().map(|setter| {
-        let receivers = setter.receivers.iter();
+        let receivers = setter.receivers.iter().map(|receiver| &bindings.receivers[receiver]);
         quote! { #(#receivers,)* }
-    });
-    let set_entity = setter.clone().flatten().map(|setter| {
-        let entity = setter.entity.iter().map(|()| quote! { entity });
-        quote! { #(#entity,)* }
     });
     let set_index = setter.clone().flatten().map(|setter| {
         let index = setter.index.iter().map(|()| quote! { index });
@@ -378,10 +428,11 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
 
     let output = quote! {
         pub trait #trait_name {
-            fn state(&self) -> (&#self_ty, &vm::World);
-            fn state_mut(&mut self) -> (&mut #self_ty, &mut vm::World);
+            fn receivers(&mut self) -> (#(&mut #receiver_tys,)*);
 
-            fn register(items: &mut std::collections::HashMap<gml::symbol::Symbol, gml::Item<Self>>) where
+            fn register(
+                items: &mut std::collections::HashMap<gml::symbol::Symbol, gml::Item<Self>>
+            ) where
                 Self: Sized
             {
                 #(items.insert(
@@ -395,20 +446,22 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
                 );)*
             }
 
-            #(fn #api(&mut self, arguments: &[vm::Value]) -> Result<vm::Value, vm::ErrorKind> {
+            #(fn #api(
+                &mut self, resources: &vm::Resources<Self>, entity: vm::Entity, arguments: &[vm::Value]
+            ) -> Result<vm::Value, vm::ErrorKind> {
                 #![allow(unused_imports, unused)]
                 use std::convert::TryInto;
 
-                let (state, world) = self.state_mut();
+                let (#receiver_idents) = self.receivers();
                 let ret = #self_ty::#api(#api_receivers #api_arguments #api_rest) #api_try;
                 Ok(ret.into())
             })*
 
-            #(fn #get(&self, entity: vm::Entity, index: usize) -> vm::Value {
+            #(fn #get(&mut self, entity: vm::Entity, index: usize) -> vm::Value {
                 #![allow(unused)]
 
-                let (state, world) = self.state();
-                let value = #self_ty::#get(#get_receivers #get_entity #get_index);
+                let (#receiver_idents) = self.receivers();
+                let value = #self_ty::#get(#get_receivers #get_index);
                 value.into()
             })*
 
@@ -416,21 +469,12 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
                 #![allow(unused_imports, unused)]
                 use std::convert::TryInto;
 
-                let (state, world) = self.state_mut();
-                #self_ty::#set(#set_receivers #set_entity #set_index #set_value);
+                let (#receiver_idents) = self.receivers();
+                #self_ty::#set(#set_receivers #set_index #set_value);
             })*
         }
 
         #input
     };
     output.into()
-}
-
-impl quote::ToTokens for Receiver {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        match *self {
-            Receiver::Self_ => tokens.extend(quote! { state }),
-            Receiver::World => tokens.extend(quote! { world }),
-        }
-    }
 }

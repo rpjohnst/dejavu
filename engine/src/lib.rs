@@ -23,43 +23,29 @@ pub struct Engine {
 }
 
 impl vm::world::Api for Engine {
-    fn state(&self) -> &vm::World { &self.world }
-    fn state_mut(&mut self) -> &mut vm::World { &mut self.world }
+    fn receivers(&mut self) -> &mut vm::World { &mut self.world }
 }
 
 impl real::Api for Engine {
-    fn state(&self) -> (&real::State, &vm::World) { (&self.real, &self.world) }
-    fn state_mut(&mut self) -> (&mut real::State, &mut vm::World) {
-        (&mut self.real, &mut self.world)
-    }
+    fn receivers(&mut self) -> (&mut real::State,) { (&mut self.real,) }
 }
 
 impl string::Api for Engine {
-    fn state(&self) -> (&string::State, &vm::World) { (&self.string, &self.world) }
-    fn state_mut(&mut self) -> (&mut string::State, &mut vm::World) {
-        (&mut self.string, &mut self.world)
-    }
+    fn receivers(&mut self) -> () {}
 }
 
 impl show::Api for Engine {
-    fn state(&self) -> (&show::State, &vm::World) { (&self.show, &self.world) }
-    fn state_mut(&mut self) -> (&mut show::State, &mut vm::World) {
-        (&mut self.show, &mut self.world)
-    }
+    fn receivers(&mut self) -> (&mut show::State,) { (&mut self.show,) }
 }
 
 impl instance::Api for Engine {
-    fn state(&self) -> (&instance::State, &vm::World) { (&self.instance, &self.world) }
-    fn state_mut(&mut self) -> (&mut instance::State, &mut vm::World) {
+    fn receivers(&mut self) -> (&mut instance::State, &mut vm::World) {
         (&mut self.instance, &mut self.world)
     }
 }
 
 impl data::Api for Engine {
-    fn state(&self) -> (&data::State, &vm::World) { (&self.data, &self.world) }
-    fn state_mut(&mut self) -> (&mut data::State, &mut vm::World) {
-        (&mut self.data, &mut self.world)
-    }
+    fn receivers(&mut self) -> (&mut data::State,) { (&mut self.data,) }
 }
 
 impl Engine {

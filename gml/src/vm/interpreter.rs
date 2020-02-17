@@ -116,7 +116,7 @@ impl Thread {
         engine: &mut E, resources: &vm::Resources<E>,
         symbol: Symbol, arguments: &[vm::Value]
     ) -> Result<vm::Value, Error> {
-        let world = E::state_mut(engine) as *mut _;
+        let world = E::receivers(engine) as *mut _;
         let engine = unsafe { &mut *(engine as *mut _ as *mut Engine) };
         let resources = unsafe { &*(resources as *const _ as *const vm::Resources<Engine>) };
         self.execute_internal(engine, world, resources, symbol, arguments)
@@ -788,8 +788,9 @@ impl Thread {
                     let reg_base = reg_base + base;
 
                     let registers = &mut self.stack[reg_base..];
+                    let entity = self.self_entity;
                     let arguments = unsafe { mem::transmute::<_, &[vm::Value]>(&registers[..len]) };
-                    registers[0].value = function(engine, arguments)
+                    registers[0].value = function(engine, resources, entity, arguments)
                         .map_err(|kind| Error { symbol, instruction, kind })?;
                 }
 

@@ -25,8 +25,8 @@ pub struct Resources<E: ?Sized> {
     pub set: HashMap<Symbol, SetFunction<E>>,
 }
 
-pub type ApiFunction<E> = fn(&mut E, &[Value]) -> Result<Value, ErrorKind>;
-pub type GetFunction<E> = fn(&E, Entity, usize) -> Value;
+pub type ApiFunction<E> = fn(&mut E, &Resources<E>, Entity, &[Value]) -> Result<Value, ErrorKind>;
+pub type GetFunction<E> = fn(&mut E, Entity, usize) -> Value;
 pub type SetFunction<E> = fn(&mut E, Entity, usize, Value);
 
 impl<E: ?Sized> Default for Resources<E> {

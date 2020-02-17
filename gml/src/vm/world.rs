@@ -46,6 +46,5 @@ impl World {
 }
 
 pub trait Api {
-    fn state(&self) -> &World;
-    fn state_mut(&mut self) -> &mut World;
+    fn receivers(&mut self) -> &mut World;
 }
