@@ -1,7 +1,5 @@
 [workspace]
 members = [
-    "gml",
-    "engine",
     "runner",
     "playground",
 ]
