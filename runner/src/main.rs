@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gml::symbol::Symbol;
 use gml::front::{Span, ErrorHandler, Lines, ErrorPrinter};
-use engine::{Engine, instance::Instance};
+use engine::Engine;
 
 fn main() {
     let mut items = HashMap::new();
@@ -65,18 +65,12 @@ fn main() {
     let mut engine = Engine::default();
     let mut thread = gml::vm::Thread::new();
 
-    let object_index = 0;
-    let id = 100001;
-    let persistent = false;
-    let entity = engine.world.create_instance(object_index, id);
-    engine.instance.create_instance(entity, Instance { object_index, id, persistent });
-    thread.set_self(entity);
+    let id = engine.instance.instance_create(&mut engine.world, &mut engine.motion, 0.0, 0.0, 0)
+        .unwrap_or_else(|_| panic!("object does not exist"));
+    thread.set_self(engine.world.instances[id]);
 
-    let object_index = 1;
-    let id = 100002;
-    let persistent = false;
-    let entity = engine.world.create_instance(object_index, id);
-    engine.instance.create_instance(entity, Instance { object_index, id, persistent });
+    engine.instance.instance_create(&mut engine.world, &mut engine.motion, 0.0, 0.0, 1)
+        .unwrap_or_else(|_| panic!("object does not exist"));
 
     if let Err(error) = thread.execute(&mut engine, &resources, main, &[]) {
         let location = resources.debug[&error.symbol].get_location(error.instruction as u32);

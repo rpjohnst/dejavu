@@ -8,7 +8,7 @@ use js_sys::Function;
 
 use gml::front::{Span, ErrorHandler, Lines, ErrorPrinter};
 use gml::symbol::Symbol;
-use engine::{Engine, instance::Instance};
+use engine::Engine;
 
 #[wasm_bindgen]
 pub fn setup(out: Function, err: Function) {
@@ -36,15 +36,11 @@ pub fn run(source: &str) {
     };
 
     let mut engine = Engine::default();
+    let id = engine.instance.instance_create(&mut engine.world, &mut engine.motion, 0.0, 0.0, 0)
+        .unwrap_or_else(|_| panic!("object does not exist"));
+
     let mut thread = gml::vm::Thread::new();
-
-    let object_index = 0;
-    let id = 100001;
-    let persistent = false;
-    let entity = engine.world.create_instance(object_index, id);
-    engine.instance.create_instance(entity, Instance { object_index, id, persistent });
-    thread.set_self(entity);
-
+    thread.set_self(engine.world.instances[id]);
     if let Err(error) = thread.execute(&mut engine, &resources, script, &[]) {
         let location = resources.debug[&error.symbol].get_location(error.instruction as u32);
         let lines = match items[&error.symbol] {

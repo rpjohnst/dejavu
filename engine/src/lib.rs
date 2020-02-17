@@ -8,8 +8,9 @@ use gml::{self, symbol::Symbol, vm};
 
 pub mod real;
 pub mod string;
-pub mod show;
+pub mod motion;
 pub mod instance;
+pub mod show;
 pub mod data;
 
 #[derive(Default)]
@@ -17,8 +18,9 @@ pub struct Engine {
     pub world: vm::World,
     pub real: real::State,
     pub string: string::State,
-    pub show: show::State,
+    pub motion: motion::State,
     pub instance: instance::State,
+    pub show: show::State,
     pub data: data::State,
 }
 
@@ -34,14 +36,18 @@ impl string::Api for Engine {
     fn receivers(&mut self) -> () {}
 }
 
-impl show::Api for Engine {
-    fn receivers(&mut self) -> (&mut show::State,) { (&mut self.show,) }
+impl motion::Api for Engine {
+    fn receivers(&mut self) -> (&mut motion::State,) { (&mut self.motion,) }
 }
 
 impl instance::Api for Engine {
-    fn receivers(&mut self) -> (&mut instance::State, &mut vm::World) {
-        (&mut self.instance, &mut self.world)
+    fn receivers(&mut self) -> (&mut instance::State, &mut vm::World, &mut motion::State) {
+        (&mut self.instance, &mut self.world, &mut self.motion)
     }
+}
+
+impl show::Api for Engine {
+    fn receivers(&mut self) -> (&mut show::State,) { (&mut self.show,) }
 }
 
 impl data::Api for Engine {
@@ -52,8 +58,9 @@ impl Engine {
     pub fn register(items: &mut HashMap<Symbol, gml::Item<Self>>) {
         real::Api::register(items);
         string::Api::register(items);
-        show::Api::register(items);
+        motion::Api::register(items);
         instance::Api::register(items);
+        show::Api::register(items);
         data::Api::register(items);
     }
 }

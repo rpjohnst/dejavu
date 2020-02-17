@@ -1,7 +1,8 @@
 use gml::{self, vm};
+use crate::motion;
 
-#[derive(Default)]
 pub struct State {
+    pub next_id: i32,
     pub instances: vm::EntityMap<Instance>,
 }
 
@@ -11,12 +12,17 @@ pub struct Instance {
     pub persistent: bool,
 }
 
+impl Default for State {
+    fn default() -> Self {
+        State {
+            next_id: 100001,
+            instances: Default::default(),
+        }
+    }
+}
+
 #[gml::bind(Api)]
 impl State {
-    pub fn create_instance(&mut self, entity: vm::Entity, instance: Instance) {
-        self.instances.insert(entity, instance);
-    }
-
     #[gml::get(object_index)]
     pub fn get_object_index(&self, entity: vm::Entity) -> i32 {
         self.instances[entity].object_index
@@ -86,5 +92,26 @@ impl State {
         } else {
             world.objects.get(&obj).map_or(0, |entities| entities.len()) as i32
         }
+    }
+
+    #[gml::function]
+    pub fn instance_create(
+        &mut self, world: &mut vm::World, motion: &mut motion::State,
+        x: f32, y: f32, obj: i32
+    ) -> Result<i32, vm::ErrorKind> {
+        let object_index = obj;
+
+        let id = self.next_id;
+        self.next_id += 1;
+
+        let persistent = false;
+
+        let entity = world.create_instance(obj, id);
+        let instance = Instance { object_index, id, persistent };
+        self.instances.insert(entity, instance);
+        let instance = motion::Instance::from_pos(x, y);
+        motion.instances.insert(entity, instance);
+
+        Ok(id)
     }
 }
