@@ -1,4 +1,3 @@
-#![feature(optin_builtin_traits)]
 #![feature(box_patterns)]
 #![feature(box_syntax)]
 #![feature(extern_types)]

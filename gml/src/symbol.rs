@@ -1,15 +1,16 @@
 use std::{mem, ops, cmp, fmt};
+use std::marker::PhantomData;
 use std::hash::{Hash, Hasher};
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashSet;
 
-/// A symbol is an index into a thread-local interner
+/// A symbol is an index into a thread-local interner.
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Symbol(u32);
-
-impl !Send for Symbol {}
-impl !Sync for Symbol {}
+pub struct Symbol {
+    index: u32,
+    _marker: PhantomData<*const str>,
+}
 
 impl Default for Symbol {
     fn default() -> Self {
@@ -24,12 +25,11 @@ impl Symbol {
     }
 
     pub fn into_index(self) -> u32 {
-        let Symbol(index) = self;
-        index
+        self.index
     }
 
     pub fn from_index(index: u32) -> Symbol {
-        Symbol(index)
+        Symbol { index, _marker: PhantomData }
     }
 }
 
@@ -150,9 +150,10 @@ macro_rules! declare_symbols {(
 ) => {
     #[allow(non_upper_case_globals)]
     pub mod keyword {
+        use std::marker::PhantomData;
         use super::Symbol;
 
-        $(pub const $name: Symbol = Symbol($index);)*
+        $(pub const $name: Symbol = Symbol { index: $index, _marker: PhantomData };)*
     }
 
     impl Interner {
@@ -228,16 +229,16 @@ arguments:
 
 impl Symbol {
     pub fn is_keyword(&self) -> bool {
-        self.0 < 34
+        self.index < 34
     }
 
     pub fn is_argument(&self) -> bool {
-        34 <= self.0 && self.0 < 50
+        34 <= self.index && self.index < 50
     }
 
     pub fn as_argument(&self) -> Option<u32> {
         if self.is_argument() {
-            Some(self.0 - 34)
+            Some(self.index - 34)
         } else {
             None
         }
