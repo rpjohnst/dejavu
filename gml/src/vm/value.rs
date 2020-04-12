@@ -50,7 +50,7 @@ impl Value {
         }
 
         match tag & 0xf {
-            0x0 => Data::String(Symbol::from_index(payload as u32)),
+            0x0 => Data::String(unsafe { Symbol::from_raw(payload as *mut _) }),
             0x1 => Data::Array(unsafe { vm::Array::clone_from_raw(payload as *const _) }),
             _ => unreachable!("corrupt value"),
         }
@@ -95,7 +95,7 @@ impl From<f64> for Value {
 impl From<Symbol> for Value {
     fn from(value: Symbol) -> Value {
         let tag = 0xfff0 | 0x0;
-        let value = value.into_index() as u64;
+        let value = value.into_raw() as u64;
 
         Value((tag << 48) | value)
     }
