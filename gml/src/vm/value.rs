@@ -1,4 +1,5 @@
-use std::{mem, fmt};
+use std::{mem, fmt, f64};
+use std::num::NonZeroUsize;
 use std::convert::TryFrom;
 
 use crate::symbol::Symbol;
@@ -11,9 +12,8 @@ use crate::vm;
 /// payloads.
 ///
 /// To avoid ambiguity, NaNs are canonicalized. The hardware seems to use positive qNaN with a zero
-/// payload (0x7fff8_0000_0000_0000), so other types are encoded as negative NaNs, leaving 52 bits
-/// for tag and value (including the quiet bit). This could be expanded to positive NaNs at the cost
-/// of more complicated type checking.
+/// payload (0x7ff8_0000_0000_0000), so other types are encoded as negative NaNs, leaving 52 bits
+/// for tag and value (including the quiet bit- we ensure the payload is non-zero elsewhere).
 ///
 /// By limiting ourselves to 48-bit pointers (the current limit on x86_64 and AArch64, and a nice
 /// round number for sign extension), we get 4 bits for a tag. This could be expanded to 5 bits by
@@ -23,6 +23,8 @@ use crate::vm;
 /// 4-bit tag values:
 /// 0000 - string
 /// 0001 - array
+///
+/// 1000 - canonical NaN
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Value(u64);
 
@@ -42,16 +44,25 @@ pub enum Type {
 impl Value {
     pub fn data(self) -> Data {
         let Value(value) = self;
-        let tag = value >> 48;
-        let payload = value & ((1 << 48) - 1);
 
-        if tag & !0xf != 0xfff0 {
-            return Data::Real(unsafe { mem::transmute::<_, f64>(value) });
+        // This check covers finite, infinite, and positive NaN reals.
+        // Negative NaN is handled below with tagged values.
+        if value <= 0xfff0_0000_0000_0000 {
+            return Data::Real(f64::from_bits(value));
         }
 
+        let tag = value >> 48;
+        let payload = value & ((1 << 48) - 1);
         match tag & 0xf {
-            0x0 => Data::String(Symbol::from_index(payload as u32)),
+            // Safety: String values are always constructed from non-zero `Symbol`s.
+            // (The check above also excludes cases where both `tag & 0xf` and `payload` are zero.)
+            0x0 => Data::String(Symbol::from_index(unsafe {
+                NonZeroUsize::new_unchecked(payload as usize)
+            })),
+
             0x1 => Data::Array(unsafe { vm::Array::clone_from_raw(payload as *const _) }),
+
+            0x8 => Data::Real(f64::from_bits(value)),
             _ => unreachable!("corrupt value"),
         }
     }
@@ -95,7 +106,7 @@ impl From<f64> for Value {
 impl From<Symbol> for Value {
     fn from(value: Symbol) -> Value {
         let tag = 0xfff0 | 0x0;
-        let value = value.into_index() as u64;
+        let value = value.into_index().get() as u64;
 
         Value((tag << 48) | value)
     }
@@ -212,5 +223,51 @@ impl TryFrom<Value> for bool {
             vm::Data::Real(i) => Ok(vm::Thread::to_bool(i)),
             _ => Err(TryFromValueError(())),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::symbol::{keyword, Symbol};
+    use crate::vm;
+
+    #[test]
+    fn reals() {
+        let value = vm::Value::from(0.0);
+        assert!(match value.data() { vm::Data::Real(x) if x == 0.0 => true, _ => false });
+
+        let value = vm::Value::from(3.5);
+        assert!(match value.data() { vm::Data::Real(x) if x == 3.5 => true, _ => false });
+
+        let value = vm::Value::from(f64::INFINITY);
+        assert!(match value.data() {
+            vm::Data::Real(x) if x == f64::INFINITY => true,
+            _ => false
+        });
+
+        let value = vm::Value::from(f64::NEG_INFINITY);
+        assert!(match value.data() {
+            vm::Data::Real(x) if x == f64::NEG_INFINITY => true,
+            _ => false
+        });
+
+        let value = vm::Value::from(f64::NAN);
+        assert!(match value.data() { vm::Data::Real(x) if f64::is_nan(x) => true, _ => false });
+    }
+
+    #[test]
+    fn strings() {
+        let value = vm::Value::from(Symbol::intern("true"));
+        assert!(match value.data() { vm::Data::String(keyword::True) => true, _ => false });
+
+        let value = vm::Value::from(Symbol::intern("argument0"));
+        assert!(match value.data() {
+            vm::Data::String(x) if x == Symbol::from_argument(0) => true,
+            _ => false
+        });
+
+        let symbol = Symbol::intern("foo");
+        let value = vm::Value::from(symbol);
+        assert!(match value.data() { vm::Data::String(x) if x == symbol => true, _ => false });
     }
 }

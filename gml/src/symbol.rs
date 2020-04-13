@@ -1,4 +1,5 @@
-use std::{mem, ops, cmp, fmt};
+use std::{ops, cmp, fmt};
+use std::num::NonZeroUsize;
 use std::marker::PhantomData;
 use std::hash::{Hash, Hasher};
 use std::borrow::Borrow;
@@ -8,140 +9,118 @@ use std::collections::HashSet;
 /// A symbol is an index into a thread-local interner.
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Symbol {
-    index: u32,
+    // Symbols must be non-zero for use in `vm::Value`.
+    index: NonZeroUsize,
+
+    // Symbols must be `!Send` and `!Sync` to avoid crossing interners.
     _marker: PhantomData<*const str>,
 }
 
-impl Default for Symbol {
-    fn default() -> Self {
-        Symbol::intern("")
-    }
+struct Interner {
+    strings: HashSet<Entry>,
+    indices: Vec<*const str>,
+}
+
+struct Entry {
+    string: Box<str>,
+    index: NonZeroUsize,
 }
 
 impl Symbol {
-    /// Map a string to its interned symbol
+    /// Map a string to its interned symbol.
     pub fn intern(string: &str) -> Self {
-        Interner::with(|interner| interner.intern(string))
+        Interner::with(|interner| Symbol { index: interner.intern(string), _marker: PhantomData })
     }
 
-    pub fn into_index(self) -> u32 {
-        self.index
-    }
+    pub fn into_index(self) -> NonZeroUsize { self.index }
 
-    pub fn from_index(index: u32) -> Symbol {
-        Symbol { index, _marker: PhantomData }
-    }
+    pub fn from_index(index: NonZeroUsize) -> Symbol { Symbol { index, _marker: PhantomData } }
+}
+
+impl Default for Symbol {
+    fn default() -> Self { Symbol::intern("") }
 }
 
 impl ops::Deref for Symbol {
     type Target = str;
 
     fn deref(&self) -> &str {
-        Interner::with(|interner| unsafe { mem::transmute(interner.get(*self)) })
+        // Safety: `Symbol` is not `Send` or `Sync`, and is always allocated from a thread-local
+        // `Interner`. This ensures the string will not be freed until the thread dies and takes
+        // all associated `Symbol`s with it.
+        unsafe { &*Interner::with(|interner| interner.get(self.index)) }
     }
 }
 
 impl Borrow<str> for Symbol {
-    fn borrow(&self) -> &str {
-        self
-    }
-}
-
-impl cmp::PartialOrd for Symbol {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        Some(Symbol::cmp(self, other))
-    }
+    fn borrow(&self) -> &str { self }
 }
 
 impl cmp::Ord for Symbol {
-    fn cmp(&self, other: &Self) -> cmp::Ordering {
-        let a: &str = self;
-        let b: &str = other;
-        str::cmp(a, b)
-    }
+    fn cmp(&self, other: &Self) -> cmp::Ordering { str::cmp(self, other) }
+}
+
+impl cmp::PartialOrd for Symbol {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> { Some(Self::cmp(self, other)) }
 }
 
 impl fmt::Debug for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}({})", self, self.into_index())
+        <str as fmt::Debug>::fmt(self, f)?;
+        f.write_str("@")?;
+        <NonZeroUsize as fmt::Debug>::fmt(&self.index, f)?;
+        Ok(())
     }
 }
 
 impl fmt::Display for Symbol {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let string: &str = self;
-        write!(f, "{}", string)
-    }
-}
-
-#[derive(Default)]
-struct Interner {
-    strings: HashSet<Entry>,
-    ids: Vec<*const str>,
-}
-
-struct Entry {
-    string: Box<str>,
-    id: u32,
-}
-
-impl cmp::PartialEq for Entry {
-    fn eq(&self, other: &Self) -> bool {
-        let a: &str = self.borrow();
-        let b: &str = other.borrow();
-        a == b
-    }
-}
-
-impl cmp::Eq for Entry {}
-
-impl Hash for Entry {
-    fn hash<H>(&self, state: &mut H) where H: Hasher {
-        let a: &str = self.borrow();
-        a.hash(state)
-    }
-}
-
-impl Borrow<str> for Entry {
-    fn borrow(&self) -> &str {
-        &self.string
-    }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { <str as fmt::Display>::fmt(self, f) }
 }
 
 impl Interner {
-    fn fill(strings: &[&str]) -> Self {
-        let mut interner = Interner::default();
-        for &string in strings {
-            interner.intern(string);
-        }
-        interner
-    }
-
-    fn intern(&mut self, string: &str) -> Symbol {
+    fn intern(&mut self, string: &str) -> NonZeroUsize {
         if let Some(entry) = self.strings.get(string) {
-            return Symbol::from_index(entry.id);
+            return entry.index;
         }
 
         let string = String::from(string).into_boxed_str();
         let data = &*string as *const str;
-        let id = self.ids.len() as u32;
-        self.strings.insert(Entry { string, id });
-        self.ids.push(data);
+        // Safety: `self.indices` always has at least one entry.
+        let index = unsafe { NonZeroUsize::new_unchecked(self.indices.len()) };
+        self.strings.insert(Entry { string, index });
+        self.indices.push(data);
 
-        Symbol::from_index(id)
+        index
     }
 
-    fn get(&self, symbol: Symbol) -> &str {
-        let index = symbol.into_index();
-        unsafe { &*self.ids[index as usize] }
+    fn get(&self, index: NonZeroUsize) -> *const str {
+        self.indices[index.get()]
     }
 
     fn with<T, F: FnOnce(&mut Interner) -> T>(f: F) -> T {
-        thread_local!(static INTERNER: RefCell<Interner> = {
-            RefCell::new(Interner::new())
-        });
+        thread_local!(static INTERNER: RefCell<Interner> = RefCell::new(Interner::with_keywords()));
         INTERNER.with(|interner| f(&mut *interner.borrow_mut()))
     }
+}
+
+impl Default for Interner {
+    fn default() -> Self {
+        Interner { strings: HashSet::default(), indices: vec!["UNUSED"] }
+    }
+}
+
+impl Borrow<str> for Entry {
+    fn borrow(&self) -> &str { &self.string }
+}
+
+impl cmp::Eq for Entry {}
+
+impl cmp::PartialEq for Entry {
+    fn eq(&self, other: &Self) -> bool { <str as PartialEq>::eq(self.borrow(), other.borrow()) }
+}
+
+impl Hash for Entry {
+    fn hash<H: Hasher>(&self, state: &mut H) { str::hash(self.borrow(), state) }
 }
 
 macro_rules! declare_symbols {(
@@ -150,118 +129,138 @@ macro_rules! declare_symbols {(
 ) => {
     #[allow(non_upper_case_globals)]
     pub mod keyword {
+        use std::num::NonZeroUsize;
         use std::marker::PhantomData;
         use super::Symbol;
 
-        $(pub const $name: Symbol = Symbol { index: $index, _marker: PhantomData };)*
+        // Safety: The indices below are all non-zero.
+        $(pub const $name: Symbol = unsafe {
+            let index = NonZeroUsize::new_unchecked($index);
+            Symbol { index, _marker: PhantomData }
+        };)*
     }
 
     impl Interner {
-        fn new() -> Self {
-            Interner::fill(&[
-                $($string,)*
-                $(concat!("argument", $argument_index),)*
-            ])
+        fn with_keywords() -> Self {
+            let mut interner = Self::default();
+
+            $(interner.intern($string);)*
+            $(interner.intern(concat!("argument", $argument_index));)*
+
+            interner
         }
     }
 }}
 
 declare_symbols! {
 keywords:
-    (0, True, "true")
-    (1, False, "false")
+    (1, True, "true")
+    (2, False, "false")
 
-    (2, Self_, "self")
-    (3, Other, "other")
-    (4, All, "all")
-    (5, NoOne, "noone")
-    (6, Global, "global")
-    (7, Local, "local")
+    (3, Self_, "self")
+    (4, Other, "other")
+    (5, All, "all")
+    (6, NoOne, "noone")
+    (7, Global, "global")
+    (8, Local, "local")
 
-    (8, Var, "var")
-    (9, GlobalVar, "globalvar")
+    (9, Var, "var")
+    (10, GlobalVar, "globalvar")
 
-    (10, If, "if")
-    (11, Then, "then")
-    (12, Else, "else")
-    (13, Repeat, "repeat")
-    (14, While, "while")
-    (15, Do, "do")
-    (16, Until, "until")
-    (17, For, "for")
-    (18, With, "with")
-    (19, Switch, "switch")
-    (20, Case, "case")
-    (21, Default, "default")
-    (22, Break, "break")
-    (23, Continue, "continue")
-    (24, Exit, "exit")
-    (25, Return, "return")
+    (11, If, "if")
+    (12, Then, "then")
+    (13, Else, "else")
+    (14, Repeat, "repeat")
+    (15, While, "while")
+    (16, Do, "do")
+    (17, Until, "until")
+    (18, For, "for")
+    (19, With, "with")
+    (20, Switch, "switch")
+    (21, Case, "case")
+    (22, Default, "default")
+    (23, Break, "break")
+    (24, Continue, "continue")
+    (25, Exit, "exit")
+    (26, Return, "return")
 
-    (26, Begin, "begin")
-    (27, End, "end")
+    (27, Begin, "begin")
+    (28, End, "end")
 
-    (28, Not, "not")
-    (29, Div, "div")
-    (30, Mod, "mod")
-    (31, And, "and")
-    (32, Or, "or")
-    (33, Xor, "xor")
+    (29, Not, "not")
+    (30, Div, "div")
+    (31, Mod, "mod")
+    (32, And, "and")
+    (33, Or, "or")
+    (34, Xor, "xor")
 
 arguments:
-    (34, 0)
-    (35, 1)
-    (36, 2)
-    (37, 3)
-    (38, 4)
-    (39, 5)
-    (40, 6)
-    (41, 7)
-    (42, 8)
-    (43, 9)
-    (44, 10)
-    (45, 11)
-    (46, 12)
-    (47, 13)
-    (48, 14)
-    (49, 15)
+    (35, 0)
+    (36, 1)
+    (37, 2)
+    (38, 3)
+    (39, 4)
+    (40, 5)
+    (41, 6)
+    (42, 7)
+    (43, 8)
+    (44, 9)
+    (45, 10)
+    (46, 11)
+    (47, 12)
+    (48, 13)
+    (49, 14)
+    (50, 15)
 }
 
 impl Symbol {
-    pub fn is_keyword(&self) -> bool {
-        self.index < 34
-    }
+    pub fn is_keyword(&self) -> bool { self.index.get() < 35 }
 
-    pub fn is_argument(&self) -> bool {
-        34 <= self.index && self.index < 50
-    }
+    pub fn is_argument(&self) -> bool { 35 <= self.index.get() && self.index.get() < 51 }
 
     pub fn as_argument(&self) -> Option<u32> {
-        if self.is_argument() {
-            Some(self.index - 34)
-        } else {
-            None
-        }
+        if self.is_argument() { Some(self.index.get() as u32 - 35) } else { None }
     }
 
     pub fn from_argument(argument: u32) -> Symbol {
         assert!(argument < 16);
-        Symbol::from_index(34 + argument)
+        let index = NonZeroUsize::new(35 + argument as usize).unwrap();
+        Symbol::from_index(index)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{Symbol, keyword};
 
     #[test]
-    fn intern() {
-        let mut i = Interner::default();
+    fn keywords() {
+        let empty = Symbol::default();
+        assert_eq!(empty, empty);
 
-        assert_eq!(i.intern("dog"), Symbol::from_index(0));
-        assert_eq!(i.intern("dog"), Symbol::from_index(0));
-        assert_eq!(i.intern("cat"), Symbol::from_index(1));
-        assert_eq!(i.intern("cat"), Symbol::from_index(1));
-        assert_eq!(i.intern("dog"), Symbol::from_index(0));
+        let keyword = Symbol::intern("other");
+        assert_eq!(keyword, keyword::Other);
+
+        let arg = Symbol::intern("argument3");
+        assert_eq!(arg, Symbol::from_argument(3));
+    }
+
+    #[test]
+    fn alloc() {
+        let dog1 = Symbol::intern("dog");
+        assert_eq!(&*dog1, "dog");
+
+        let dog2 = Symbol::intern("dog");
+        assert_eq!(&*dog2, "dog");
+        assert_eq!(dog1, dog2);
+
+        let cat1 = Symbol::intern("cat");
+        assert_eq!(&*cat1, "cat");
+
+        let cat2 = Symbol::intern("cat");
+        assert_eq!(&*cat2, "cat");
+        assert_eq!(cat1, cat2);
+
+        assert_ne!(dog1, cat1);
     }
 }
