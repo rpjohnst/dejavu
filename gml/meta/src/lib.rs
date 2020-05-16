@@ -212,7 +212,7 @@ impl Function {
         let mut parameters = Vec::new();
         let mut rest = None;
 
-        let value = parse_quote!(vm::Value);
+        let value = parse_quote!(vm::ValueRef);
         let values = parse_quote!(&[vm::Value]);
         while let Some(&param) = inputs.peek() {
             match *param {
@@ -267,7 +267,7 @@ impl Property {
             inputs.next();
         }
 
-        let value_ty = parse_quote!(vm::Value);
+        let value_ty = parse_quote!(vm::ValueRef);
         while let Some(&param) = inputs.peek() {
             match *param {
                 FnArg::Typed(PatType { ref ty, .. }) if *ty == value_ty =>
@@ -371,8 +371,8 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
     });
     let api_arguments = bindings.functions.iter().map(|function| {
         let api_arguments = function.parameters.iter().enumerate().map(|(i, &param)| match param {
-            Parameter::Direct => quote! { arguments[#i] },
-            Parameter::Convert => quote! { arguments[#i].try_into().unwrap_or_default() },
+            Parameter::Direct => quote! { arguments[#i].borrow() },
+            Parameter::Convert => quote! { arguments[#i].borrow().try_into().unwrap_or_default() },
         });
         quote! { #(#api_arguments,)* }
     });
@@ -465,7 +465,7 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
                 value.into()
             })*
 
-            #(fn #set(&mut self, entity: vm::Entity, index: usize, value: vm::Value) {
+            #(fn #set(&mut self, entity: vm::Entity, index: usize, value: vm::ValueRef) {
                 #![allow(unused_imports, unused)]
                 use std::convert::TryInto;
 

@@ -739,7 +739,12 @@ impl<'p, 'e> Codegen<'p, 'e> {
             return self.emit_real(0.0, symbol_span.low);
         }
 
-        self.emit_call(op, symbol, args, symbol_span.low)
+        let array = self.emit_call(op, symbol, args, symbol_span.low);
+
+        // TODO: this only happens pre-gms
+        let value = self.emit_unary(ssa::Opcode::ToScalar, array, symbol_span.low);
+        self.emit_unary(ssa::Opcode::Release, array, symbol_span.low);
+        value
     }
 
     fn emit_place(&mut self, expression: &(ast::Expr, Span)) -> Result<Place, PlaceError> {
@@ -955,7 +960,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
         let value = self.emit_binary(ssa::Opcode::LoadIndex, [row, j], location);
 
         // TODO: this only happens pre-gms
-        self.emit_unary(ssa::Opcode::Release, value, location);
+        self.emit_unary(ssa::Opcode::Release, array, location);
         value
     }
 

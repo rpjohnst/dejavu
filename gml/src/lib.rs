@@ -1,6 +1,7 @@
 #![feature(box_patterns)]
 #![feature(box_syntax)]
 #![feature(extern_types)]
+#![feature(untagged_unions)]
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 #[macro_use]

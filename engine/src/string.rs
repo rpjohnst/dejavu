@@ -19,8 +19,8 @@ impl State {
     }
 
     #[gml::function]
-    pub fn real(str: vm::Value) -> f64 {
-        match str.data() {
+    pub fn real(str: vm::ValueRef) -> f64 {
+        match str.decode() {
             vm::Data::Real(real) => real,
             vm::Data::String(str) => str.parse().unwrap_or(0.0),
             _ => 0.0,
@@ -28,8 +28,8 @@ impl State {
     }
 
     #[gml::function]
-    pub fn string(val: vm::Value) -> Symbol {
-        match val.data() {
+    pub fn string(val: vm::ValueRef) -> Symbol {
+        match val.decode() {
             vm::Data::Real(val) => Symbol::intern(&format!("{}", val)),
             vm::Data::String(val) => val,
             _ => Symbol::default(),
@@ -37,10 +37,10 @@ impl State {
     }
 
     #[gml::function]
-    pub fn string_format(val: vm::Value, tot: u32, dec: u32) -> Symbol {
+    pub fn string_format(val: vm::ValueRef, tot: u32, dec: u32) -> Symbol {
         let tot = tot as usize;
         let dec = dec as usize;
-        match val.data() {
+        match val.decode() {
             vm::Data::Real(val) => Symbol::intern(&format!("{:1$.2$}", val, tot, dec)),
             vm::Data::String(val) => val,
             _ => Symbol::default(),

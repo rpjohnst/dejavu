@@ -5,8 +5,8 @@ use crate::symbol::Symbol;
 pub use crate::vm::interpreter::{Thread, Error, ErrorKind, SELF, OTHER, ALL, NOONE, GLOBAL};
 pub use crate::vm::world::World;
 pub use crate::vm::entity_map::{Entity, EntityAllocator, EntityMap};
-pub use crate::vm::value::{Type, Value, Data};
-pub use crate::vm::array::{Array, Row};
+pub use crate::vm::value::{Value, ValueRef, Data, to_i32, to_u32, to_bool};
+pub use crate::vm::array::{Array, ArrayRef};
 
 pub mod code;
 pub mod debug;
@@ -27,7 +27,7 @@ pub struct Resources<E: ?Sized> {
 
 pub type ApiFunction<E> = fn(&mut E, &Resources<E>, Entity, &[Value]) -> Result<Value, ErrorKind>;
 pub type GetFunction<E> = fn(&mut E, Entity, usize) -> Value;
-pub type SetFunction<E> = fn(&mut E, Entity, usize, Value);
+pub type SetFunction<E> = fn(&mut E, Entity, usize, ValueRef);
 
 impl<E: ?Sized> Default for Resources<E> {
     fn default() -> Self {
