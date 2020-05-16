@@ -63,7 +63,7 @@ fn main() {
 
     let resources = gml::build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
-    let mut thread = gml::vm::Thread::new();
+    let mut thread = gml::vm::Thread::default();
 
     let id = engine.instance.instance_create(&mut engine.world, &mut engine.motion, 0.0, 0.0, 0)
         .unwrap_or_else(|_| panic!("object does not exist"));
@@ -72,7 +72,7 @@ fn main() {
     engine.instance.instance_create(&mut engine.world, &mut engine.motion, 0.0, 0.0, 1)
         .unwrap_or_else(|_| panic!("object does not exist"));
 
-    if let Err(error) = thread.execute(&mut engine, &resources, main, &[]) {
+    if let Err(error) = thread.execute(&mut engine, &resources, main, vec![]) {
         let location = resources.debug[&error.symbol].get_location(error.instruction as u32);
         let lines = match items[&error.symbol] {
             gml::Item::Script(source) => Lines::from_script(source),

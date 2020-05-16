@@ -15,16 +15,16 @@ fn arguments() -> Result<(), vm::Error> {
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
-    let mut thread = vm::Thread::new();
+    let mut thread = vm::Thread::default();
 
-    let arguments = [vm::Value::from(3), vm::Value::from(5)];
-    assert_eq!(thread.execute(&mut engine, &resources, select, &arguments)?, vm::Value::from(8));
+    let arguments = vec![vm::Value::from(3), vm::Value::from(5)];
+    assert_eq!(thread.execute(&mut engine, &resources, select, arguments)?, vm::Value::from(8));
 
     let a = Symbol::intern("a");
     let b = Symbol::intern("b");
     let ab = Symbol::intern("ab");
-    let arguments = [vm::Value::from(a), vm::Value::from(b)];
-    assert_eq!(thread.execute(&mut engine, &resources, select, &arguments)?, vm::Value::from(ab));
+    let arguments = vec![vm::Value::from(a), vm::Value::from(b)];
+    assert_eq!(thread.execute(&mut engine, &resources, select, arguments)?, vm::Value::from(ab));
 
     Ok(())
 }
@@ -45,12 +45,12 @@ fn member() -> Result<(), vm::Error> {
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
-    let mut thread = vm::Thread::new();
+    let mut thread = vm::Thread::default();
 
     let entity = engine.world.create_instance(0, 100001);
     thread.set_self(entity);
 
-    assert_eq!(thread.execute(&mut engine, &resources, member, &[])?, vm::Value::from(8));
+    assert_eq!(thread.execute(&mut engine, &resources, member, vec![])?, vm::Value::from(8));
     Ok(())
 }
 
@@ -84,13 +84,13 @@ fn builtin() -> Result<(), vm::Error> {
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
-    let mut thread = vm::Thread::new();
+    let mut thread = vm::Thread::default();
 
     let entity = engine.world.create_instance(0, 100001);
     engine.instances.insert(entity, Instance::default());
     thread.set_self(entity);
 
-    assert_eq!(thread.execute(&mut engine, &resources, builtin, &[])?, vm::Value::from(34));
+    assert_eq!(thread.execute(&mut engine, &resources, builtin, vec![])?, vm::Value::from(34));
 
     let instance = &engine.instances[&entity];
     assert_eq!(instance.scalar, 3.0);
@@ -118,12 +118,12 @@ fn global() -> Result<(), vm::Error> {
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
-    let mut thread = vm::Thread::new();
+    let mut thread = vm::Thread::default();
 
     let entity = engine.world.create_instance(0, 100001);
     thread.set_self(entity);
 
-    assert_eq!(thread.execute(&mut engine, &resources, global, &[])?, vm::Value::from(8));
+    assert_eq!(thread.execute(&mut engine, &resources, global, vec![])?, vm::Value::from(8));
     Ok(())
 }
 
@@ -152,13 +152,13 @@ fn with() -> Result<(), vm::Error> {
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
-    let mut thread = vm::Thread::new();
+    let mut thread = vm::Thread::default();
 
     let a = engine.world.create_instance(0, 100001);
     engine.world.create_instance(0, 100002);
     thread.set_self(a);
 
-    assert_eq!(thread.execute(&mut engine, &resources, with, &[])?, vm::Value::from(24.0));
+    assert_eq!(thread.execute(&mut engine, &resources, with, vec![])?, vm::Value::from(24.0));
     Ok(())
 }
 
@@ -180,9 +180,9 @@ fn array() -> Result<(), vm::Error> {
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
-    let mut thread = vm::Thread::new();
+    let mut thread = vm::Thread::default();
 
-    assert_eq!(thread.execute(&mut engine, &resources, array, &[])?, vm::Value::from(50));
+    assert_eq!(thread.execute(&mut engine, &resources, array, vec![])?, vm::Value::from(50));
     Ok(())
 }
 
@@ -241,9 +241,9 @@ fn for_loop() -> Result<(), vm::Error> {
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
-    let mut thread = vm::Thread::new();
+    let mut thread = vm::Thread::default();
 
-    assert_eq!(thread.execute(&mut engine, &resources, factorial, &[])?, vm::Value::from(24));
+    assert_eq!(thread.execute(&mut engine, &resources, factorial, vec![])?, vm::Value::from(24));
     Ok(())
 }
 
@@ -269,19 +269,19 @@ fn switch() -> Result<(), vm::Error> {
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
-    let mut thread = vm::Thread::new();
+    let mut thread = vm::Thread::default();
 
-    let arguments = [vm::Value::from(3)];
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(5));
+    let arguments = vec![vm::Value::from(3)];
+    assert_eq!(thread.execute(&mut engine, &resources, switch, arguments)?, vm::Value::from(5));
 
-    let arguments = [vm::Value::from(8)];
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(13));
+    let arguments = vec![vm::Value::from(8)];
+    assert_eq!(thread.execute(&mut engine, &resources, switch, arguments)?, vm::Value::from(13));
 
-    let arguments = [vm::Value::from(21)];
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(21));
+    let arguments = vec![vm::Value::from(21)];
+    assert_eq!(thread.execute(&mut engine, &resources, switch, arguments)?, vm::Value::from(21));
 
-    let arguments = [vm::Value::from(34)];
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(21));
+    let arguments = vec![vm::Value::from(34)];
+    assert_eq!(thread.execute(&mut engine, &resources, switch, arguments)?, vm::Value::from(21));
 
     Ok(())
 }
@@ -322,19 +322,19 @@ fn switch_fallthrough() -> Result<(), vm::Error> {
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
-    let mut thread = vm::Thread::new();
+    let mut thread = vm::Thread::default();
 
-    let arguments = [vm::Value::from(0)];
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(0));
+    let arguments = vec![vm::Value::from(0)];
+    assert_eq!(thread.execute(&mut engine, &resources, switch, arguments)?, vm::Value::from(0));
 
-    let arguments = [vm::Value::from(1)];
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(8));
+    let arguments = vec![vm::Value::from(1)];
+    assert_eq!(thread.execute(&mut engine, &resources, switch, arguments)?, vm::Value::from(8));
 
-    let arguments = [vm::Value::from(2)];
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(5));
+    let arguments = vec![vm::Value::from(2)];
+    assert_eq!(thread.execute(&mut engine, &resources, switch, arguments)?, vm::Value::from(5));
 
-    let arguments = [vm::Value::from(3)];
-    assert_eq!(thread.execute(&mut engine, &resources, switch, &arguments)?, vm::Value::from(5));
+    let arguments = vec![vm::Value::from(3)];
+    assert_eq!(thread.execute(&mut engine, &resources, switch, arguments)?, vm::Value::from(5));
 
     Ok(())
 }
@@ -352,9 +352,9 @@ fn call_script() -> Result<(), vm::Error> {
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
-    let mut thread = vm::Thread::new();
+    let mut thread = vm::Thread::default();
 
-    assert_eq!(thread.execute(&mut engine, &resources, call, &[])?, vm::Value::from(8));
+    assert_eq!(thread.execute(&mut engine, &resources, call, vec![])?, vm::Value::from(8));
     Ok(())
 }
 
@@ -374,10 +374,10 @@ fn recurse() -> Result<(), vm::Error> {
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
-    let mut thread = vm::Thread::new();
+    let mut thread = vm::Thread::default();
 
-    let arguments = [vm::Value::from(6)];
-    assert_eq!(thread.execute(&mut engine, &resources, fibonacci, &arguments)?, vm::Value::from(13));
+    let arguments = vec![vm::Value::from(6)];
+    assert_eq!(thread.execute(&mut engine, &resources, fibonacci, arguments)?, vm::Value::from(13));
     Ok(())
 }
 
@@ -402,9 +402,9 @@ fn ffi() -> Result<(), vm::Error> {
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
-    let mut thread = vm::Thread::new();
+    let mut thread = vm::Thread::default();
 
-    assert_eq!(thread.execute(&mut engine, &resources, caller, &[])?, vm::Value::from(16.0));
+    assert_eq!(thread.execute(&mut engine, &resources, caller, vec![])?, vm::Value::from(16.0));
     Ok(())
 }
 
@@ -426,7 +426,7 @@ impl Engine {
     fn native_add(
         &mut self, _resources: &vm::Resources<Engine>, _entity: vm::Entity, arguments: &[vm::Value]
     ) -> Result<vm::Value, vm::ErrorKind> {
-        let value = match (arguments[0].data(), arguments[1].data()) {
+        let value = match (arguments[0].borrow().decode(), arguments[1].borrow().decode()) {
             (vm::Data::Real(a), vm::Data::Real(b)) => vm::Value::from(a + b),
             _ => vm::Value::from(0),
         };
@@ -437,14 +437,14 @@ impl Engine {
     fn get_global_scalar(&mut self, _: vm::Entity, _: usize) -> vm::Value {
         vm::Value::from(self.global_scalar)
     }
-    fn set_global_scalar(&mut self, _: vm::Entity, _: usize, value: vm::Value) {
+    fn set_global_scalar(&mut self, _: vm::Entity, _: usize, value: vm::ValueRef) {
         self.global_scalar = i32::try_from(value).unwrap_or(0);
     }
 
     fn get_global_array(&mut self, _: vm::Entity, i: usize) -> vm::Value {
         vm::Value::from(self.global_array[i] as f64)
     }
-    fn set_global_array(&mut self, _: vm::Entity, i: usize, value: vm::Value) {
+    fn set_global_array(&mut self, _: vm::Entity, i: usize, value: vm::ValueRef) {
         self.global_array[i] = f64::try_from(value).unwrap_or(0.0) as f32;
     }
 }
@@ -460,7 +460,7 @@ impl Instance {
         let instance = &engine.instances[&entity];
         vm::Value::from(instance.scalar as f64)
     }
-    pub fn set_scalar(engine: &mut Engine, entity: vm::Entity, _: usize, value: vm::Value) {
+    pub fn set_scalar(engine: &mut Engine, entity: vm::Entity, _: usize, value: vm::ValueRef) {
         let instance = engine.instances.get_mut(&entity).unwrap();
         instance.scalar = f64::try_from(value).unwrap_or(0.0) as f32;
     }
@@ -469,7 +469,7 @@ impl Instance {
         let instance = &engine.instances[&entity];
         vm::Value::from(instance.array[i])
     }
-    pub fn set_array(engine: &mut Engine, entity: vm::Entity, i: usize, value: vm::Value) {
+    pub fn set_array(engine: &mut Engine, entity: vm::Entity, i: usize, value: vm::ValueRef) {
         let instance = engine.instances.get_mut(&entity).unwrap();
         instance.array[i] = i32::try_from(value).unwrap_or(0);
     }

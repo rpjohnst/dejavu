@@ -81,7 +81,7 @@ impl State {
 
     #[gml::function]
     pub fn choose(&mut self, vals: &[vm::Value]) -> vm::Value {
-        vals[self.irandom(vals.len() as u32 - 1) as usize]
+        vals[self.irandom(vals.len() as u32 - 1) as usize].clone()
     }
 
     #[gml::function]
@@ -160,12 +160,13 @@ impl State {
     #[gml::function]
     pub fn min(vals: &[vm::Value]) -> vm::Value {
         let (mut min, rest) = match vals.split_first() {
-            None => return vm::Value::from(0.0),
-            Some((&first, rest)) => (first, rest),
+            None => return vm::Value::default(),
+            Some((first, rest)) => (first.borrow(), rest),
         };
-        for &val in rest {
+        for val in rest {
+            let val = val.borrow();
             // GM treats `val` as the same type as `min` here, regardless of its actual type.
-            match min.data() {
+            match min.decode() {
                 vm::Data::Real(real) => if f64::try_from(val).unwrap_or_default() < real {
                     min = val;
                 }
@@ -175,18 +176,19 @@ impl State {
                 _ => {}
             }
         }
-        min
+        min.clone()
     }
 
     #[gml::function]
     pub fn max(vals: &[vm::Value]) -> vm::Value {
         let (mut max, rest) = match vals.split_first() {
-            None => return vm::Value::from(0.0),
-            Some((&first, rest)) => (first, rest),
+            None => return vm::Value::default(),
+            Some((first, rest)) => (first.borrow(), rest),
         };
-        for &val in rest {
+        for val in rest {
+            let val = val.borrow();
             // GM treats `val` as the same type as `max` here, regardless of its actual type.
-            match max.data() {
+            match max.decode() {
                 vm::Data::Real(real) => if f64::try_from(val).unwrap_or_default() > real {
                     max = val;
                 }
@@ -196,12 +198,14 @@ impl State {
                 _ => {}
             }
         }
-        max
+        max.clone()
     }
 
     #[gml::function]
     pub fn mean(vals: &[vm::Value]) -> f64 {
-        let sum: f64 = vals.iter().map(|&val| f64::try_from(val).unwrap_or_default()).sum();
+        let sum: f64 = vals.iter()
+            .map(|val| f64::try_from(val.borrow()).unwrap_or_default())
+            .sum();
         if vals.len() > 0 {
             sum / vals.len() as f64
         } else {
@@ -212,8 +216,9 @@ impl State {
     #[gml::function]
     pub fn median(vals: &[vm::Value]) -> f64 {
         // Because vm::Value is NaN-boxed, sorting shouldn't encounter NaNs.
+        // TODO: this may no longer be true in GMS
         let mut vals: Vec<_> = vals.iter()
-            .map(|&val| f64::try_from(val).unwrap_or_default())
+            .map(|val| f64::try_from(val.borrow()).unwrap_or_default())
             .collect();
         vals.sort_by(|a, b| f64::partial_cmp(a, b).unwrap());
         if vals.len() > 0 {
@@ -248,13 +253,13 @@ impl State {
     }
 
     #[gml::function]
-    pub fn is_real(x: vm::Value) -> bool {
-        x.data().ty() == vm::Type::Real
+    pub fn is_real(x: vm::ValueRef) -> bool {
+        match x.decode() { vm::Data::Real(_) => true, _ => false }
     }
 
     #[gml::function]
-    pub fn is_string(x: vm::Value) -> bool {
-        x.data().ty() == vm::Type::String
+    pub fn is_string(x: vm::ValueRef) -> bool {
+        match x.decode() { vm::Data::String(_) => true, _ => false }
     }
 }
 

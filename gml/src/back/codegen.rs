@@ -282,7 +282,7 @@ impl Codegen {
 
     fn emit_constant(&mut self, value: vm::Value) -> usize {
         let Self { ref mut constants, ref mut function, .. } = *self;
-        *constants.entry(value).or_insert_with(|| {
+        *constants.entry(value.clone()).or_insert_with(|| {
             let index = function.constants.len();
             function.constants.push(value);
             index

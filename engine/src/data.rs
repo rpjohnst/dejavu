@@ -21,7 +21,8 @@ type List = Vec<vm::Value>;
 
 type Map = BTreeMap<MapKey, vm::Value>;
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, Eq, PartialEq)]
+#[repr(transparent)]
 struct MapKey(vm::Value);
 
 impl cmp::PartialOrd for MapKey {
@@ -32,17 +33,18 @@ impl cmp::PartialOrd for MapKey {
 
 impl cmp::Ord for MapKey {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        let MapKey(a) = *self;
-        let MapKey(b) = *other;
-        match (a.data(), b.data()) {
+        let MapKey(ref a) = *self;
+        let MapKey(ref b) = *other;
+        match (a.borrow().decode(), b.borrow().decode()) {
             // This unwrap is fine because vm::Value should never be NaN.
+            // TODO: this may no longer be true in GMS
             (vm::Data::Real(a), vm::Data::Real(b)) => f64::partial_cmp(&a, &b).unwrap(),
             (vm::Data::Real(_), vm::Data::Array(_)) => cmp::Ordering::Less,
             (vm::Data::Real(_), vm::Data::String(_)) => cmp::Ordering::Less,
 
             (vm::Data::Array(_), vm::Data::Real(_)) => cmp::Ordering::Greater,
             (vm::Data::Array(a), vm::Data::Array(b)) => {
-                <*const _>::cmp(&(a.as_ref() as *const _), &(b.as_ref() as *const _))
+                <*const _>::cmp(&a.as_raw(), &b.as_raw())
             }
             (vm::Data::Array(_), vm::Data::String(_)) => cmp::Ordering::Less,
 
@@ -50,6 +52,13 @@ impl cmp::Ord for MapKey {
             (vm::Data::String(_), vm::Data::Array(_)) => cmp::Ordering::Greater,
             (vm::Data::String(a), vm::Data::String(b)) => Symbol::cmp(&a, &b),
         }
+    }
+}
+
+impl MapKey {
+    fn borrowed<'a>(value: &'a vm::ValueRef<'_>) -> &'a MapKey {
+        // Safety: `MapKey` is `#[repr(transparent)]` and contains a single `vm::Value`.
+        unsafe { mem::transmute::<&vm::Value, &MapKey>(value.as_ref()) }
     }
 }
 
@@ -101,7 +110,7 @@ impl fmt::Display for Error {
             Error::Resource(kind, id) => {
                 write!(f, "the {} with id {} does not exist", kind, id)?;
             }
-            Error::KeyExists(key) => {
+            Error::KeyExists(ref key) => {
                 write!(f, "an entry with key {:?} already exists in the map", key)?;
             }
         }
@@ -173,10 +182,10 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_list_find_index(&mut self, id: i32, val: vm::Value) -> Result<i32, vm::ErrorKind> {
+    pub fn ds_list_find_index(&mut self, id: i32, val: vm::ValueRef) -> Result<i32, vm::ErrorKind> {
         let list = self.lists.get(&id).ok_or(Error::Resource(Type::List, id))?;
         let pos = list.iter()
-            .position(move |&e| e == val)
+            .position(move |e| e.borrow() == val)
             .map_or(-1, |i| i as i32);
         Ok(pos)
     }
@@ -187,31 +196,31 @@ impl State {
         if pos < 0 || list.len() <= pos as usize {
             return Ok(vm::Value::from(0));
         }
-        let val = list.get(pos as usize).map_or(vm::Value::from(0), |&val| val);
+        let val = list.get(pos as usize).map_or(vm::Value::from(0), |val| val.clone());
         Ok(val)
     }
 
     #[gml::function]
-    pub fn ds_list_insert(&mut self, id: i32, pos: i32, val: vm::Value) ->
+    pub fn ds_list_insert(&mut self, id: i32, pos: i32, val: vm::ValueRef) ->
         Result<(), vm::ErrorKind>
     {
         let list = self.lists.get_mut(&id).ok_or(Error::Resource(Type::List, id))?;
         if pos < 0 || list.len() < pos as usize {
             return Ok(());
         }
-        list.insert(pos as usize, val);
+        list.insert(pos as usize, val.clone());
         Ok(())
     }
 
     #[gml::function]
-    pub fn ds_list_replace(&mut self, id: i32, pos: i32, val: vm::Value) ->
+    pub fn ds_list_replace(&mut self, id: i32, pos: i32, val: vm::ValueRef) ->
         Result<(), vm::ErrorKind>
     {
         let list = self.lists.get_mut(&id).ok_or(Error::Resource(Type::List, id))?;
         if pos < 0 || list.len() <= pos as usize {
             return Ok(());
         }
-        list[pos as usize] = val;
+        list[pos as usize] = val.clone();
         Ok(())
     }
 
@@ -258,73 +267,73 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_map_add(&mut self, id: i32, key: vm::Value, val: vm::Value) ->
+    pub fn ds_map_add(&mut self, id: i32, key: vm::ValueRef, val: vm::ValueRef) ->
         Result<(), vm::ErrorKind>
     {
         use self::btree_map::Entry;
         let map = self.maps.get_mut(&id).ok_or(Error::Resource(Type::Map, id))?;
-        let entry = match map.entry(MapKey(key)) {
-            Entry::Occupied(_) => Err(Error::KeyExists(key))?,
+        let entry = match map.entry(MapKey(key.clone())) {
+            Entry::Occupied(_) => Err(Error::KeyExists(key.clone()))?,
             Entry::Vacant(entry) => entry,
         };
-        entry.insert(val);
+        entry.insert(val.clone());
         Ok(())
     }
 
     #[gml::function]
-    pub fn ds_map_replace(&mut self, id: i32, key: vm::Value, val: vm::Value) ->
+    pub fn ds_map_replace(&mut self, id: i32, key: vm::ValueRef, val: vm::ValueRef) ->
         Result<(), vm::ErrorKind>
     {
         use self::btree_map::Entry;
         let map = self.maps.get_mut(&id).ok_or(Error::Resource(Type::Map, id))?;
-        let mut entry = match map.entry(MapKey(key)) {
+        let mut entry = match map.entry(MapKey(key.clone())) {
             Entry::Occupied(entry) => entry,
             Entry::Vacant(_) => return Ok(()),
         };
-        entry.insert(val);
+        entry.insert(val.clone());
         Ok(())
     }
 
     #[gml::function]
-    pub fn ds_map_delete(&mut self, id: i32, key: vm::Value) -> Result<(), vm::ErrorKind> {
+    pub fn ds_map_delete(&mut self, id: i32, key: vm::ValueRef) -> Result<(), vm::ErrorKind> {
         let map = self.maps.get_mut(&id).ok_or(Error::Resource(Type::Map, id))?;
-        map.remove(&MapKey(key));
+        map.remove(MapKey::borrowed(&key));
         Ok(())
     }
 
     #[gml::function]
-    pub fn ds_map_exists(&mut self, id: i32, key: vm::Value) -> Result<(), vm::ErrorKind> {
+    pub fn ds_map_exists(&mut self, id: i32, key: vm::ValueRef) -> Result<(), vm::ErrorKind> {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
-        map.contains_key(&MapKey(key));
+        map.contains_key(MapKey::borrowed(&key));
         Ok(())
     }
 
     #[gml::function]
-    pub fn ds_map_find_value(&mut self, id: i32, key: vm::Value) ->
+    pub fn ds_map_find_value(&mut self, id: i32, key: vm::ValueRef) ->
         Result<vm::Value, vm::ErrorKind>
     {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
-        let val = map.get(&MapKey(key)).map_or(vm::Value::from(0), |&val| val);
+        let val = map.get(MapKey::borrowed(&key)).map_or(vm::Value::from(0), |val| val.clone());
         Ok(val)
     }
 
     #[gml::function]
-    pub fn ds_map_find_next(&mut self, id: i32, key: vm::Value) ->
+    pub fn ds_map_find_next(&mut self, id: i32, key: vm::ValueRef) ->
         Result<vm::Value, vm::ErrorKind>
     {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
-        let key = map.range(MapKey(key)..).nth(1)
-            .map_or(vm::Value::from(0.0), |(&MapKey(key), _)| key);
+        let key = map.range(MapKey::borrowed(&key)..).nth(1)
+            .map_or(vm::Value::from(0.0), |(&MapKey(ref key), _)| key.clone());
         Ok(key)
     }
 
     #[gml::function]
-    pub fn ds_map_find_previous(&mut self, id: i32, key: vm::Value) ->
+    pub fn ds_map_find_previous(&mut self, id: i32, key: vm::ValueRef) ->
         Result<vm::Value, vm::ErrorKind>
     {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
-        let key = map.range(..=MapKey(key)).rev().nth(1)
-            .map_or(vm::Value::from(0.0), |(&MapKey(key), _)| key);
+        let key = map.range(..=MapKey::borrowed(&key)).rev().nth(1)
+            .map_or(vm::Value::from(0.0), |(&MapKey(ref key), _)| key.clone());
         Ok(key)
     }
 
@@ -333,7 +342,7 @@ impl State {
         Result<vm::Value, vm::ErrorKind>
     {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
-        let key = map.keys().nth(0).map_or(vm::Value::from(0.0), |&MapKey(key)| key);
+        let key = map.keys().nth(0).map_or(vm::Value::from(0.0), |&MapKey(ref key)| key.clone());
         Ok(key)
     }
 
@@ -342,7 +351,7 @@ impl State {
         Result<vm::Value, vm::ErrorKind>
     {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
-        let key = map.keys().rev().nth(0).map_or(vm::Value::from(0.0), |&MapKey(key)| key);
+        let key = map.keys().rev().nth(0).map_or(vm::Value::from(0.0), |&MapKey(ref key)| key.clone());
         Ok(key)
     }
 
@@ -384,7 +393,7 @@ impl State {
 
         let copy_width = cmp::min(new_width, old_width);
         for (new, old) in Iterator::zip(new_rows, old_rows) {
-            new[..copy_width].copy_from_slice(&old[..copy_width]);
+            new[..copy_width].clone_from_slice(&old[..copy_width]);
         }
 
         Ok(())
@@ -403,16 +412,16 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_grid_clear(&mut self, id: i32, val: vm::Value) -> Result<(), vm::ErrorKind> {
+    pub fn ds_grid_clear(&mut self, id: i32, val: vm::ValueRef) -> Result<(), vm::ErrorKind> {
         let grid = self.grids.get_mut(&id).ok_or(Error::Resource(Type::Grid, id))?;
         for cell in &mut *grid.data {
-            *cell = val;
+            *cell = val.clone();
         }
         Ok(())
     }
 
     #[gml::function]
-    pub fn ds_grid_set(&mut self, id: i32, x: u32, y: u32, val: vm::Value) ->
+    pub fn ds_grid_set(&mut self, id: i32, x: u32, y: u32, val: vm::ValueRef) ->
         Result<(), vm::ErrorKind>
     {
         let grid = self.grids.get_mut(&id).ok_or(Error::Resource(Type::Grid, id))?;
@@ -423,7 +432,7 @@ impl State {
             return Ok(());
         }
         let index = y as usize * grid.width + x as usize;
-        grid.data[index] = val;
+        grid.data[index] = val.clone();
         Ok(())
     }
 
@@ -437,6 +446,6 @@ impl State {
             return Ok(vm::Value::from(0.0));
         }
         let index = y as usize * grid.width + x as usize;
-        Ok(grid.data[index])
+        Ok(grid.data[index].clone())
     }
 }

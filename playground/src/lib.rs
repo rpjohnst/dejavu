@@ -39,9 +39,9 @@ pub fn run(source: &str) {
     let id = engine.instance.instance_create(&mut engine.world, &mut engine.motion, 0.0, 0.0, 0)
         .unwrap_or_else(|_| panic!("object does not exist"));
 
-    let mut thread = gml::vm::Thread::new();
+    let mut thread = gml::vm::Thread::default();
     thread.set_self(engine.world.instances[id]);
-    if let Err(error) = thread.execute(&mut engine, &resources, script, &[]) {
+    if let Err(error) = thread.execute(&mut engine, &resources, script, vec![]) {
         let location = resources.debug[&error.symbol].get_location(error.instruction as u32);
         let lines = match items[&error.symbol] {
             gml::Item::Event(source) => Lines::from_event(source),
