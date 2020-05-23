@@ -1141,6 +1141,9 @@ impl<'p, 'e> Codegen<'p, 'e> {
         let exists = self.emit_unary(ssa::Opcode::ExistsEntity, entity, location);
         self.emit_branch(exists, body_block, cond_block, location);
 
+        self.current_block = exit_block;
+        self.emit_nullary(ssa::Opcode::ReleaseWith, location);
+
         With { cond_block, body_block, exit_block, entity }
     }
 
@@ -1249,6 +1252,11 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
     fn emit_string(&mut self, string: Symbol, location: usize) -> ssa::Value {
         self.emit_unary_symbol(ssa::Opcode::Constant, string, location)
+    }
+
+    fn emit_nullary(&mut self, op: ssa::Opcode, location: usize) -> ssa::Value {
+        let instruction = ssa::Instruction::Nullary { op };
+        self.function.emit_instruction(self.current_block, instruction, location)
     }
 
     fn emit_unary(&mut self, op: ssa::Opcode, arg: ssa::Value, location: usize) -> ssa::Value {

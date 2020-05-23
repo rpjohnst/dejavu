@@ -3,12 +3,14 @@ use std::convert::TryFrom;
 use std::mem::ManuallyDrop;
 
 use crate::symbol::Symbol;
+use crate::rc_vec::RcVec;
 use crate::vm::{code, world};
 use crate::vm::{World, Entity, Value, ValueRef, Data, to_i32, to_bool, Array, ArrayRef, Resources};
 
 /// A single thread of GML execution.
 pub struct Thread {
     returns: Vec<(Symbol, usize, usize)>,
+    withs: Vec<RcVec<Entity>>,
     stack: Vec<Register>,
 
     self_entity: Entity,
@@ -111,6 +113,7 @@ impl Default for Thread {
     fn default() -> Self {
         Thread {
             returns: Vec::default(),
+            withs: Vec::default(),
             stack: Vec::default(),
 
             self_entity: Entity(0),
@@ -465,25 +468,44 @@ fn execute_internal<'a>(
                     _ => break ErrorKind::TypeUnary(op, scope.clone()),
                 };
 
+                let mut values = RcVec::default();
                 let slice = match scope {
                     SELF => slice::from_ref(&thread.self_entity),
                     OTHER => slice::from_ref(&thread.other_entity),
-                    ALL => world(engine).instances.values(),
+                    ALL => {
+                        values = world(engine).instances.values().clone();
+                        &values[..]
+                    }
                     NOONE => &[],
                     GLOBAL => slice::from_ref(&world::GLOBAL),
                     LOCAL => &[], // TODO: error
-                    object if (0..=100_000).contains(&object) =>
-                        &world(engine).objects[&object][..],
+                    object if (0..=100_000).contains(&object) => {
+                        values = world(engine).objects[&object].clone();
+                        &values[..]
+                    }
                     instance if (100_001..).contains(&instance) =>
                         slice::from_ref(&world(engine).instances[instance]),
                     _ => &[], // TODO: error
                 };
+
+                // Safety: There are two cases to consider here:
+                // - The iterator points to a single element. It will be dereferenced only once,
+                //   before any operations that can invalidate it.
+                // - The iterator points into an `RcVec` of entities. The `RcVec`'s refcount is
+                //   incremented above, and decremented by `ReleaseWith`. Any attempt to mutate the
+                //   `RcVec` in between will make a copy of the array, and mutate the copy instead.
                 unsafe {
                     let first = slice.as_ptr() as *mut Entity;
                     let last = first.offset(slice.len() as isize);
                     registers[ptr].iterator = ptr::NonNull::new_unchecked(first);
                     registers[end].iterator = ptr::NonNull::new_unchecked(last);
                 }
+
+                thread.withs.push(values);
+            }
+
+            (code::Op::ReleaseWith, _, _, _) => {
+                thread.withs.pop();
             }
 
             (code::Op::LoadPointer, t, ptr, _) => {

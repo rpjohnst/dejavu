@@ -375,6 +375,7 @@ impl From<ssa::Opcode> for code::Op {
             ssa::Opcode::Return => code::Op::Ret,
 
             ssa::Opcode::With => code::Op::With,
+            ssa::Opcode::ReleaseWith => code::Op::ReleaseWith,
             ssa::Opcode::ScopeError => code::Op::ScopeError,
             ssa::Opcode::LoadPointer => code::Op::LoadPointer,
             ssa::Opcode::NextPointer => code::Op::NextPointer,
