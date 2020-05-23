@@ -43,22 +43,28 @@ fn main() {
         show_debug_message("grid[# 1, 1] =", ds_grid_get(grid, 1, 1))
         ds_grid_destroy(grid)
 
-        show_debug_message("object_index =", object_index)
-        show_debug_message("id =", id)
-        persistent = true
-        show_debug_message("persistent =", persistent)
+        repeat (2) {
+            show_debug_message()
+            show_debug_message("object_index =", object_index)
+            show_debug_message("id =", id)
+            persistent = true
+            show_debug_message("persistent =", persistent)
 
-        for (i = 0; i < instance_count; i += 1) {
-            if instance_exists(instance_id[i]) {
-                show_debug_message(instance_id[i], "=>", instance_id[i].object_index)
+            for (i = 0; i < instance_count; i += 1) {
+                if instance_exists(instance_id[i]) {
+                    show_debug_message(instance_id[i], "=>", instance_id[i].object_index)
+                }
             }
-        }
 
-        show_debug_message("instance_find(1, 0) =>", instance_find(1, 0))
-        show_debug_message("instance_exists(0) =>", instance_exists(0))
-        show_debug_message("instance_exists(100002) =>", instance_exists(100002))
-        show_debug_message("instance_exists(2) =>", instance_exists(2))
-        show_debug_message("instance_number(1) =>", instance_number(1))
+            show_debug_message("instance_find(1, 0) =>", instance_find(1, 0))
+            show_debug_message("instance_exists(0) =>", instance_exists(0))
+            show_debug_message("instance_exists(id) =>", instance_exists(id))
+            show_debug_message("instance_exists(100002) =>", instance_exists(100002))
+            show_debug_message("instance_exists(2) =>", instance_exists(2))
+            show_debug_message("instance_number(1) =>", instance_number(1))
+
+            instance_destroy()
+        }
     }"#));
 
     let resources = gml::build(&items).unwrap_or_else(|_| panic!());
@@ -83,4 +89,6 @@ fn main() {
         let span = Span { low: location as usize, high: location as usize };
         errors.error(span, &format!("{}", error.kind));
     }
+
+    engine.instance.free_destroyed(&mut engine.world, &mut engine.motion);
 }

@@ -51,6 +51,15 @@ impl<K, V> InstanceMap<K, V> where K: Eq + Hash, V: Clone {
             }
         }
     }
+
+    pub fn remove(&mut self, key: K) -> Option<V> {
+        let index = self.keys.remove(&key)?;
+        let value = self.values.remove(index);
+        for index in self.keys.values_mut().filter(|&&mut i| i > index) {
+            *index -= 1;
+        }
+        Some(value)
+    }
 }
 
 impl<K, V> Index<K> for InstanceMap<K, V> where K: Eq + Hash {

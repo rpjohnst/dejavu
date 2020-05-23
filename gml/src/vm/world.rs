@@ -36,12 +36,28 @@ impl Default for World {
 }
 
 impl World {
-    pub fn create_instance(&mut self, object_index: i32, id: i32) -> vm::Entity {
+    pub fn create_entity(&mut self, object_index: i32, id: i32) -> vm::Entity {
         let entity = self.entities.create();
         self.members.insert(entity, HashMap::default());
         self.objects.entry(object_index).or_default().push(entity);
         self.instances.insert(id, entity);
         entity
+    }
+
+    // Remove an instance from the world, but retain its entity, to be destroyed or re-added later.
+    pub fn remove_entity(&mut self, object_index: i32, id: i32, entity: vm::Entity) {
+        self.instances.remove(id);
+
+        if let Some(object_instances) = self.objects.get_mut(&object_index) {
+            if let Some(position) = object_instances.iter().position(move |&e| e == entity) {
+                object_instances.remove(position);
+            }
+        }
+    }
+
+    pub fn destroy_entity(&mut self, entity: vm::Entity) {
+        self.members.remove(entity);
+        self.entities.destroy(entity);
     }
 }
 

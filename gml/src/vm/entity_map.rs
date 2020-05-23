@@ -111,6 +111,22 @@ impl<T> EntityMap<T> {
         old
     }
 
+    pub fn remove(&mut self, entity: Entity) -> Option<T> {
+        if entity.index() >= self.data.len() {
+            return None;
+        }
+
+        let entry = &mut self.data[entity.index()];
+        let equal = entry.as_ref()
+            .map(move |&Entry { generation, .. }| entity.generation() == generation)
+            .unwrap_or(false);
+        if !equal {
+            return None;
+        }
+
+        entry.take().map(|Entry { value, .. }| value)
+    }
+
     pub fn contains_key(&self, entity: Entity) -> bool {
         self.get(entity).is_some()
     }
