@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::index_map::IndexMap;
+use crate::rc_vec::RcVec;
 use crate::symbol::Symbol;
 use crate::vm;
 
@@ -8,8 +8,8 @@ pub struct World {
     pub entities: vm::EntityAllocator,
     pub members: vm::EntityMap<HashMap<Symbol, vm::Value>>,
 
-    pub objects: HashMap<i32, Vec<vm::Entity>>,
-    pub instances: IndexMap<i32, vm::Entity>,
+    pub objects: HashMap<i32, RcVec<vm::Entity>>,
+    pub instances: vm::InstanceMap<i32, vm::Entity>,
 
     pub globals: HashSet<Symbol>,
 }
@@ -23,7 +23,7 @@ impl Default for World {
             members: vm::EntityMap::default(),
 
             objects: HashMap::default(),
-            instances: IndexMap::default(),
+            instances: vm::InstanceMap::default(),
 
             globals: HashSet::default(),
         };

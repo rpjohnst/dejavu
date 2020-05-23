@@ -102,6 +102,7 @@ pub enum Op {
     StoreScope,
 
     With,
+    ReleaseWith,
     LoadPointer,
     NextPointer,
     NePointer,

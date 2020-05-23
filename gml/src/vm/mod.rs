@@ -5,16 +5,18 @@ use crate::symbol::Symbol;
 pub use crate::vm::interpreter::{Thread, Error, ErrorKind, SELF, OTHER, ALL, NOONE, GLOBAL};
 pub use crate::vm::world::World;
 pub use crate::vm::entity_map::{Entity, EntityAllocator, EntityMap};
+pub use crate::vm::instance_map::InstanceMap;
 pub use crate::vm::value::{Value, ValueRef, Data, to_i32, to_u32, to_bool};
 pub use crate::vm::array::{Array, ArrayRef};
 
 pub mod code;
-pub mod debug;
 pub mod world;
-mod interpreter;
 mod entity_map;
+mod instance_map;
+mod interpreter;
 mod value;
 mod array;
+mod debug;
 
 pub struct Resources<E: ?Sized> {
     pub scripts: HashMap<Symbol, code::Function>,

@@ -61,6 +61,7 @@ pub enum Instruction {
     /// instructions.
     Parameter,
 
+    Nullary { op: Opcode },
     Unary { op: Opcode, arg: Value },
     UnaryReal { op: Opcode, real: f64 },
     UnarySymbol { op: Opcode, symbol: Symbol },
@@ -101,6 +102,8 @@ pub enum Opcode {
 
     /// Build an iterator over a scope, producing a tuple of start and end.
     With,
+    /// Release the iterator created by the most recent `With`.
+    ReleaseWith,
     /// Error that a scope does not exist.
     ScopeError,
     LoadPointer,
@@ -264,6 +267,7 @@ impl Function {
         match self.values[value] {
             Alias { .. } | Project { .. } | Parameter => panic!("finding op of non-instruction"),
 
+            Nullary { op, .. } |
             Unary { op, .. } |
             UnaryReal { op, .. } |
             UnarySymbol { op, .. } |
@@ -286,6 +290,7 @@ impl Function {
             Alias { .. } | Project { .. } | Parameter => panic!("finding defs of non-instruction"),
 
             // Zero-valued instructions:
+            Nullary { op: Opcode::ReleaseWith } |
             Unary { op: Opcode::Release, .. } |
             Unary { op: Opcode::Return, .. } |
             Unary { op: Opcode::ScopeError, .. } |
@@ -302,6 +307,7 @@ impl Function {
             Unary { op: Opcode::With, .. } => ValueRange { range: start + 1..start + 3 },
 
             // The common case: single-valued instructions:
+            Nullary { .. } |
             Unary { .. } |
             UnaryReal { .. } |
             UnarySymbol { .. } |
@@ -328,6 +334,7 @@ impl Function {
         match self.values[value] {
             Alias { .. } | Project { .. } | Parameter => panic!("finding uses of non-instruction"),
 
+            Nullary { .. } => &[],
             Unary { ref arg, .. } => slice::from_ref(arg),
             UnaryReal { .. } => &[],
             UnarySymbol { .. } => &[],
@@ -350,6 +357,7 @@ impl Function {
         match self.values[value] {
             Alias { .. } | Project { .. } | Parameter => panic!("finding uses of non-instruction"),
 
+            Nullary { .. } => &mut [],
             Unary { ref mut arg, .. } => slice::from_mut(arg),
             UnaryReal { .. } => &mut [],
             UnarySymbol { .. } => &mut [],

@@ -47,7 +47,7 @@ fn member() -> Result<(), vm::Error> {
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
-    let entity = engine.world.create_instance(0, 100001);
+    let (_, entity) = engine.create_instance();
     thread.set_self(entity);
 
     assert_eq!(thread.execute(&mut engine, &resources, member, vec![])?, vm::Value::from(8));
@@ -86,7 +86,7 @@ fn builtin() -> Result<(), vm::Error> {
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
-    let entity = engine.world.create_instance(0, 100001);
+    let (_, entity) = engine.create_instance();
     engine.instances.insert(entity, Instance::default());
     thread.set_self(entity);
 
@@ -120,7 +120,7 @@ fn global() -> Result<(), vm::Error> {
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
-    let entity = engine.world.create_instance(0, 100001);
+    let (_, entity) = engine.create_instance();
     thread.set_self(entity);
 
     assert_eq!(thread.execute(&mut engine, &resources, global, vec![])?, vm::Value::from(8));
@@ -128,37 +128,70 @@ fn global() -> Result<(), vm::Error> {
 }
 
 #[test]
-fn with() -> Result<(), vm::Error> {
+fn with_scopes() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
     let with = Symbol::intern("with");
     items.insert(with, Item::Script(b"{
-        var a, b;
-        a = 100001
-        b = 100002
         c = 3
         with (all) {
             n = other.c
             m = other.c
         }
-        with (a) {
+        with (argument0) {
             n = 5
         }
-        with (b) {
+        with (argument1) {
             m = 13
         }
-        return a.n + b.n + a.m + b.m
+        return argument0.n + argument1.n + argument0.m + argument1.m
     }"));
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
-    let a = engine.world.create_instance(0, 100001);
-    engine.world.create_instance(0, 100002);
-    thread.set_self(a);
+    let (a, entity) = engine.create_instance();
+    let (b, _) = engine.create_instance();
+    thread.set_self(entity);
 
-    assert_eq!(thread.execute(&mut engine, &resources, with, vec![])?, vm::Value::from(24.0));
+    let arguments = vec![vm::Value::from(a), vm::Value::from(b)];
+    assert_eq!(thread.execute(&mut engine, &resources, with, arguments)?, vm::Value::from(24.0));
+    Ok(())
+}
+
+#[test]
+fn with_iterator() -> Result<(), vm::Error> {
+    let mut items = HashMap::new();
+
+    let with = Symbol::intern("with");
+    items.insert(with, Item::Script(b"{
+        with (all) {
+            c = 3
+            var i;
+            i = create_instance()
+            i.c = 5
+        }
+        var s;
+        s = 0
+        with (all) {
+            s += c
+        }
+        return s
+    }"));
+
+    let create_instance = Symbol::intern("create_instance");
+    items.insert(create_instance, Item::Native(Engine::native_create_instance, 0, false));
+
+    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let mut engine = Engine::default();
+    let mut thread = vm::Thread::default();
+
+    let (_, entity) = engine.create_instance();
+    engine.create_instance();
+    thread.set_self(entity);
+
+    assert_eq!(thread.execute(&mut engine, &resources, with, vec![])?, vm::Value::from(16.0));
     Ok(())
 }
 
@@ -408,10 +441,10 @@ fn ffi() -> Result<(), vm::Error> {
     Ok(())
 }
 
-#[derive(Default)]
 struct Engine {
     world: vm::World,
 
+    next_id: i32,
     instances: HashMap<vm::Entity, Instance>,
 
     global_scalar: i32,
@@ -420,6 +453,20 @@ struct Engine {
 
 impl vm::world::Api for Engine {
     fn receivers(&mut self) -> &mut vm::World { &mut self.world }
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Engine {
+            world: vm::World::default(),
+
+            next_id: 100001,
+            instances: HashMap::default(),
+
+            global_scalar: i32::default(),
+            global_array: <[f32; 2]>::default(),
+        }
+    }
 }
 
 impl Engine {
@@ -432,6 +479,20 @@ impl Engine {
         };
 
         Ok(value)
+    }
+
+    fn native_create_instance(
+        &mut self, _resources: &vm::Resources<Engine>, _entity: vm::Entity, _arguments: &[vm::Value]
+    ) -> Result<vm::Value, vm::ErrorKind> {
+        let (id, _) = self.create_instance();
+        Ok(vm::Value::from(id))
+    }
+
+    fn create_instance(&mut self) -> (i32, vm::Entity) {
+        let id = self.next_id;
+        self.next_id += 1;
+
+        (id, self.world.create_instance(0, id))
     }
 
     fn get_global_scalar(&mut self, _: vm::Entity, _: usize) -> vm::Value {
