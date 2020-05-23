@@ -4,6 +4,7 @@ use crate::motion;
 pub struct State {
     pub next_id: i32,
     pub instances: vm::EntityMap<Instance>,
+    pub destroyed: Vec<vm::Entity>,
 }
 
 pub struct Instance {
@@ -16,7 +17,8 @@ impl Default for State {
     fn default() -> Self {
         State {
             next_id: 100001,
-            instances: Default::default(),
+            instances: vm::EntityMap::default(),
+            destroyed: Vec::default(),
         }
     }
 }
@@ -106,12 +108,30 @@ impl State {
 
         let persistent = false;
 
-        let entity = world.create_instance(obj, id);
+        let entity = world.create_entity(object_index, id);
         let instance = Instance { object_index, id, persistent };
         self.instances.insert(entity, instance);
         let instance = motion::Instance::from_pos(x, y);
         motion.instances.insert(entity, instance);
 
         Ok(id)
+    }
+
+    #[gml::function]
+    pub fn instance_destroy(&mut self, world: &mut vm::World, entity: vm::Entity) {
+        let &Instance { object_index, id, .. } = match self.instances.get(entity) {
+            Some(instance) => instance,
+            None => return,
+        };
+        world.remove_entity(object_index, id, entity);
+        self.destroyed.push(entity);
+    }
+
+    pub fn free_destroyed(&mut self, world: &mut vm::World, motion: &mut motion::State) {
+        for entity in self.destroyed.drain(..) {
+            motion.instances.remove(entity);
+            self.instances.remove(entity);
+            world.destroy_entity(entity);
+        }
     }
 }

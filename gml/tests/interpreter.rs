@@ -492,7 +492,7 @@ impl Engine {
         let id = self.next_id;
         self.next_id += 1;
 
-        (id, self.world.create_instance(0, id))
+        (id, self.world.create_entity(0, id))
     }
 
     fn get_global_scalar(&mut self, _: vm::Entity, _: usize) -> vm::Value {
