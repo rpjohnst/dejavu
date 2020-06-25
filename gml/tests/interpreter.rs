@@ -8,7 +8,7 @@ use gml::{build, Item, symbol::Symbol, vm};
 fn arguments() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let select = Symbol::intern("select");
+    let select = Symbol::intern(b"select");
     items.insert(select, Item::Script(b"{
         return argument0 + argument1
     }"));
@@ -20,9 +20,9 @@ fn arguments() -> Result<(), vm::Error> {
     let arguments = vec![vm::Value::from(3), vm::Value::from(5)];
     assert_eq!(thread.execute(&mut engine, &resources, select, arguments)?, vm::Value::from(8));
 
-    let a = Symbol::intern("a");
-    let b = Symbol::intern("b");
-    let ab = Symbol::intern("ab");
+    let a = Symbol::intern(b"a");
+    let b = Symbol::intern(b"b");
+    let ab = Symbol::intern(b"ab");
     let arguments = vec![vm::Value::from(a), vm::Value::from(b)];
     assert_eq!(thread.execute(&mut engine, &resources, select, arguments)?, vm::Value::from(ab));
 
@@ -34,7 +34,7 @@ fn arguments() -> Result<(), vm::Error> {
 fn member() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let member = Symbol::intern("member");
+    let member = Symbol::intern(b"member");
     items.insert(member, Item::Script(b"{
         a = 3
         b[3] = 5
@@ -59,19 +59,19 @@ fn member() -> Result<(), vm::Error> {
 fn builtin() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let scalar = Symbol::intern("scalar");
+    let scalar = Symbol::intern(b"scalar");
     items.insert(scalar, Item::Member(Some(Instance::get_scalar), Some(Instance::set_scalar)));
 
-    let array = Symbol::intern("array");
+    let array = Symbol::intern(b"array");
     items.insert(array, Item::Member(Some(Instance::get_array), Some(Instance::set_array)));
 
-    let global_scalar = Symbol::intern("global_scalar");
+    let global_scalar = Symbol::intern(b"global_scalar");
     items.insert(global_scalar, Item::Member(Some(Engine::get_global_scalar), Some(Engine::set_global_scalar)));
 
-    let global_array = Symbol::intern("global_array");
+    let global_array = Symbol::intern(b"global_array");
     items.insert(global_array, Item::Member(Some(Engine::get_global_array), Some(Engine::set_global_array)));
 
-    let builtin = Symbol::intern("builtin");
+    let builtin = Symbol::intern(b"builtin");
     items.insert(builtin, Item::Script(b"{
         scalar = 3
         array[0] = 2 + scalar
@@ -108,7 +108,7 @@ fn builtin() -> Result<(), vm::Error> {
 fn global() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let global = Symbol::intern("global");
+    let global = Symbol::intern(b"global");
     items.insert(global, Item::Script(b"{
         a = 3
         global.a = 5
@@ -131,7 +131,7 @@ fn global() -> Result<(), vm::Error> {
 fn with_scopes() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let with = Symbol::intern("with");
+    let with = Symbol::intern(b"with");
     items.insert(with, Item::Script(b"{
         c = 3
         with (all) {
@@ -164,7 +164,7 @@ fn with_scopes() -> Result<(), vm::Error> {
 fn with_iterator() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let with = Symbol::intern("with");
+    let with = Symbol::intern(b"with");
     items.insert(with, Item::Script(b"{
         with (all) {
             c = 3
@@ -180,7 +180,7 @@ fn with_iterator() -> Result<(), vm::Error> {
         return s
     }"));
 
-    let create_instance = Symbol::intern("create_instance");
+    let create_instance = Symbol::intern(b"create_instance");
     items.insert(create_instance, Item::Native(Engine::native_create_instance, 0, false));
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
@@ -200,7 +200,7 @@ fn with_iterator() -> Result<(), vm::Error> {
 fn array() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let array = Symbol::intern("array");
+    let array = Symbol::intern(b"array");
     items.insert(array, Item::Script(b"{
         var a, b, c;
         a[0] = 3
@@ -226,7 +226,7 @@ fn array() -> Result<(), vm::Error> {
 fn conditional_initialization() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let fibonacci = Symbol::intern("fibonacci");
+    let fibonacci = Symbol::intern(b"fibonacci");
     items.insert(fibonacci, Item::Script::<()>(b"{
         var t;
         if (true) {
@@ -246,7 +246,7 @@ fn conditional_initialization() -> Result<(), vm::Error> {
 fn dead_undef() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let switch = Symbol::intern("switch");
+    let switch = Symbol::intern(b"switch");
     items.insert(switch, Item::Script::<()>(b"{
         var i;
         return 0
@@ -262,7 +262,7 @@ fn dead_undef() -> Result<(), vm::Error> {
 fn for_loop() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let factorial = Symbol::intern("factorial");
+    let factorial = Symbol::intern(b"factorial");
     items.insert(factorial, Item::Script(b"{
         var i, j;
         j = 1
@@ -285,7 +285,7 @@ fn for_loop() -> Result<(), vm::Error> {
 fn switch() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let switch = Symbol::intern("switch");
+    let switch = Symbol::intern(b"switch");
     items.insert(switch, Item::Script(b"{
         var i;
         switch (argument0) {
@@ -324,7 +324,7 @@ fn switch() -> Result<(), vm::Error> {
 fn switch_empty() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let switch = Symbol::intern("switch");
+    let switch = Symbol::intern(b"switch");
     items.insert(switch, Item::Script::<()>(b"{
         switch (argument0) {
         }
@@ -339,7 +339,7 @@ fn switch_empty() -> Result<(), vm::Error> {
 fn switch_fallthrough() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let switch = Symbol::intern("switch");
+    let switch = Symbol::intern(b"switch");
     items.insert(switch, Item::Script(b"{
         var i;
         i = 0
@@ -377,10 +377,10 @@ fn switch_fallthrough() -> Result<(), vm::Error> {
 fn call_script() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let id = Symbol::intern("id");
+    let id = Symbol::intern(b"id");
     items.insert(id, Item::Script(b"return argument0"));
 
-    let call = Symbol::intern("call");
+    let call = Symbol::intern(b"call");
     items.insert(call, Item::Script(b"return id(3) + 5"));
 
     let resources = build(&items).unwrap_or_else(|_| panic!());
@@ -396,7 +396,7 @@ fn call_script() -> Result<(), vm::Error> {
 fn recurse() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let fibonacci = Symbol::intern("fibonacci");
+    let fibonacci = Symbol::intern(b"fibonacci");
     items.insert(fibonacci, Item::Script(b"{
         if (argument0 < 2) {
             return 1
@@ -419,16 +419,16 @@ fn recurse() -> Result<(), vm::Error> {
 fn ffi() -> Result<(), vm::Error> {
     let mut items = HashMap::new();
 
-    let add = Symbol::intern("add");
+    let add = Symbol::intern(b"add");
     items.insert(add, Item::Native(Engine::native_add, 2, false));
 
-    let caller = Symbol::intern("caller");
+    let caller = Symbol::intern(b"caller");
     items.insert(caller, Item::Script(b"{
         var a, b, c;
         return call()
     }"));
 
-    let call = Symbol::intern("call");
+    let call = Symbol::intern(b"call");
     items.insert(call, Item::Script(b"{
         return add(3, 5) + 8
     }"));

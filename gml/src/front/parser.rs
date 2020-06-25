@@ -1,5 +1,5 @@
 use std::mem;
-use std::str::FromStr;
+use std::str::{self, FromStr};
 
 use crate::symbol::{Symbol, keyword};
 use crate::front::{ast, Lexer, Span, ErrorHandler};
@@ -451,6 +451,12 @@ impl<'s, 'e> Parser<'s, 'e> {
 
             Real(symbol) => {
                 let (_, span) = self.advance_token();
+                // This should never fail in normal usage, as a `Real` token should always be UTF-8.
+                let symbol = str::from_utf8(&symbol[..]).unwrap_or_else(|error| {
+                    self.errors.error(span, "invalid numeric literal");
+                    let (valid, _) = symbol.split_at(error.valid_up_to());
+                    unsafe { str::from_utf8_unchecked(valid) }
+                });
                 let value = match symbol.chars().next() {
                     Some('$') => u64::from_str_radix(&symbol[1..], 16).unwrap_or_else(|_| {
                         self.errors.error(span, "invalid integer literal");
@@ -666,7 +672,7 @@ mod tests {
 
     fn setup<'s>(source: &'s [u8]) -> (ErrorPrinter, Lexer<'s>) {
         let lines = Lines::from_script(source);
-        let errors = ErrorPrinter::new(Symbol::intern("<test>"), lines);
+        let errors = ErrorPrinter::new(Symbol::intern(b"<test>"), lines);
         (errors, Lexer::new(source, 0))
     }
 
@@ -683,15 +689,15 @@ mod tests {
         }");
         let mut parser = Parser::new(reader, &mut errors);
 
-        let x = Symbol::intern("x");
-        let y = Symbol::intern("y");
-        let show_message = Symbol::intern("show_message");
+        let x = Symbol::intern(b"x");
+        let y = Symbol::intern(b"y");
+        let show_message = Symbol::intern(b"show_message");
         assert_eq!(parser.parse_program(), (
             Stmt::Block(vec![
                 (Stmt::Declare(
                     Declare::Local,
                     vec![(x, span(6, 7))].into_boxed_slice(),
-                ), span(2, 8)), 
+                ), span(2, 8)),
                 (Stmt::Assign(
                     (None, span(11, 12)),
                     Box::new((Expr::Value(Value::Ident(x)), span(9, 10))),
@@ -715,9 +721,9 @@ mod tests {
         let (mut errors, reader) = setup(b"x + y * (3 + z)");
         let mut parser = Parser::new(reader, &mut errors);
 
-        let x = Symbol::intern("x");
-        let y = Symbol::intern("y");
-        let z = Symbol::intern("z");
+        let x = Symbol::intern(b"x");
+        let y = Symbol::intern(b"y");
+        let z = Symbol::intern(b"z");
         assert_eq!(parser.parse_expression(0), (
             Expr::Binary(
                 (Binary::Op(Op::Add), span(2, 3)),

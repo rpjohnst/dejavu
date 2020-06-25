@@ -155,7 +155,7 @@ impl fmt::Debug for Function {
                 Op::LoadField | Op::LoadFieldDefault =>
                     writeln!(f, "  %{:?} = {:?} %{:?}.{:?}", a, op, b, self.constants[c])?,
                 Op::Release => writeln!(f, "  {:?} %{:?}", op, a)?,
-                Op::Read => writeln!(f, "  {:?} {:?}, %{:?}", op, self.constants[a], b)?,
+                Op::Read => writeln!(f, "  {:?} %{:?}, {:?}", op, a, self.constants[b])?,
                 Op::StoreField =>
                     writeln!(f, "  {:?} %{:?}, %{:?}.{:?}", op, a, b, self.constants[c])?,
                 Op::LoadIndex | Op::LoadRow | Op::StoreRow =>

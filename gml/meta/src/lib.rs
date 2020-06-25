@@ -436,12 +436,12 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
                 Self: Sized
             {
                 #(items.insert(
-                    gml::symbol::Symbol::intern(stringify!(#api_binding)),
+                    gml::symbol::Symbol::intern(stringify!(#api_binding).as_bytes()),
                     gml::Item::Native(Self::#api_binding, #api_arity, #api_variadic),
                 );)*
 
                 #(items.insert(
-                    gml::symbol::Symbol::intern(stringify!(#member)),
+                    gml::symbol::Symbol::intern(stringify!(#member).as_bytes()),
                     gml::Item::Member(#get_option, #set_option),
                 );)*
             }

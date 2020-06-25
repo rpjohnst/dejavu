@@ -20,7 +20,7 @@ pub fn run(source: &str) {
     let mut items = HashMap::new();
     Engine::register(&mut items);
 
-    let script = Symbol::intern("script");
+    let script = Symbol::intern(b"script");
     items.insert(script, gml::Item::Script(source.as_bytes()));
 
     let resources = match gml::build(&items) {

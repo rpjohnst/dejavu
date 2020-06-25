@@ -5,6 +5,7 @@ use std::hash::{Hash, Hasher};
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashSet;
+use bstr::ByteSlice;
 
 /// A symbol is an index into a thread-local interner.
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -13,23 +14,24 @@ pub struct Symbol {
     index: NonZeroUsize,
 
     // Symbols must be `!Send` and `!Sync` to avoid crossing interners.
-    _marker: PhantomData<*const str>,
+    _marker: PhantomData<*const [u8]>,
 }
 
 struct Interner {
     strings: HashSet<Entry>,
-    indices: Vec<*const str>,
+    indices: Vec<*const [u8]>,
 }
 
 struct Entry {
-    string: Box<str>,
+    string: Box<[u8]>,
     index: NonZeroUsize,
 }
 
 impl Symbol {
     /// Map a string to its interned symbol.
-    pub fn intern(string: &str) -> Self {
-        Interner::with(|interner| Symbol { index: interner.intern(string), _marker: PhantomData })
+    pub fn intern(string: &[u8]) -> Self {
+        let bytes = string.as_ref();
+        Interner::with(|interner| Symbol { index: interner.intern(bytes), _marker: PhantomData })
     }
 
     pub fn into_index(self) -> NonZeroUsize { self.index }
@@ -38,13 +40,13 @@ impl Symbol {
 }
 
 impl Default for Symbol {
-    fn default() -> Self { Symbol::intern("") }
+    fn default() -> Self { Symbol::intern(b"") }
 }
 
 impl ops::Deref for Symbol {
-    type Target = str;
+    type Target = [u8];
 
-    fn deref(&self) -> &str {
+    fn deref(&self) -> &[u8] {
         // Safety: `Symbol` is not `Send` or `Sync`, and is always allocated from a thread-local
         // `Interner`. This ensures the string will not be freed until the thread dies and takes
         // all associated `Symbol`s with it.
@@ -52,12 +54,12 @@ impl ops::Deref for Symbol {
     }
 }
 
-impl Borrow<str> for Symbol {
-    fn borrow(&self) -> &str { self }
+impl Borrow<[u8]> for Symbol {
+    fn borrow(&self) -> &[u8] { self }
 }
 
 impl cmp::Ord for Symbol {
-    fn cmp(&self, other: &Self) -> cmp::Ordering { str::cmp(self, other) }
+    fn cmp(&self, other: &Self) -> cmp::Ordering { <[u8]>::cmp(self, other) }
 }
 
 impl cmp::PartialOrd for Symbol {
@@ -66,25 +68,28 @@ impl cmp::PartialOrd for Symbol {
 
 impl fmt::Debug for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        <str as fmt::Debug>::fmt(self, f)?;
+        fmt::Debug::fmt(self.as_bstr(), f)?;
         f.write_str("@")?;
-        <NonZeroUsize as fmt::Debug>::fmt(&self.index, f)?;
+        fmt::Debug::fmt(&self.index, f)?;
         Ok(())
     }
 }
 
 impl fmt::Display for Symbol {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { <str as fmt::Display>::fmt(self, f) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self.as_bstr(), f)?;
+        Ok(())
+    }
 }
 
 impl Interner {
-    fn intern(&mut self, string: &str) -> NonZeroUsize {
+    fn intern(&mut self, string: &[u8]) -> NonZeroUsize {
         if let Some(entry) = self.strings.get(string) {
             return entry.index;
         }
 
-        let string = String::from(string).into_boxed_str();
-        let data = &*string as *const str;
+        let string = Vec::from(string).into_boxed_slice();
+        let data = &*string as *const [u8];
         // Safety: `self.indices` always has at least one entry.
         let index = unsafe { NonZeroUsize::new_unchecked(self.indices.len()) };
         self.strings.insert(Entry { string, index });
@@ -93,7 +98,7 @@ impl Interner {
         index
     }
 
-    fn get(&self, index: NonZeroUsize) -> *const str {
+    fn get(&self, index: NonZeroUsize) -> *const [u8] {
         self.indices[index.get()]
     }
 
@@ -105,22 +110,22 @@ impl Interner {
 
 impl Default for Interner {
     fn default() -> Self {
-        Interner { strings: HashSet::default(), indices: vec!["UNUSED"] }
+        Interner { strings: HashSet::default(), indices: vec![b"UNUSED"] }
     }
 }
 
-impl Borrow<str> for Entry {
-    fn borrow(&self) -> &str { &self.string }
+impl Borrow<[u8]> for Entry {
+    fn borrow(&self) -> &[u8] { &self.string }
 }
 
 impl cmp::Eq for Entry {}
 
 impl cmp::PartialEq for Entry {
-    fn eq(&self, other: &Self) -> bool { <str as PartialEq>::eq(self.borrow(), other.borrow()) }
+    fn eq(&self, other: &Self) -> bool { <[u8] as PartialEq>::eq(self.borrow(), other.borrow()) }
 }
 
 impl Hash for Entry {
-    fn hash<H: Hasher>(&self, state: &mut H) { str::hash(self.borrow(), state) }
+    fn hash<H: Hasher>(&self, state: &mut H) { <[u8]>::hash(self.borrow(), state) }
 }
 
 macro_rules! declare_symbols {(
@@ -144,8 +149,8 @@ macro_rules! declare_symbols {(
         fn with_keywords() -> Self {
             let mut interner = Self::default();
 
-            $(interner.intern($string);)*
-            $(interner.intern(concat!("argument", $argument_index));)*
+            $(interner.intern($string.as_bytes());)*
+            $(interner.intern(concat!("argument", $argument_index).as_bytes());)*
 
             interner
         }
@@ -238,27 +243,27 @@ mod tests {
         let empty = Symbol::default();
         assert_eq!(empty, empty);
 
-        let keyword = Symbol::intern("other");
+        let keyword = Symbol::intern(b"other");
         assert_eq!(keyword, keyword::Other);
 
-        let arg = Symbol::intern("argument3");
+        let arg = Symbol::intern(b"argument3");
         assert_eq!(arg, Symbol::from_argument(3));
     }
 
     #[test]
     fn alloc() {
-        let dog1 = Symbol::intern("dog");
-        assert_eq!(&*dog1, "dog");
+        let dog1 = Symbol::intern(b"dog");
+        assert_eq!(&*dog1, b"dog");
 
-        let dog2 = Symbol::intern("dog");
-        assert_eq!(&*dog2, "dog");
+        let dog2 = Symbol::intern(b"dog");
+        assert_eq!(&*dog2, b"dog");
         assert_eq!(dog1, dog2);
 
-        let cat1 = Symbol::intern("cat");
-        assert_eq!(&*cat1, "cat");
+        let cat1 = Symbol::intern(b"cat");
+        assert_eq!(&*cat1, b"cat");
 
-        let cat2 = Symbol::intern("cat");
-        assert_eq!(&*cat2, "cat");
+        let cat2 = Symbol::intern(b"cat");
+        assert_eq!(&*cat2, b"cat");
         assert_eq!(cat1, cat2);
 
         assert_ne!(dog1, cat1);

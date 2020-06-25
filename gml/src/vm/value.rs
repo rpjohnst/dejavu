@@ -280,16 +280,16 @@ mod tests {
 
     #[test]
     fn strings() {
-        let value = vm::Value::from(Symbol::intern("true"));
+        let value = vm::Value::from(Symbol::intern(b"true"));
         assert!(matches!(value.borrow().decode(), vm::Data::String(keyword::True)));
 
-        let value = vm::Value::from(Symbol::intern("argument0"));
+        let value = vm::Value::from(Symbol::intern(b"argument0"));
         assert!(matches!(
             value.borrow().decode(),
             vm::Data::String(x) if x == Symbol::from_argument(0)
         ));
 
-        let symbol = Symbol::intern("foo");
+        let symbol = Symbol::intern(b"foo");
         let value = vm::Value::from(symbol);
         assert!(matches!(value.borrow().decode(), vm::Data::String(x) if x == symbol));
     }

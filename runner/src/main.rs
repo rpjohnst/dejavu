@@ -8,7 +8,7 @@ fn main() {
     let mut items = HashMap::new();
     Engine::register(&mut items);
 
-    let main = Symbol::intern("main");
+    let main = Symbol::intern(b"main");
     items.insert(main, gml::Item::Script(br#"{
         show_debug_message("hello world")
 

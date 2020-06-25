@@ -1,6 +1,7 @@
-use std::{char, cmp};
+use std::{char, cmp, str};
 use gml::symbol::Symbol;
 use gml::{self, vm};
+use bstr::{ByteSlice, ByteVec};
 
 #[derive(Default)]
 pub struct State;
@@ -10,7 +11,7 @@ impl State {
     #[gml::function]
     pub fn chr(val: u32) -> Symbol {
         let c = char::from_u32(val).unwrap_or(char::REPLACEMENT_CHARACTER);
-        Symbol::intern(c.encode_utf8(&mut [0; 4]))
+        Symbol::intern(c.encode_utf8(&mut [0; 4]).as_bytes())
     }
 
     #[gml::function]
@@ -22,7 +23,10 @@ impl State {
     pub fn real(str: vm::ValueRef) -> f64 {
         match str.decode() {
             vm::Data::Real(real) => real,
-            vm::Data::String(str) => str.parse().unwrap_or(0.0),
+            vm::Data::String(str) => {
+                let str = str::from_utf8(&str[..]).unwrap_or("");
+                str.parse().unwrap_or(0.0)
+            }
             _ => 0.0,
         }
     }
@@ -30,7 +34,7 @@ impl State {
     #[gml::function]
     pub fn string(val: vm::ValueRef) -> Symbol {
         match val.decode() {
-            vm::Data::Real(val) => Symbol::intern(&format!("{}", val)),
+            vm::Data::Real(val) => Symbol::intern(format!("{}", val).as_bytes()),
             vm::Data::String(val) => val,
             _ => Symbol::default(),
         }
@@ -41,7 +45,7 @@ impl State {
         let tot = tot as usize;
         let dec = dec as usize;
         match val.decode() {
-            vm::Data::Real(val) => Symbol::intern(&format!("{:1$.2$}", val, tot, dec)),
+            vm::Data::Real(val) => Symbol::intern(format!("{:1$.2$}", val, tot, dec).as_bytes()),
             vm::Data::String(val) => val,
             _ => Symbol::default(),
         }
@@ -55,7 +59,7 @@ impl State {
 
     #[gml::function]
     pub fn string_pos(substr: Symbol, str: Symbol) -> u32 {
-        str.split(&substr[..]).next().map(|head| head.chars().count() + 1).unwrap_or(0) as u32
+        str.split_str(&substr[..]).next().map(|head| head.chars().count() + 1).unwrap_or(0) as u32
     }
 
     #[gml::function]
@@ -63,7 +67,7 @@ impl State {
         let index = cmp::max(index as usize, 1) - 1;
         let count = count as usize;
 
-        let mut indices = str.char_indices().map(|(index, _)| index);
+        let mut indices = str.char_indices().map(|(index, _, _)| index);
         let start = indices.nth(index).unwrap_or(0);
         let end = indices.take(count).last().unwrap_or(start);
 
@@ -73,16 +77,17 @@ impl State {
     #[gml::function]
     pub fn string_char_at(str: Symbol, index: u32) -> Symbol {
         let index = cmp::max(index as usize, 1) - 1;
-        let mut char = [0; 4];
-        let mut empty = String::new();
-        let str = str.chars().nth(index).map(|c| c.encode_utf8(&mut char)).unwrap_or(&mut empty);
+        let str = str.char_indices()
+            .nth(index)
+            .map(|(start, end, _)| &str[start..end])
+            .unwrap_or(b"");
         Symbol::intern(str)
     }
 
     #[gml::function]
     pub fn string_byte_at(str: Symbol, index: u32) -> u32 {
         let index = cmp::max(index as usize, 1) - 1;
-        str.as_bytes().get(index).cloned().unwrap_or(0) as u32
+        str.get(index).cloned().unwrap_or(0) as u32
     }
 
     #[gml::function]
@@ -90,11 +95,11 @@ impl State {
         let index = cmp::max(index as usize, 1) - 1;
         let count = count as usize;
 
-        let mut indices = str.char_indices().map(|(index, _)| index);
+        let mut indices = str.char_indices().map(|(index, _, _)| index);
         let start = indices.nth(index).unwrap_or(0);
         let end = indices.take(count).last().unwrap_or(start);
 
-        let mut string = String::new();
+        let mut string = Vec::new();
         string.push_str(&str[..start]);
         string.push_str(&str[end..]);
         Symbol::intern(&string)
@@ -103,12 +108,12 @@ impl State {
     #[gml::function]
     pub fn string_insert(substr: Symbol, str: Symbol, index: u32) -> Symbol {
         let index = cmp::max(index as usize, 1) - 1;
-        let index = str.char_indices().map(|(index, _)| index)
+        let index = str.char_indices().map(|(index, _, _)| index)
             .skip(index)
             .next()
             .unwrap_or(str.len());
 
-        let mut string = String::new();
+        let mut string = Vec::new();
         string.push_str(&str[..index]);
         string.push_str(&substr[..]);
         string.push_str(&str[index..]);
@@ -129,7 +134,7 @@ impl State {
 
     #[gml::function]
     pub fn string_count(substr: Symbol, str: Symbol) -> u32 {
-        str.matches(&substr[..]).count() as u32
+        str.find_iter(&substr[..]).count() as u32
     }
 
     #[gml::function]
@@ -149,19 +154,25 @@ impl State {
 
     #[gml::function]
     pub fn string_letters(str: Symbol) -> Symbol {
-        let string: String = str.matches(|char: char| char.is_ascii_alphabetic()).collect();
+        let string: Vec<u8> = str.iter().copied()
+            .filter(|&byte| byte.is_ascii_alphabetic())
+            .collect();
         Symbol::intern(&string)
     }
 
     #[gml::function]
     pub fn string_digits(str: Symbol) -> Symbol {
-        let string: String = str.matches(|char: char| char.is_digit(10)).collect();
+        let string: Vec<u8> = str.iter().copied()
+            .filter(|&byte| byte.is_ascii_digit())
+            .collect();
         Symbol::intern(&string)
     }
 
     #[gml::function]
     pub fn string_lettersdigits(str: Symbol) -> Symbol {
-        let string: String = str.matches(|char: char| char.is_ascii_alphanumeric()).collect();
+        let string: Vec<u8> = str.iter().copied()
+            .filter(|&byte| byte.is_ascii_alphanumeric())
+            .collect();
         Symbol::intern(&string)
     }
 }

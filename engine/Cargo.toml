@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 gml = { path = "../gml" }
+bstr = { version = "0.2", default-features = false, features = ["std"] }
 
 [target.wasm32-unknown-unknown.dependencies]
 wasm-host = { path = "../wasm-host" }

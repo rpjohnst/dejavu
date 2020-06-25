@@ -94,11 +94,10 @@ impl<'s, 'e> ActionParser<'s, 'e> {
 
         let execution = match action.action_type {
             action_type::FUNCTION => {
-                // Actions may contain invalid UTF-8.
-                let function = String::from_utf8_lossy(&action.name);
+                let function = Symbol::intern(&action.name[..]);
                 offset += action.name.len();
 
-                ast::Exec::Function(Symbol::intern(&function))
+                ast::Exec::Function(function)
             }
 
             action_type::CODE => {
@@ -175,9 +174,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
             }
 
             argument_type::STRING => {
-                // String literals may contain invalid UTF-8.
-                let string = String::from_utf8_lossy(&source);
-                ast::Argument::String(Symbol::intern(&string))
+                ast::Argument::String(Symbol::intern(source))
             }
 
             // Select EXPR or STRING based on whether the argument starts with a quote.
@@ -189,9 +186,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
                         ast::Argument::Expr(Box::new(parser.parse_expression(0)))
                     }
                     _ => {
-                        // String literals may contain invalid UTF-8.
-                        let string = String::from_utf8_lossy(&source);
-                        ast::Argument::String(Symbol::intern(&string))
+                        ast::Argument::String(Symbol::intern(source))
                     }
                 }
             }
@@ -261,7 +256,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
             }
 
             argument_type::FONT_STRING => {
-                ast::Argument::FontString(Symbol::intern(source_str))
+                ast::Argument::FontString(Symbol::intern(source))
             }
 
             _ => ast::Argument::Error,

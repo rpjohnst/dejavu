@@ -1,4 +1,3 @@
-use std::str;
 use crate::symbol::Symbol;
 use crate::front::Span;
 use crate::front::token::{Token, BinOp, Delim};
@@ -90,9 +89,7 @@ impl<'s> Lexer<'s> {
         }
         let high = self.position;
 
-        // Identifiers and keywords are UTF-8 by construction.
-        let ident = str::from_utf8(&source[..high - low]).unwrap();
-        let symbol = Symbol::intern(ident);
+        let symbol = Symbol::intern(&source[..high - low]);
         if symbol.is_keyword() {
             Token::Keyword(symbol)
         } else {
@@ -130,9 +127,7 @@ impl<'s> Lexer<'s> {
 
         let high = self.position;
 
-        // Real literals are UTF-8 by construction.
-        let real = str::from_utf8(&source[..high - low]).unwrap();
-        let symbol = Symbol::intern(real);
+        let symbol = Symbol::intern(&source[..high - low]);
         Token::Real(symbol)
     }
 
@@ -150,9 +145,7 @@ impl<'s> Lexer<'s> {
         self.advance_byte();
         let high = self.position;
 
-        // String literals may contain invalid UTF-8.
-        let string = String::from_utf8_lossy(&source[..high - low]);
-        let symbol = Symbol::intern(&string);
+        let symbol = Symbol::intern(&source[..high - low]);
         Token::String(symbol)
     }
 
@@ -276,17 +269,17 @@ fn is_operator(c: Option<u8>) -> bool {
 mod tests {
     use super::*;
 
-    fn ident(id: &str) -> Token {
+    fn ident(id: &[u8]) -> Token {
         Token::Ident(Symbol::intern(id))
     }
 
-    fn keyword(id: &str) -> Token {
+    fn keyword(id: &[u8]) -> Token {
         let symbol = Symbol::intern(id);
         assert!(symbol.is_keyword());
         Token::Keyword(symbol)
     }
 
-    fn real(real: &str) -> Token {
+    fn real(real: &[u8]) -> Token {
         Token::Real(Symbol::intern(real))
     }
 
@@ -298,12 +291,12 @@ mod tests {
     fn spans() {
         let mut lexer = Lexer::new(b"/* comment */ var foo; foo = 3", 0);
 
-        assert_eq!(lexer.read_token(), (keyword("var"), span(14, 17)));
-        assert_eq!(lexer.read_token(), (ident("foo"), span(18, 21)));
+        assert_eq!(lexer.read_token(), (keyword(b"var"), span(14, 17)));
+        assert_eq!(lexer.read_token(), (ident(b"foo"), span(18, 21)));
         assert_eq!(lexer.read_token(), (Token::Semicolon, span(21, 22)));
-        assert_eq!(lexer.read_token(), (ident("foo"), span(23, 26)));
+        assert_eq!(lexer.read_token(), (ident(b"foo"), span(23, 26)));
         assert_eq!(lexer.read_token(), (Token::Eq, span(27, 28)));
-        assert_eq!(lexer.read_token(), (real("3"), span(29, 30)));
+        assert_eq!(lexer.read_token(), (real(b"3"), span(29, 30)));
         assert_eq!(lexer.read_token(), (Token::Eof, span(30, 30)));
     }
 }
