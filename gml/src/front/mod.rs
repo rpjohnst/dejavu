@@ -2,8 +2,6 @@ use std::iter::{self, FromIterator};
 
 use project::{action_kind, action_type};
 
-use crate::symbol::Symbol;
-
 pub mod token;
 pub mod ast;
 mod action_ast;
@@ -26,14 +24,6 @@ pub struct Span {
     pub high: usize,
 }
 
-/// A user-facing position in an event or script.
-pub struct Position {
-    pub action: Option<usize>,
-    pub argument: Option<usize>,
-    pub line: Option<usize>,
-    pub column: Option<usize>,
-}
-
 /// Position data for an event or script.
 ///
 /// Position data is hierarchical- an event is a sequence of actions, which is a sequence of
@@ -54,15 +44,23 @@ pub struct Lines {
     pub lines: Vec<usize>,
 }
 
+/// A user-facing position in an event or script.
+pub struct Position {
+    pub action: Option<usize>,
+    pub argument: Option<usize>,
+    pub line: Option<usize>,
+    pub column: Option<usize>,
+}
+
 impl Lines {
-    pub fn from_script(source: &[u8]) -> Lines {
+    pub fn from_code(source: &[u8]) -> Lines {
         let actions = Vec::default();
         let arguments = Vec::default();
         let lines = Vec::from_iter(Self::compute_lines(source, 0));
         Lines { actions, arguments, lines }
     }
 
-    pub fn from_event(source: &[project::Action]) -> Lines {
+    pub fn from_actions(source: &[project::Action]) -> Lines {
         let mut actions = Vec::default();
         let mut arguments = Vec::default();
         let mut lines = Vec::default();
@@ -134,42 +132,5 @@ impl Lines {
         };
 
         Position { action, argument, line, column }
-    }
-}
-
-pub trait ErrorHandler {
-    fn error(&mut self, span: Span, message: &str);
-}
-
-pub struct ErrorPrinter {
-    pub name: Symbol,
-    pub lines: Lines,
-    pub count: u32,
-}
-
-impl ErrorPrinter {
-    pub fn new(name: Symbol, lines: Lines) -> Self {
-        ErrorPrinter { name, lines, count: 0 }
-    }
-}
-
-impl ErrorHandler for ErrorPrinter {
-    fn error(&mut self, span: Span, message: &str) {
-        let Position { action, argument, line, column } = self.lines.get_position(span.low);
-        eprint!("error in {}", self.name);
-        if let Some(action) = action {
-            eprint!(", action {}", action);
-        }
-        if let (Some(argument), None) = (argument, line) {
-            eprint!(", argument {}", argument);
-        }
-        if let Some(line) = line {
-            eprint!(":{}", line);
-        }
-        if let Some(column) = column {
-            eprint!(":{}", column);
-        }
-        eprintln!(": {}", message);
-        self.count += 1;
     }
 }

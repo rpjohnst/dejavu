@@ -2,12 +2,13 @@ use std::{slice, str, str::FromStr};
 
 use project::{Action, action_kind, action_type, argument_type};
 
+use crate::ErrorPrinter;
 use crate::symbol::Symbol;
-use crate::front::{ast, Lexer, Parser, Span, ErrorHandler};
+use crate::front::{ast, Lexer, Parser, Span};
 
 pub struct ActionParser<'s, 'e> {
     reader: slice::Iter<'s, Action>,
-    errors: &'e mut dyn ErrorHandler,
+    errors: &'e mut ErrorPrinter,
 
     current: Option<&'s Action>,
     span: Span,
@@ -16,7 +17,7 @@ pub struct ActionParser<'s, 'e> {
 impl<'s, 'e> ActionParser<'s, 'e> {
     pub fn new(
         reader: slice::Iter<'s, Action>,
-        errors: &'e mut dyn ErrorHandler
+        errors: &'e mut ErrorPrinter
     ) -> ActionParser<'s, 'e> {
         let mut parser = ActionParser {
             reader,
@@ -76,7 +77,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
                 let span = self.span;
                 self.advance_action();
 
-                self.errors.error(span, "unexpected action kind");
+                self.errors.error(span, format_args!("unexpected action kind"));
                 (ast::Action::Error, span)
             }
         }
@@ -264,7 +265,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
 
         if let ast::Argument::Error = argument {
             let span = Span { low: offset, high: offset };
-            self.errors.error(span, "corrupt argument");
+            self.errors.error(span, format_args!("corrupt argument"));
         }
 
         argument
@@ -309,7 +310,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
 
         if action.parameters_used != 1 {
             let span = Span { low, high };
-            self.errors.error(span, "wrong number of arguments");
+            self.errors.error(span, format_args!("wrong number of arguments"));
             return (ast::Action::Error, span);
         }
 
@@ -328,7 +329,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
 
             _ => {
                 let span = Span { low, high };
-                self.errors.error(span, "expected an expression");
+                self.errors.error(span, format_args!("expected an expression"));
                 Box::new((ast::Expr::Error, self.span))
             }
         };
@@ -351,14 +352,14 @@ impl<'s, 'e> ActionParser<'s, 'e> {
 
         if !action.has_target {
             let span = Span { low, high };
-            self.errors.error(span, "expected a target");
+            self.errors.error(span, format_args!("expected a target"));
             return (ast::Action::Error, span);
         }
         let target = action.target;
 
         if !action.has_relative {
             let span = Span { low, high };
-            self.errors.error(span, "expected relative");
+            self.errors.error(span, format_args!("expected relative"));
             return (ast::Action::Error, span);
         }
         let relative = action.relative;
@@ -366,7 +367,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
         let len = action.parameters_used as usize;
         if len != 2 {
             let span = Span { low, high };
-            self.errors.error(span, "wrong number of arguments");
+            self.errors.error(span, format_args!("wrong number of arguments"));
             return (ast::Action::Error, span);
         }
 
@@ -384,7 +385,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
 
             _ => {
                 let span = Span { low, high };
-                self.errors.error(span, "expected a variable");
+                self.errors.error(span, format_args!("expected a variable"));
                 Box::new((ast::Expr::Error, self.span))
             }
         };
@@ -399,7 +400,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
 
             _ => {
                 let span = Span { low, high };
-                self.errors.error(span, "expected an expression");
+                self.errors.error(span, format_args!("expected an expression"));
                 Box::new((ast::Expr::Error, self.span))
             }
         };
@@ -418,7 +419,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
 
         if !action.has_target {
             let span = Span { low, high };
-            self.errors.error(span, "expected a target");
+            self.errors.error(span, format_args!("expected a target"));
             return (ast::Action::Error, span);
         }
         let target = action.target;
@@ -426,7 +427,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
         let len = action.parameters_used as usize;
         if len != 1 {
             let span = Span { low, high };
-            self.errors.error(span, "wrong number of arguments");
+            self.errors.error(span, format_args!("wrong number of arguments"));
             return (ast::Action::Error, span);
         }
 
@@ -444,7 +445,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
 
             _ => {
                 let span = Span { low, high };
-                self.errors.error(span, "expected an expression");
+                self.errors.error(span, format_args!("expected an expression"));
                 Box::new((ast::Stmt::Error(ast::Expr::Error), self.span))
             }
         };

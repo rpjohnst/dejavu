@@ -1,20 +1,21 @@
 use std::mem;
 use std::str::{self, FromStr};
 
+use crate::ErrorPrinter;
 use crate::symbol::{Symbol, keyword};
-use crate::front::{ast, Lexer, Span, ErrorHandler};
+use crate::front::{ast, Lexer, Span};
 use crate::front::token::{Token, Delim, BinOp};
 
 pub struct Parser<'s, 'e> {
     reader: Lexer<'s>,
-    errors: &'e mut dyn ErrorHandler,
+    errors: &'e mut ErrorPrinter,
 
     current: Token,
     span: Span,
 }
 
 impl<'s, 'e> Parser<'s, 'e> {
-    pub fn new(reader: Lexer<'s>, errors: &'e mut dyn ErrorHandler) -> Parser<'s, 'e> {
+    pub fn new(reader: Lexer<'s>, errors: &'e mut ErrorPrinter) -> Parser<'s, 'e> {
         let mut parser = Parser {
             reader: reader,
             errors: errors,
@@ -50,8 +51,8 @@ impl<'s, 'e> Parser<'s, 'e> {
         let high = span.high;
 
         if self.current != Token::Eof {
-            let message = format!("unexpected {}; expected {}", self.current, Token::Eof);
-            self.errors.error(self.span, &message);
+            self.errors.error(self.span,
+                format_args!("unexpected {}; expected {}", self.current, Token::Eof));
         }
 
         (stmt, Span { low: low, high: high })
@@ -112,8 +113,8 @@ impl<'s, 'e> Parser<'s, 'e> {
             BinOpEq(Pipe) => Some(BitOr),
             BinOpEq(Caret) => Some(BitXor),
             _ => {
-                let message = format!("unexpected {}; expected assignment operator", self.current);
-                self.errors.error(self.span, &message);
+                self.errors.error(self.span,
+                    format_args!("unexpected {}; expected assignment operator", self.current));
                 return (ast::Stmt::Error(place), left_span);
             }
         };
@@ -154,8 +155,7 @@ impl<'s, 'e> Parser<'s, 'e> {
 
         if self.current == Token::Eq || self.current == Token::ColonEq {
             // TODO: gms allows this
-            let message = format!("unexpected {}; expected ;", self.current);
-            self.errors.error(self.span, &message);
+            self.errors.error(self.span, format_args!("unexpected {}; expected ;", self.current));
 
             self.advance_token();
             self.parse_expression(0);
@@ -188,8 +188,9 @@ impl<'s, 'e> Parser<'s, 'e> {
 
         let high;
         if self.current == Token::Eof {
-            let message = format!("unexpected {}; expected {}", self.current, Token::CloseDelim(Delim::Brace));
-            self.errors.error(self.span, &message);
+            let expected = Token::CloseDelim(Delim::Brace);
+            self.errors.error(self.span,
+                format_args!("unexpected {}; expected {}", self.current, expected));
             high = self.span.low;
         } else {
             let (_, span) = self.advance_token();
@@ -313,8 +314,9 @@ impl<'s, 'e> Parser<'s, 'e> {
             self.current != Token::OpenDelim(Delim::Brace) &&
             self.current != Token::Keyword(keyword::Begin)
         {
-            let message = format!("unexpected {}; expected {}", self.current, Token::OpenDelim(Delim::Brace));
-            self.errors.error(self.span, &message);
+            let expected = Token::OpenDelim(Delim::Brace);
+            self.errors.error(self.span,
+                format_args!("unexpected {}; expected {}", self.current, expected));
         }
 
         let (body, Span { high, .. }) = self.parse_block();
@@ -403,8 +405,8 @@ impl<'s, 'e> Parser<'s, 'e> {
                         let (_, field_span) = self.advance_token();
                         (field, field_span)
                     } else {
-                        let message = format!("unexpected {}; expected identifier", self.current);
-                        self.errors.error(self.span, &message);
+                        self.errors.error(self.span,
+                            format_args!("unexpected {}; expected identifier", self.current));
                         break;
                     };
                     let high = field_span.high;
@@ -453,17 +455,17 @@ impl<'s, 'e> Parser<'s, 'e> {
                 let (_, span) = self.advance_token();
                 // This should never fail in normal usage, as a `Real` token should always be UTF-8.
                 let symbol = str::from_utf8(&symbol[..]).unwrap_or_else(|error| {
-                    self.errors.error(span, "invalid numeric literal");
+                    self.errors.error(span, format_args!("invalid numeric literal"));
                     let (valid, _) = symbol.split_at(error.valid_up_to());
                     unsafe { str::from_utf8_unchecked(valid) }
                 });
                 let value = match symbol.chars().next() {
                     Some('$') => u64::from_str_radix(&symbol[1..], 16).unwrap_or_else(|_| {
-                        self.errors.error(span, "invalid integer literal");
+                        self.errors.error(span, format_args!("invalid integer literal"));
                         0
                     }) as f64,
                     _ => f64::from_str(&symbol).unwrap_or_else(|_| {
-                        self.errors.error(span, "invalid floating point literal");
+                        self.errors.error(span, format_args!("invalid floating point literal"));
                         0.0
                     }),
                 };
@@ -502,8 +504,8 @@ impl<'s, 'e> Parser<'s, 'e> {
             }
 
             _ => {
-                let message = format!("unexpected {}; expected expression", self.current);
-                self.errors.error(self.span, &message);
+                self.errors.error(self.span,
+                    format_args!("unexpected {}; expected expression", self.current));
 
                 let span = Span { low: low, high: low };
                 (ast::Expr::Error, span, false)
@@ -527,8 +529,10 @@ impl<'s, 'e> Parser<'s, 'e> {
 
         let high = self.span.high;
         if self.current != Token::CloseDelim(delim) {
-            let message = format!("unexpected {}; expected {} or {}", self.current, Token::CloseDelim(delim), Token::Comma);
-            self.errors.error(self.span, &message);
+            let delim = Token::CloseDelim(delim);
+            let comma = Token::Comma;
+            self.errors.error(self.span,
+                format_args!("unexpected {}; expected {} or {}", self.current, delim, comma));
         } else {
             self.advance_token();
         }
@@ -545,8 +549,8 @@ impl<'s, 'e> Parser<'s, 'e> {
             self.advance_token();
             true
         } else {
-            let message = format!("unexpected {}; expected {}", self.current, token);
-            self.errors.error(self.span, &message);
+            self.errors.error(self.span,
+                format_args!("unexpected {}; expected {}", self.current, token));
             false
         }
     }
@@ -666,12 +670,13 @@ impl Infix {
 
 #[cfg(test)]
 mod tests {
+    use crate::ErrorPrinter;
     use crate::symbol::Symbol;
-    use crate::front::{Span, Lexer, Parser, Lines, ErrorPrinter};
+    use crate::front::{Span, Lexer, Parser, Lines};
     use crate::front::ast::*;
 
     fn setup<'s>(source: &'s [u8]) -> (ErrorPrinter, Lexer<'s>) {
-        let lines = Lines::from_script(source);
+        let lines = Lines::from_code(source);
         let errors = ErrorPrinter::new(Symbol::intern(b"<test>"), lines);
         (errors, Lexer::new(source, 0))
     }

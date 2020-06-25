@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
+use gml::ErrorPrinter;
 use gml::symbol::Symbol;
-use gml::front::{Span, ErrorHandler, Lines, ErrorPrinter};
+use gml::front::{Span, Lines};
 use engine::Engine;
 
 fn main() {
@@ -81,13 +82,13 @@ fn main() {
     if let Err(error) = thread.execute(&mut engine, &resources, main, vec![]) {
         let location = resources.debug[&error.symbol].get_location(error.instruction as u32);
         let lines = match items[&error.symbol] {
-            gml::Item::Script(source) => Lines::from_script(source),
-            gml::Item::Event(source) => Lines::from_event(source),
-            _ => Lines::from_script(b""),
+            gml::Item::Script(source) => Lines::from_code(source),
+            gml::Item::Event(source) => Lines::from_actions(source),
+            _ => Lines::from_code(b""),
         };
         let mut errors = ErrorPrinter::new(error.symbol, lines);
         let span = Span { low: location as usize, high: location as usize };
-        errors.error(span, &format!("{}", error.kind));
+        errors.error(span, format_args!("{}", error.kind));
     }
 
     engine.instance.free_destroyed(&mut engine.world, &mut engine.motion);

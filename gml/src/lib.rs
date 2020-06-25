@@ -9,9 +9,10 @@
 extern crate wasm_host;
 
 use std::collections::HashMap;
+use std::fmt;
 
 use crate::symbol::Symbol;
-use crate::front::{Lexer, Parser, ActionParser, ErrorHandler, Lines, ErrorPrinter};
+use crate::front::{Lexer, Parser, ActionParser, Lines, Position, Span};
 use crate::back::ssa;
 use crate::vm::code;
 
@@ -51,7 +52,7 @@ pub fn build<E>(items: &HashMap<Symbol, Item<E>>) -> Result<vm::Resources<E>, (u
     for (&name, item) in items.iter() {
         match *item {
             Item::Event(actions) => {
-                let mut errors = ErrorPrinter::new(name, Lines::from_event(actions));
+                let mut errors = ErrorPrinter::new(name, Lines::from_actions(actions));
                 let (function, debug) = compile_event(&prototypes, actions, &mut errors);
                 error_count += errors.count;
 
@@ -59,7 +60,7 @@ pub fn build<E>(items: &HashMap<Symbol, Item<E>>) -> Result<vm::Resources<E>, (u
                 resources.debug.insert(name, debug);
             }
             Item::Script(source) => {
-                let mut errors = ErrorPrinter::new(name, Lines::from_script(source));
+                let mut errors = ErrorPrinter::new(name, Lines::from_code(source));
                 let (function, debug) = compile_script(&prototypes, source, &mut errors);
                 error_count += errors.count;
 
@@ -84,7 +85,7 @@ pub fn build<E>(items: &HashMap<Symbol, Item<E>>) -> Result<vm::Resources<E>, (u
 
 fn compile_event(
     prototypes: &HashMap<Symbol, ssa::Prototype>, source: &[project::Action],
-    errors: &mut dyn ErrorHandler
+    errors: &mut ErrorPrinter
 ) -> (code::Function, code::Debug) {
     let reader = source.iter();
     let mut parser = ActionParser::new(reader, errors);
@@ -97,7 +98,7 @@ fn compile_event(
 
 fn compile_script(
     prototypes: &HashMap<Symbol, ssa::Prototype>, source: &[u8],
-    errors: &mut dyn ErrorHandler
+    errors: &mut ErrorPrinter
 ) -> (code::Function, code::Debug) {
     let reader = Lexer::new(source, 0);
     let mut parser = Parser::new(reader, errors);
@@ -106,4 +107,35 @@ fn compile_script(
     let program = codegen.compile_program(&program);
     let codegen = back::Codegen::new();
     codegen.compile(&program)
+}
+
+pub struct ErrorPrinter {
+    pub name: Symbol,
+    pub lines: Lines,
+    pub count: u32,
+}
+
+impl ErrorPrinter {
+    pub fn new(name: Symbol, lines: Lines) -> ErrorPrinter {
+        ErrorPrinter { name, lines, count: 0 }
+    }
+
+    pub fn error(&mut self, span: Span, message: fmt::Arguments<'_>) {
+        let Position { action, argument, line, column } = self.lines.get_position(span.low);
+        eprint!("error in {}", self.name);
+        if let Some(action) = action {
+            eprint!(", action {}", action);
+        }
+        if let (Some(argument), None) = (argument, line) {
+            eprint!(", argument {}", argument);
+        }
+        if let Some(line) = line {
+            eprint!(":{}", line);
+        }
+        if let Some(column) = column {
+            eprint!(":{}", column);
+        }
+        eprintln!(": {}", message);
+        self.count += 1;
+    }
 }

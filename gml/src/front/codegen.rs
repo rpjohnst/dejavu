@@ -1,14 +1,15 @@
 use std::{mem, cmp, iter};
 use std::collections::HashMap;
 
+use crate::ErrorPrinter;
 use crate::symbol::{Symbol, keyword};
-use crate::front::{self, ast, Span, ErrorHandler};
+use crate::front::{self, ast, Span};
 use crate::back::ssa;
 
 pub struct Codegen<'p, 'e> {
     function: ssa::Function,
     builder: front::ssa::Builder,
-    errors: &'e mut dyn ErrorHandler,
+    errors: &'e mut ErrorPrinter,
 
     prototypes: &'p HashMap<Symbol, ssa::Prototype>,
 
@@ -90,7 +91,7 @@ const LOCAL: f64 = -7.0;
 
 impl<'p, 'e> Codegen<'p, 'e> {
     pub fn new(
-        prototypes: &'p HashMap<Symbol, ssa::Prototype>, errors: &'e mut dyn ErrorHandler
+        prototypes: &'p HashMap<Symbol, ssa::Prototype>, errors: &'e mut ErrorPrinter
     ) -> Self {
         let function = ssa::Function::new();
 
@@ -310,7 +311,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
             ast::Stmt::Declare(scope, box ref names) => {
                 let names: Vec<_> = names.iter().filter_map(|&(name, name_span)| {
                     if name.is_argument() {
-                        self.errors.error(name_span, "cannot redeclare a builtin variable");
+                        self.errors.error(name_span,
+                            format_args!("cannot redeclare a builtin variable"));
                         return None;
                     }
 
@@ -496,7 +498,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
             }
 
             ast::Stmt::Case(_) => {
-                self.errors.error(statement_span, "case statement outside of switch");
+                self.errors.error(statement_span, format_args!("case statement outside of switch"));
             }
 
             ast::Stmt::Jump(ast::Jump::Break) if self.current_exit.is_some() => {
@@ -729,13 +731,15 @@ impl<'p, 'e> Codegen<'p, 'e> {
             Some(&ssa::Prototype::Native { arity, variadic }) =>
                 (ssa::Opcode::CallApi, arity, variadic),
             _ => {
-                self.errors.error(symbol_span, "unknown function or script");
+                self.errors.error(symbol_span,
+                    format_args!("unknown function or script: {}", symbol));
                 (ssa::Opcode::Call, 0, true)
             }
         };
 
         if args.len() < arity || (!variadic && args.len() > arity) {
-            self.errors.error(symbol_span, "wrong number of arguments to function or script");
+            self.errors.error(symbol_span,
+                format_args!("wrong number of arguments to function or script"));
             return self.emit_real(0.0, symbol_span.low);
         }
 
@@ -807,7 +811,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
             ast::Expr::Index(box ref expr, box ref indices) => {
                 if indices.len() < 1 || 2 < indices.len() {
-                    self.errors.error(expression_span, "invalid number of array indices");
+                    self.errors.error(expression_span,
+                        format_args!("invalid number of array indices"));
                 }
 
                 let array = self.emit_place(expr)?;
@@ -823,14 +828,14 @@ impl<'p, 'e> Codegen<'p, 'e> {
                     Place { path, index: None } => Ok(Place { path, index: Some([i, j]) }),
                     Place { index: Some(_), .. } => {
                         let (_, expr_span) = *expr;
-                        self.errors.error(expr_span, "expected a variable");
+                        self.errors.error(expr_span, format_args!("expected a variable"));
                         Err(PlaceError)
                     }
                 }
             }
 
             _ => {
-                self.errors.error(expression_span, "expected a variable");
+                self.errors.error(expression_span, format_args!("expected a variable"));
                 Err(PlaceError)
             }
         }
