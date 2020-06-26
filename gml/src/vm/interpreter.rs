@@ -4,12 +4,13 @@ use std::mem::ManuallyDrop;
 
 use crate::symbol::Symbol;
 use crate::rc_vec::RcVec;
+use crate::Function;
 use crate::vm::{code, world};
 use crate::vm::{World, Entity, Value, ValueRef, Data, to_i32, to_bool, Array, ArrayRef, Resources};
 
 /// A single thread of GML execution.
 pub struct Thread {
-    returns: Vec<(Symbol, usize, usize)>,
+    calls: Vec<(Function, usize, usize)>,
     withs: Vec<RcVec<Entity>>,
     stack: Vec<Register>,
 
@@ -51,7 +52,7 @@ impl Default for Register {
 }
 
 pub struct Error {
-    pub symbol: Symbol,
+    pub function: Function,
     pub instruction: usize,
     pub kind: ErrorKind,
 }
@@ -68,7 +69,7 @@ pub enum ErrorKind {
     Arity(usize),
     /// Scope does not exit.
     Scope(i32),
-    /// Name in entity does not exit.
+    /// Name in entity does not exist.
     Name(Symbol),
     /// Variable is read-only.
     Write(Symbol),
@@ -80,7 +81,7 @@ pub enum ErrorKind {
 
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}+{}:{:?}", self.symbol, self.instruction, self.kind)
+        write!(f, "{}+{}:{:?}", self.function, self.instruction, self.kind)
     }
 }
 
@@ -112,7 +113,7 @@ pub const LOCAL: i32 = -7;
 impl Default for Thread {
     fn default() -> Self {
         Thread {
-            returns: Vec::default(),
+            calls: Vec::default(),
             withs: Vec::default(),
             stack: Vec::default(),
 
@@ -134,12 +135,12 @@ impl Thread {
     pub fn execute<E: world::Api>(
         &mut self,
         engine: &mut E, resources: &Resources<E>,
-        symbol: Symbol, arguments: Vec<Value>
+        function: Function, arguments: Vec<Value>
     ) -> Result<Value, Error> {
         let world = E::receivers(engine) as *mut _;
         let engine = unsafe { &mut *(engine as *mut _ as *mut Engine) };
         let resources = unsafe { &*(resources as *const _ as *const Resources<Engine>) };
-        execute_internal(self, engine, world, resources, symbol, arguments)
+        execute_internal(self, engine, world, resources, function, arguments)
     }
 }
 
@@ -153,7 +154,7 @@ fn get_string(value: ValueRef<'_>) -> Symbol {
 fn execute_internal<'a>(
     thread: &mut Thread,
     engine: &'a mut Engine, world: *mut World, resources: &Resources<Engine>,
-    symbol: Symbol, arguments: Vec<Value>
+    function: Function, arguments: Vec<Value>
 ) -> Result<Value, Error> {
     // Enforce that `world` is treated as a reborrow of `engine`.
     fn constrain<F: for<'a> Fn(&'a mut Engine) -> &'a mut World>(f: F) -> F { f }
@@ -163,16 +164,19 @@ fn execute_internal<'a>(
     unsafe fn erase_ref(r: ValueRef<'_>) -> ValueRef<'static> { mem::transmute(r) }
 
     // Thread state not stored in `thread`:
-    let mut symbol = symbol;
-    let mut function = &resources.scripts[&symbol];
+    let mut function = function;
+    let mut code = match function {
+        Function::Script(symbol) => &resources.scripts[&symbol],
+        Function::Event(event) => &resources.events[&event],
+    };
     let mut instruction = 0;
     let mut reg_base = thread.stack.len();
 
     // Don't initialize locals, the compiler handles that.
-    thread.stack.resize_with(reg_base + function.locals as usize, Register::default);
+    thread.stack.resize_with(reg_base + code.locals as usize, Register::default);
 
     // Move the arguments onto the stack and initialize any additional parameters to 0.0.
-    let registers = thread.stack[reg_base..][..function.params as usize].iter_mut();
+    let registers = thread.stack[reg_base..][..code.params as usize].iter_mut();
     let arguments = arguments.into_iter().chain(iter::repeat_with(Value::default));
     for (reg, arg) in Iterator::zip(registers, arguments) {
         *reg = Register { value: ManuallyDrop::new(arg) };
@@ -181,9 +185,9 @@ fn execute_internal<'a>(
     let kind = loop {
         let registers = &mut thread.stack[reg_base..];
 
-        match function.instructions[instruction].decode() {
+        match code.instructions[instruction].decode() {
             (code::Op::Imm, t, constant, _) => {
-                let value = function.constants[constant].clone();
+                let value = code.constants[constant].clone();
                 registers[t] = Register { value: ManuallyDrop::new(value) };
             }
 
@@ -425,7 +429,7 @@ fn execute_internal<'a>(
             }
 
             (code::Op::DeclareGlobal, name, _, _) => {
-                let name = get_string(function.constants[name].borrow());
+                let name = get_string(code.constants[name].borrow());
                 world(engine).globals.insert(name);
 
                 let instance = &mut world(engine).members[world::GLOBAL];
@@ -433,7 +437,7 @@ fn execute_internal<'a>(
             }
 
             (code::Op::Lookup, t, name, _) => {
-                let name = get_string(function.constants[name].borrow());
+                let name = get_string(code.constants[name].borrow());
                 registers[t].entity = if world(engine).globals.contains(&name) {
                     world::GLOBAL
                 } else {
@@ -540,7 +544,7 @@ fn execute_internal<'a>(
                 let a = unsafe { registers[a].value_ref };
                 match a.decode() {
                     Data::Real(a) => if !to_bool(a) {
-                        let local = get_string(function.constants[local].borrow());
+                        let local = get_string(code.constants[local].borrow());
                         break ErrorKind::Name(local);
                     }
                     _ => break ErrorKind::TypeUnary(op, a.clone()),
@@ -603,7 +607,7 @@ fn execute_internal<'a>(
 
             (code::Op::LoadField, t, entity, field) => {
                 let entity = unsafe { registers[entity].entity };
-                let field = get_string(function.constants[field].borrow());
+                let field = get_string(code.constants[field].borrow());
                 let instance = &world(engine).members[entity];
                 let value = match instance.get(&field) {
                     Some(value) => value.borrow(),
@@ -614,7 +618,7 @@ fn execute_internal<'a>(
 
             (code::Op::LoadFieldDefault, t, entity, field) => {
                 let entity = unsafe { registers[entity].entity };
-                let field = get_string(function.constants[field].borrow());
+                let field = get_string(code.constants[field].borrow());
                 let instance = &world(engine).members[entity];
                 let value = match instance.get(&field) {
                     Some(value) => value.borrow(),
@@ -657,7 +661,7 @@ fn execute_internal<'a>(
             (code::Op::StoreField, s, entity, field) => {
                 let s = unsafe { registers[s].value_ref };
                 let entity = unsafe { registers[entity].entity };
-                let field = get_string(function.constants[field].borrow());
+                let field = get_string(code.constants[field].borrow());
                 let instance = &mut world(engine).members[entity];
                 instance.insert(field, s.clone());
             }
@@ -693,17 +697,18 @@ fn execute_internal<'a>(
             }
 
             (code::Op::Call, callee, base, len) => {
-                thread.returns.push((symbol, instruction + 1, reg_base));
+                thread.calls.push((function, instruction + 1, reg_base));
 
-                symbol = get_string(function.constants[callee].borrow());
-                function = &resources.scripts[&symbol];
+                let id = callee as i32;
+                function = Function::Script(id);
+                code = &resources.scripts[&id];
                 instruction = 0;
                 reg_base = reg_base + base;
 
-                let limit = cmp::max(function.locals as usize, len);
+                let limit = cmp::max(code.locals as usize, len);
                 thread.stack.resize_with(reg_base + limit, Register::default);
 
-                let registers = thread.stack[reg_base..][..function.params as usize].iter_mut();
+                let registers = thread.stack[reg_base..][..code.params as usize].iter_mut();
                 for reg in registers.skip(len) {
                     *reg = Register { value: ManuallyDrop::new(Value::default()) };
                 }
@@ -712,14 +717,14 @@ fn execute_internal<'a>(
             }
 
             (code::Op::CallApi, callee, base, len) => {
-                let api_symbol = get_string(function.constants[callee].borrow());
-                let function = resources.api[&api_symbol];
+                let api_symbol = get_string(code.constants[callee].borrow());
+                let api = resources.api[&api_symbol];
                 let reg_base = reg_base + base;
 
                 let registers = &mut thread.stack[reg_base..];
                 let entity = thread.self_entity;
                 let arguments = unsafe { mem::transmute::<_, &[Value]>(&registers[..len]) };
-                let value = match function(engine, resources, entity, arguments) {
+                let value = match api(engine, resources, entity, arguments) {
                     Ok(value) => value,
                     Err(kind) => break kind,
                 };
@@ -727,9 +732,9 @@ fn execute_internal<'a>(
             }
 
             (code::Op::CallGet, get, base, _) => {
-                let symbol = get_string(function.constants[get].borrow());
-                let function = match resources.get.get(&symbol) {
-                    Some(function) => function,
+                let symbol = get_string(code.constants[get].borrow());
+                let get = match resources.get.get(&symbol) {
+                    Some(get) => get,
                     None => break ErrorKind::Name(symbol),
                 };
                 let reg_base = reg_base + base;
@@ -738,14 +743,14 @@ fn execute_internal<'a>(
                 let entity = unsafe { registers[0].entity };
                 let i = unsafe { registers[1].value_ref };
                 let i = i32::try_from(i).unwrap_or(0) as usize;
-                let value = function(engine, entity, i);
+                let value = get(engine, entity, i);
                 registers[0] = Register { value: ManuallyDrop::new(value) };
             }
 
             (code::Op::CallSet, set, base, _) => {
-                let symbol = get_string(function.constants[set].borrow());
-                let function = match resources.set.get(&symbol) {
-                    Some(function) => function,
+                let symbol = get_string(code.constants[set].borrow());
+                let set = match resources.set.get(&symbol) {
+                    Some(set) => set,
                     None => break ErrorKind::Write(symbol),
                 };
                 let reg_base = reg_base + base;
@@ -755,11 +760,11 @@ fn execute_internal<'a>(
                 let entity = unsafe { registers[1].entity };
                 let i = unsafe { registers[2].value_ref };
                 let i = i32::try_from(i).unwrap_or(0) as usize;
-                function(engine, entity, i, value);
+                set(engine, entity, i, value);
             }
 
             (code::Op::Ret, _, _, _) => {
-                let (caller, caller_instruction, caller_base) = match thread.returns.pop() {
+                let (caller, caller_instruction, caller_base) = match thread.calls.pop() {
                     Some(frame) => frame,
                     None => {
                         let value = unsafe { registers[0].value_ref };
@@ -767,12 +772,15 @@ fn execute_internal<'a>(
                     }
                 };
 
-                symbol = caller;
-                function = &resources.scripts[&symbol];
+                function = caller;
+                code = match function {
+                    Function::Script(symbol) => &resources.scripts[&symbol],
+                    Function::Event(event) => &resources.events[&event],
+                };
                 instruction = caller_instruction;
                 reg_base = caller_base;
 
-                thread.stack.resize_with(reg_base + function.locals as usize, Register::default);
+                thread.stack.resize_with(reg_base + code.locals as usize, Register::default);
 
                 continue;
             }
@@ -797,5 +805,5 @@ fn execute_internal<'a>(
         instruction += 1;
     };
 
-    Err(Error { symbol, instruction, kind })
+    Err(Error { function, instruction, kind })
 }

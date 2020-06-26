@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 gml = { path = "../gml" }
 engine = { path = "../engine" }
+project = { path = "../project" }

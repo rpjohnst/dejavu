@@ -193,7 +193,7 @@ pub enum Opcode {
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Prototype {
     /// A GML script.
-    Script,
+    Script { id: i32 },
     /// A native API function.
     Native { arity: usize, variadic: bool },
     /// A built-in member accessed via getter and setter.

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::symbol::Symbol;
+use crate::{Function, Event};
 
 pub use crate::vm::interpreter::{Thread, Error, ErrorKind, SELF, OTHER, ALL, NOONE, GLOBAL};
 pub use crate::vm::world::World;
@@ -19,8 +20,10 @@ mod array;
 mod debug;
 
 pub struct Resources<E: ?Sized> {
-    pub scripts: HashMap<Symbol, code::Function>,
-    pub debug: HashMap<Symbol, code::Debug>,
+    pub scripts: HashMap<i32, code::Function>,
+    pub events: HashMap<Event, code::Function>,
+
+    pub debug: HashMap<Function, code::Debug>,
 
     pub api: HashMap<Symbol, ApiFunction<E>>,
     pub get: HashMap<Symbol, GetFunction<E>>,
@@ -35,6 +38,7 @@ impl<E: ?Sized> Default for Resources<E> {
     fn default() -> Self {
         Resources {
             scripts: Default::default(),
+            events: Default::default(),
             debug: Default::default(),
 
             api: Default::default(),

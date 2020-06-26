@@ -1,3 +1,20 @@
+pub struct Game<'a> {
+    pub scripts: Vec<Script<'a>>,
+    pub objects: Vec<Object<'a>>,
+}
+
+#[derive(Default)]
+pub struct Script<'a> {
+    pub name: &'a [u8],
+    pub body: &'a [u8],
+}
+
+#[derive(Default)]
+pub struct Object<'a> {
+    pub name: &'a [u8],
+    pub events: Vec<Event<'a>>,
+}
+
 #[derive(Default)]
 pub struct Event<'a> {
     pub event_type: u32,
@@ -61,4 +78,13 @@ pub mod argument_type {
     pub const COLOR: u32 = 13;
     pub const TIMELINE: u32 = 14;
     pub const FONT_STRING: u32 = 15;
+}
+
+impl<'a> Default for Game<'a> {
+    fn default() -> Game<'a> {
+        Game {
+            scripts: Vec::default(),
+            objects: Vec::default(),
+        }
+    }
 }

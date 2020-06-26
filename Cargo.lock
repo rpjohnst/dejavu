@@ -103,6 +103,7 @@ dependencies = [
  "engine",
  "gml",
  "js-sys",
+ "project",
  "wasm-bindgen",
  "wasm-host",
 ]
@@ -135,6 +136,7 @@ version = "0.1.0"
 dependencies = [
  "engine",
  "gml",
+ "project",
 ]
 
 [[package]]

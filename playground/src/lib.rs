@@ -4,27 +4,26 @@ extern crate wasm_host;
 
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
-use js_sys::Function;
 
-use gml::ErrorPrinter;
-use gml::front::{Span, Lines};
-use gml::symbol::Symbol;
+use gml::{Function, ErrorPrinter};
+use gml::front::Span;
 use engine::Engine;
 
 #[wasm_bindgen]
-pub fn setup(out: Function, err: Function) {
+pub fn setup(out: js_sys::Function, err: js_sys::Function) {
     wasm_host::redirect_print(out, err);
 }
 
 #[wasm_bindgen]
 pub fn run(source: &str) {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let mut items = HashMap::default();
     Engine::register(&mut items);
 
-    let script = Symbol::intern(b"script");
-    items.insert(script, gml::Item::Script(source.as_bytes()));
+    let script = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"script", body: source.as_bytes() });
 
-    let resources = match gml::build(&items) {
+    let resources = match gml::build(&game, &items) {
         Ok(resources) => resources,
         Err((errors, _)) => {
             if errors > 1 {
@@ -43,13 +42,8 @@ pub fn run(source: &str) {
     let mut thread = gml::vm::Thread::default();
     thread.set_self(engine.world.instances[id]);
     if let Err(error) = thread.execute(&mut engine, &resources, script, vec![]) {
-        let location = resources.debug[&error.symbol].get_location(error.instruction as u32);
-        let lines = match items[&error.symbol] {
-            gml::Item::Event(source) => Lines::from_actions(source),
-            gml::Item::Script(source) => Lines::from_code(source),
-            _ => Lines::from_code(b""),
-        };
-        let mut errors = ErrorPrinter::new(error.symbol, lines);
+        let mut errors = ErrorPrinter::from_game(&game, error.function);
+        let location = resources.debug[&error.function].get_location(error.instruction as u32);
         let span = Span { low: location as usize, high: location as usize };
         errors.error(span, format_args!("{}", error.kind));
     }

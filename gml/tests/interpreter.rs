@@ -1,19 +1,20 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 
-use gml::{build, Item, symbol::Symbol, vm};
+use gml::{build, Function, Item, symbol::Symbol, vm};
 
 /// Read script arguments.
 #[test]
 fn arguments() -> Result<(), vm::Error> {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let items = HashMap::default();
 
-    let select = Symbol::intern(b"select");
-    items.insert(select, Item::Script(b"{
+    let select = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"select", body: b"{
         return argument0 + argument1
-    }"));
+    }" });
 
-    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let resources = build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
@@ -32,18 +33,19 @@ fn arguments() -> Result<(), vm::Error> {
 /// Read and write member variables.
 #[test]
 fn member() -> Result<(), vm::Error> {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let items = HashMap::default();
 
-    let member = Symbol::intern(b"member");
-    items.insert(member, Item::Script(b"{
+    let member = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"member", body: b"{
         a = 3
         b[3] = 5
         var c;
         c = self.a + self.b[3]
         return c
-    }"));
+    }" });
 
-    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let resources = build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
@@ -57,6 +59,7 @@ fn member() -> Result<(), vm::Error> {
 /// Read and write builtin variables.
 #[test]
 fn builtin() -> Result<(), vm::Error> {
+    let mut game = project::Game::default();
     let mut items = HashMap::new();
 
     let scalar = Symbol::intern(b"scalar");
@@ -71,8 +74,8 @@ fn builtin() -> Result<(), vm::Error> {
     let global_array = Symbol::intern(b"global_array");
     items.insert(global_array, Item::Member(Some(Engine::get_global_array), Some(Engine::set_global_array)));
 
-    let builtin = Symbol::intern(b"builtin");
-    items.insert(builtin, Item::Script(b"{
+    let builtin = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"builtin", body: b"{
         scalar = 3
         array[0] = 2 + scalar
         array[1] = scalar + array[0]
@@ -80,9 +83,9 @@ fn builtin() -> Result<(), vm::Error> {
         global_array[0] = array[1] + global_scalar
         global_array[1] = global_scalar + global_array[0]
         return global_array[1]
-    }"));
+    }" });
 
-    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let resources = build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
@@ -106,17 +109,18 @@ fn builtin() -> Result<(), vm::Error> {
 /// Read and write global variables.
 #[test]
 fn global() -> Result<(), vm::Error> {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let items = HashMap::default();
 
-    let global = Symbol::intern(b"global");
-    items.insert(global, Item::Script(b"{
+    let global = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"global", body: b"{
         a = 3
         global.a = 5
         globalvar a;
         return self.a + a
-    }"));
+    }" });
 
-    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let resources = build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
@@ -129,10 +133,11 @@ fn global() -> Result<(), vm::Error> {
 
 #[test]
 fn with_scopes() -> Result<(), vm::Error> {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let items = HashMap::default();
 
-    let with = Symbol::intern(b"with");
-    items.insert(with, Item::Script(b"{
+    let with = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"with", body: b"{
         c = 3
         with (all) {
             n = other.c
@@ -145,9 +150,9 @@ fn with_scopes() -> Result<(), vm::Error> {
             m = 13
         }
         return argument0.n + argument1.n + argument0.m + argument1.m
-    }"));
+    }" });
 
-    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let resources = build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
@@ -162,10 +167,11 @@ fn with_scopes() -> Result<(), vm::Error> {
 
 #[test]
 fn with_iterator() -> Result<(), vm::Error> {
+    let mut game = project::Game::default();
     let mut items = HashMap::new();
 
-    let with = Symbol::intern(b"with");
-    items.insert(with, Item::Script(b"{
+    let with = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"with", body: b"{
         with (all) {
             c = 3
             var i;
@@ -178,12 +184,12 @@ fn with_iterator() -> Result<(), vm::Error> {
             s += c
         }
         return s
-    }"));
+    }" });
 
     let create_instance = Symbol::intern(b"create_instance");
     items.insert(create_instance, Item::Native(Engine::native_create_instance, 0, false));
 
-    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let resources = build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
@@ -198,10 +204,11 @@ fn with_iterator() -> Result<(), vm::Error> {
 /// Read and write arrays.
 #[test]
 fn array() -> Result<(), vm::Error> {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let items = HashMap::default();
 
-    let array = Symbol::intern(b"array");
-    items.insert(array, Item::Script(b"{
+    let array = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"array", body: b"{
         var a, b, c;
         a[0] = 3
         a[1] = 5
@@ -209,9 +216,9 @@ fn array() -> Result<(), vm::Error> {
         b[2] = 13
         c[1, 1] = 21
         return a + a[1] + b[0] + b[1] + b[2] + c + c[1, 1]
-    }"));
+    }" });
 
-    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let resources = build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
@@ -224,18 +231,18 @@ fn array() -> Result<(), vm::Error> {
 /// Regression test to ensure conditionally-initialized values don't break the compiler.
 #[test]
 fn conditional_initialization() -> Result<(), vm::Error> {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let items = HashMap::default();
 
-    let fibonacci = Symbol::intern(b"fibonacci");
-    items.insert(fibonacci, Item::Script::<()>(b"{
+    game.scripts.push(project::Script { name: b"fibonacci", body: b"{
         var t;
         if (true) {
             t = 1
         }
         return t
-    }"));
+    }" });
 
-    build(&items).unwrap_or_else(|_| panic!());
+    let _: vm::Resources<Engine> = build(&game, &items).unwrap_or_else(|_| panic!());
     Ok(())
 }
 
@@ -244,35 +251,36 @@ fn conditional_initialization() -> Result<(), vm::Error> {
 /// Regression test to ensure uses of undef don't break the register allocator.
 #[test]
 fn dead_undef() -> Result<(), vm::Error> {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let items = HashMap::default();
 
-    let switch = Symbol::intern(b"switch");
-    items.insert(switch, Item::Script::<()>(b"{
+    game.scripts.push(project::Script { name: b"switch", body: b"{
         var i;
         return 0
         return i
-    }"));
+    }" });
 
-    build(&items).unwrap_or_else(|_| panic!());
+    let _: vm::Resources<Engine> = build(&game, &items).unwrap_or_else(|_| panic!());
     Ok(())
 }
 
 /// For loop working with locals.
 #[test]
 fn for_loop() -> Result<(), vm::Error> {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let items = HashMap::default();
 
-    let factorial = Symbol::intern(b"factorial");
-    items.insert(factorial, Item::Script(b"{
+    let factorial = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"factorial", body: b"{
         var i, j;
         j = 1
         for (i = 1; i <= 4; i += 1) {
             j *= i
         }
         return j
-    }"));
+    }" });
 
-    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let resources = build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
@@ -283,10 +291,11 @@ fn for_loop() -> Result<(), vm::Error> {
 /// Control flow across a switch statement.
 #[test]
 fn switch() -> Result<(), vm::Error> {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let items = HashMap::default();
 
-    let switch = Symbol::intern(b"switch");
-    items.insert(switch, Item::Script(b"{
+    let switch = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"switch", body: b"{
         var i;
         switch (argument0) {
         case 3:
@@ -298,9 +307,9 @@ fn switch() -> Result<(), vm::Error> {
             return 21
         }
         return i
-    }"));
+    }" });
 
-    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let resources = build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
@@ -322,25 +331,26 @@ fn switch() -> Result<(), vm::Error> {
 /// An empty switch statement.
 #[test]
 fn switch_empty() -> Result<(), vm::Error> {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let items = HashMap::default();
 
-    let switch = Symbol::intern(b"switch");
-    items.insert(switch, Item::Script::<()>(b"{
+    game.scripts.push(project::Script { name: b"switch", body: b"{
         switch (argument0) {
         }
-    }"));
+    }" });
 
-    build(&items).unwrap_or_else(|_| panic!());
+    let _: vm::Resources<Engine> = build(&game, &items).unwrap_or_else(|_| panic!());
     Ok(())
 }
 
 /// A switch statement with fallthrough between cases.
 #[test]
 fn switch_fallthrough() -> Result<(), vm::Error> {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let items = HashMap::default();
 
-    let switch = Symbol::intern(b"switch");
-    items.insert(switch, Item::Script(b"{
+    let switch = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"switch", body: b"{
         var i;
         i = 0
         switch (argument0) {
@@ -351,9 +361,9 @@ fn switch_fallthrough() -> Result<(), vm::Error> {
             i += 5
         }
         return i
-    }"));
+    }" });
 
-    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let resources = build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
@@ -375,15 +385,15 @@ fn switch_fallthrough() -> Result<(), vm::Error> {
 /// Call a GML script.
 #[test]
 fn call_script() -> Result<(), vm::Error> {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let items = HashMap::default();
 
-    let id = Symbol::intern(b"id");
-    items.insert(id, Item::Script(b"return argument0"));
+    game.scripts.push(project::Script { name: b"id", body: b"return argument0" });
 
-    let call = Symbol::intern(b"call");
-    items.insert(call, Item::Script(b"return id(3) + 5"));
+    let call = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"call", body: b"return id(3) + 5" });
 
-    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let resources = build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
@@ -394,18 +404,19 @@ fn call_script() -> Result<(), vm::Error> {
 /// Recursively call a GML script.
 #[test]
 fn recurse() -> Result<(), vm::Error> {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let items = HashMap::default();
 
-    let fibonacci = Symbol::intern(b"fibonacci");
-    items.insert(fibonacci, Item::Script(b"{
+    let fibonacci = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"fibonacci", body: b"{
         if (argument0 < 2) {
             return 1
         } else {
             return fibonacci(argument0 - 1) + fibonacci(argument0 - 2)
         }
-    }"));
+    }" });
 
-    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let resources = build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 
@@ -417,23 +428,23 @@ fn recurse() -> Result<(), vm::Error> {
 /// Call a native function.
 #[test]
 fn ffi() -> Result<(), vm::Error> {
+    let mut game = project::Game::default();
     let mut items = HashMap::new();
 
     let add = Symbol::intern(b"add");
     items.insert(add, Item::Native(Engine::native_add, 2, false));
 
-    let caller = Symbol::intern(b"caller");
-    items.insert(caller, Item::Script(b"{
+    let caller = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"caller", body: b"{
         var a, b, c;
         return call()
-    }"));
+    }" });
 
-    let call = Symbol::intern(b"call");
-    items.insert(call, Item::Script(b"{
+    game.scripts.push(project::Script { name: b"call", body: b"{
         return add(3, 5) + 8
-    }"));
+    }" });
 
-    let resources = build(&items).unwrap_or_else(|_| panic!());
+    let resources = build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = vm::Thread::default();
 

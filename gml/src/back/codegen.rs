@@ -7,9 +7,11 @@ use crate::symbol::Symbol;
 use crate::back::{ssa, analysis::*, regalloc::*};
 use crate::vm::{self, code};
 
-pub struct Codegen {
+pub struct Codegen<'p> {
     function: code::Function,
     debug: code::Debug,
+
+    prototypes: &'p HashMap<Symbol, ssa::Prototype>,
 
     registers: HandleMap<ssa::Value, usize>,
     register_count: usize,
@@ -22,11 +24,13 @@ pub struct Codegen {
     constants: HashMap<vm::Value, usize>,
 }
 
-impl Codegen {
-    pub fn new() -> Codegen {
+impl<'p> Codegen<'p> {
+    pub fn new(prototypes: &'p HashMap<Symbol, ssa::Prototype>) -> Codegen {
         Codegen {
             function: code::Function::new(),
             debug: code::Debug::new(),
+
+            prototypes,
 
             registers: HandleMap::new(),
             register_count: 0,
@@ -90,7 +94,10 @@ impl Codegen {
                 self.emit_phis(parameters, args);
 
                 let op = code::Op::from(op);
-                let a = self.emit_string(a);
+                let a = match self.prototypes.get(&a) {
+                    Some(&ssa::Prototype::Script { id }) => id as usize,
+                    _ => self.emit_string(a),
+                };
                 let b = self.registers[parameters[0]];
                 let c = args.len();
                 let inst = inst(op).index(a).index(b).index(c).encode();

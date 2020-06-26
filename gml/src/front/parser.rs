@@ -670,14 +670,14 @@ impl Infix {
 
 #[cfg(test)]
 mod tests {
-    use crate::ErrorPrinter;
+    use crate::{Function, ErrorPrinter};
     use crate::symbol::Symbol;
     use crate::front::{Span, Lexer, Parser, Lines};
     use crate::front::ast::*;
 
     fn setup<'s>(source: &'s [u8]) -> (ErrorPrinter, Lexer<'s>) {
         let lines = Lines::from_code(source);
-        let errors = ErrorPrinter::new(Symbol::intern(b"<test>"), lines);
+        let errors = ErrorPrinter::new(Function::Script(0), lines);
         (errors, Lexer::new(source, 0))
     }
 

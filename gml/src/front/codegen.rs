@@ -726,7 +726,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
         let (symbol, symbol_span) = symbol;
 
         let (op, arity, variadic) = match self.prototypes.get(&symbol) {
-            Some(&ssa::Prototype::Script) =>
+            Some(&ssa::Prototype::Script { .. }) =>
                 (ssa::Opcode::Call, 0, true),
             Some(&ssa::Prototype::Native { arity, variadic }) =>
                 (ssa::Opcode::CallApi, arity, variadic),

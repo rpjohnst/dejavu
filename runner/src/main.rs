@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
-use gml::ErrorPrinter;
-use gml::symbol::Symbol;
-use gml::front::{Span, Lines};
+use gml::{Function, ErrorPrinter};
+use gml::front::Span;
 use engine::Engine;
 
 fn main() {
-    let mut items = HashMap::new();
+    let mut game = project::Game::default();
+    let mut items = HashMap::default();
     Engine::register(&mut items);
 
-    let main = Symbol::intern(b"main");
-    items.insert(main, gml::Item::Script(br#"{
+    let main = Function::Script(game.scripts.len() as i32);
+    game.scripts.push(project::Script { name: b"main", body: br#"{
         show_debug_message("hello world")
 
         var list;
@@ -66,9 +66,9 @@ fn main() {
 
             instance_destroy()
         }
-    }"#));
+    }"# });
 
-    let resources = gml::build(&items).unwrap_or_else(|_| panic!());
+    let resources = gml::build(&game, &items).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = gml::vm::Thread::default();
 
@@ -80,13 +80,8 @@ fn main() {
         .unwrap_or_else(|_| panic!("object does not exist"));
 
     if let Err(error) = thread.execute(&mut engine, &resources, main, vec![]) {
-        let location = resources.debug[&error.symbol].get_location(error.instruction as u32);
-        let lines = match items[&error.symbol] {
-            gml::Item::Script(source) => Lines::from_code(source),
-            gml::Item::Event(source) => Lines::from_actions(source),
-            _ => Lines::from_code(b""),
-        };
-        let mut errors = ErrorPrinter::new(error.symbol, lines);
+        let mut errors = ErrorPrinter::from_game(&game, error.function);
+        let location = resources.debug[&error.function].get_location(error.instruction as u32);
         let span = Span { low: location as usize, high: location as usize };
         errors.error(span, format_args!("{}", error.kind));
     }

@@ -14,7 +14,6 @@ use std::fmt;
 use crate::symbol::Symbol;
 use crate::front::{Lexer, Parser, ActionParser, Lines, Position, Span};
 use crate::back::ssa;
-use crate::vm::code;
 
 pub use gml_meta::bind;
 
@@ -28,54 +27,93 @@ pub mod front;
 pub mod back;
 pub mod vm;
 
-/// A GML item definition, used as input to build a project.
-pub enum Item<'a, E> {
-    Event(&'a [project::Action<'a>]),
-    Script(&'a [u8]),
+/// The name of a single executable unit of GML or D&D actions.
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+pub enum Function {
+    Event(Event),
+    Script(i32),
+}
+
+/// The name of an event.
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Event {
+    pub object_index: i32,
+    pub event_type: u32,
+    pub event_kind: i32,
+}
+
+/// An entity defined by the engine.
+pub enum Item<E> {
     Native(vm::ApiFunction<E>, usize, bool),
     Member(Option<vm::GetFunction<E>>, Option<vm::SetFunction<E>>),
 }
 
-/// Build a GML project.
-pub fn build<E>(items: &HashMap<Symbol, Item<E>>) -> Result<vm::Resources<E>, (u32, vm::Resources<E>)> {
-    let prototypes: HashMap<Symbol, ssa::Prototype> = items.iter()
-        .filter_map(|(&name, resource)| match *resource {
-            Item::Event(_) => None,
-            Item::Script(_) => Some((name, ssa::Prototype::Script)),
-            Item::Native(_, arity, variadic) => Some((name, ssa::Prototype::Native { arity, variadic })),
-            Item::Member(_, _) => Some((name, ssa::Prototype::Member)),
-        })
-        .collect();
+/// Build a Game Maker project.
+pub fn build<E>(game: &project::Game, engine: &HashMap<Symbol, Item<E>>) ->
+    Result<vm::Resources<E>, (u32, vm::Resources<E>)>
+{
+    // Collect the prototypes of entities that may be referred to in code.
+    let scripts = game.scripts.iter()
+        .enumerate()
+        .map(|(id, &project::Script { ref name, .. })| {
+            let id = id as i32;
+            (Symbol::intern(name), ssa::Prototype::Script { id })
+        });
+    let builtins = engine.iter()
+        .map(|(&name, item)| match *item {
+            Item::Native(_, arity, variadic) => (name, ssa::Prototype::Native { arity, variadic }),
+            Item::Member(_, _) => (name, ssa::Prototype::Member),
+        });
+    let prototypes: HashMap<Symbol, ssa::Prototype> = Iterator::chain(scripts, builtins).collect();
 
     let mut resources = vm::Resources::default();
     let mut error_count = 0;
-    for (&name, item) in items.iter() {
+
+    // Insert engine entities.
+    for (&name, item) in engine.iter() {
         match *item {
-            Item::Event(actions) => {
-                let mut errors = ErrorPrinter::new(name, Lines::from_actions(actions));
-                let (function, debug) = compile_event(&prototypes, actions, &mut errors);
-                error_count += errors.count;
-
-                resources.scripts.insert(name, function);
-                resources.debug.insert(name, debug);
-            }
-            Item::Script(source) => {
-                let mut errors = ErrorPrinter::new(name, Lines::from_code(source));
-                let (function, debug) = compile_script(&prototypes, source, &mut errors);
-                error_count += errors.count;
-
-                resources.scripts.insert(name, function);
-                resources.debug.insert(name, debug);
-            }
-            Item::Native(function, _, _) => {
-                resources.api.insert(name, function);
-            }
+            Item::Native(api, _, _) => { resources.api.insert(name, api); }
             Item::Member(get, set) => {
                 if let Some(get) = get { resources.get.insert(name, get); }
                 if let Some(set) = set { resources.set.insert(name, set); }
             }
         }
     }
+
+    // Compile scripts.
+    for (id, &project::Script { body, .. }) in game.scripts.iter().enumerate() {
+        let function = Function::Script(id as i32);
+        let mut errors = ErrorPrinter::new(function, Lines::from_code(body));
+        let program = Parser::new(Lexer::new(body, 0), &mut errors).parse_program();
+        let program = front::Codegen::new(&prototypes, &mut errors).compile_program(&program);
+        let (code, debug) = back::Codegen::new(&prototypes).compile(&program);
+        error_count += errors.count;
+
+        resources.scripts.insert(id as i32, code);
+        resources.debug.insert(function, debug);
+    }
+
+    // Compile object events.
+    let events = game.objects.iter()
+        .enumerate()
+        .flat_map(|(object_index, &project::Object { ref events, .. })| {
+            let object_index = object_index as i32;
+            events.iter().map(move |&project::Event { event_type, event_kind, ref actions }| {
+                (Event { object_index, event_type, event_kind }, &actions[..])
+            })
+        });
+    for (event, actions) in events {
+        let function = Function::Event(event);
+        let mut errors = ErrorPrinter::new(function, Lines::from_actions(actions));
+        let program = ActionParser::new(actions.iter(), &mut errors).parse_event();
+        let program = front::Codegen::new(&prototypes, &mut errors).compile_event(&program);
+        let (code, debug) = back::Codegen::new(&prototypes).compile(&program);
+        error_count += errors.count;
+
+        resources.events.insert(event, code);
+        resources.debug.insert(function, debug);
+    }
+
     if error_count > 0 {
         return Err((error_count, resources));
     }
@@ -83,41 +121,44 @@ pub fn build<E>(items: &HashMap<Symbol, Item<E>>) -> Result<vm::Resources<E>, (u
     Ok(resources)
 }
 
-fn compile_event(
-    prototypes: &HashMap<Symbol, ssa::Prototype>, source: &[project::Action],
-    errors: &mut ErrorPrinter
-) -> (code::Function, code::Debug) {
-    let reader = source.iter();
-    let mut parser = ActionParser::new(reader, errors);
-    let program = parser.parse_event();
-    let codegen = front::Codegen::new(prototypes, errors);
-    let program = codegen.compile_event(&program);
-    let codegen = back::Codegen::new();
-    codegen.compile(&program)
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Function::Event(event) => event.fmt(f),
+            Function::Script(script) => script.fmt(f),
+        }
+    }
 }
 
-fn compile_script(
-    prototypes: &HashMap<Symbol, ssa::Prototype>, source: &[u8],
-    errors: &mut ErrorPrinter
-) -> (code::Function, code::Debug) {
-    let reader = Lexer::new(source, 0);
-    let mut parser = Parser::new(reader, errors);
-    let program = parser.parse_program();
-    let codegen = front::Codegen::new(prototypes, errors);
-    let program = codegen.compile_program(&program);
-    let codegen = back::Codegen::new();
-    codegen.compile(&program)
+impl fmt::Display for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Event {}({}) for object {}", self.event_type, self.event_kind, self.object_index)?;
+        Ok(())
+    }
 }
 
 pub struct ErrorPrinter {
-    pub name: Symbol,
+    pub name: Function,
     pub lines: Lines,
     pub count: u32,
 }
 
 impl ErrorPrinter {
-    pub fn new(name: Symbol, lines: Lines) -> ErrorPrinter {
+    pub fn new(name: Function, lines: Lines) -> ErrorPrinter {
         ErrorPrinter { name, lines, count: 0 }
+    }
+
+    pub fn from_game(game: &project::Game, function: Function) -> ErrorPrinter {
+        let lines = match function {
+            Function::Script(script) => Lines::from_code(game.scripts[script as usize].body),
+            Function::Event(Event { object_index, event_type, event_kind }) => {
+                let event = game.objects[object_index as usize].events.iter()
+                    .find(|&e| (e.event_type, e.event_kind) == (event_type, event_kind))
+                    .unwrap();
+                Lines::from_actions(&event.actions[..])
+            }
+        };
+        ErrorPrinter::new(function, lines)
     }
 
     pub fn error(&mut self, span: Span, message: fmt::Arguments<'_>) {
