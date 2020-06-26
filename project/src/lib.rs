@@ -1,12 +1,12 @@
 #[derive(Default)]
-pub struct Event {
+pub struct Event<'a> {
     pub event_type: u32,
     pub event_kind: i32,
-    pub actions: Vec<Action>,
+    pub actions: Vec<Action<'a>>,
 }
 
 #[derive(Default)]
-pub struct Action {
+pub struct Action<'a> {
     pub library: u32,
     pub action: u32,
     pub action_kind: u32,
@@ -14,13 +14,13 @@ pub struct Action {
     pub is_question: bool,
     pub has_target: bool,
     pub action_type: u32,
-    pub name: Vec<u8>,
-    pub code: Vec<u8>,
+    pub name: &'a [u8],
+    pub code: &'a [u8],
     pub parameters_used: u32,
     pub parameters: Vec<u32>,
     pub target: i32,
     pub relative: bool,
-    pub arguments: Vec<Vec<u8>>,
+    pub arguments: Vec<&'a [u8]>,
     pub negate: bool,
 }
 

@@ -30,7 +30,7 @@ pub mod vm;
 
 /// A GML item definition, used as input to build a project.
 pub enum Item<'a, E> {
-    Event(&'a [project::Action]),
+    Event(&'a [project::Action<'a>]),
     Script(&'a [u8]),
     Native(vm::ApiFunction<E>, usize, bool),
     Member(Option<vm::GetFunction<E>>, Option<vm::SetFunction<E>>),

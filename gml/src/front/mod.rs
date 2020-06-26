@@ -60,7 +60,7 @@ impl Lines {
         Lines { actions, arguments, lines }
     }
 
-    pub fn from_actions(source: &[project::Action]) -> Lines {
+    pub fn from_actions(source: &[project::Action<'_>]) -> Lines {
         let mut actions = Vec::default();
         let mut arguments = Vec::default();
         let mut lines = Vec::default();

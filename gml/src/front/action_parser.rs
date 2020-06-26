@@ -7,16 +7,16 @@ use crate::symbol::Symbol;
 use crate::front::{ast, Lexer, Parser, Span};
 
 pub struct ActionParser<'s, 'e> {
-    reader: slice::Iter<'s, Action>,
+    reader: slice::Iter<'s, Action<'s>>,
     errors: &'e mut ErrorPrinter,
 
-    current: Option<&'s Action>,
+    current: Option<&'s Action<'s>>,
     span: Span,
 }
 
 impl<'s, 'e> ActionParser<'s, 'e> {
     pub fn new(
-        reader: slice::Iter<'s, Action>,
+        reader: slice::Iter<'s, Action<'s>>,
         errors: &'e mut ErrorPrinter
     ) -> ActionParser<'s, 'e> {
         let mut parser = ActionParser {
@@ -95,7 +95,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
 
         let execution = match action.action_type {
             action_type::FUNCTION => {
-                let function = Symbol::intern(&action.name[..]);
+                let function = Symbol::intern(action.name);
                 offset += action.name.len();
 
                 ast::Exec::Function(function)
@@ -124,7 +124,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
         let source = action.arguments.iter();
         let len = action.parameters_used as usize;
         let arguments: Vec<_> = Iterator::zip(parameters, source).take(len)
-            .map(|(&param, source)| {
+            .map(|(&param, &source)| {
                 let argument = self.parse_argument(param, source, offset);
                 offset += source.len();
 
@@ -319,7 +319,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
         let len = action.parameters_used as usize;
         let mut arguments = Iterator::zip(parameters, source).take(len);
 
-        let (&parameter, source) = arguments.next().unwrap();
+        let (&parameter, &source) = arguments.next().unwrap();
         let count = match parameter {
             argument_type::EXPR => {
                 let reader = Lexer::new(source, offset);
@@ -375,7 +375,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
         let source = action.arguments.iter();
         let mut arguments = Iterator::zip(parameters, source).take(len);
 
-        let (&parameter, source) = arguments.next().unwrap();
+        let (&parameter, &source) = arguments.next().unwrap();
         let variable = match parameter {
             argument_type::STRING => {
                 let reader = Lexer::new(source, offset);
@@ -390,7 +390,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
             }
         };
 
-        let (&parameter, source) = arguments.next().unwrap();
+        let (&parameter, &source) = arguments.next().unwrap();
         let value = match parameter {
             argument_type::EXPR => {
                 let reader = Lexer::new(source, 0);
@@ -435,7 +435,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
         let source = action.arguments.iter();
         let mut arguments = Iterator::zip(parameters, source).take(len);
 
-        let (&parameter, source) = arguments.next().unwrap();
+        let (&parameter, &source) = arguments.next().unwrap();
         let code = match parameter {
             argument_type::STRING => {
                 let reader = Lexer::new(source, offset);
@@ -469,7 +469,7 @@ impl<'s, 'e> ActionParser<'s, 'e> {
                 (_, _) => 0,
             };
             self.span.high += action.arguments[..action.parameters_used as usize].iter()
-                .map(|argument| argument.len())
+                .map(|&argument| argument.len())
                 .sum::<usize>();
 
             // Skip comments.
