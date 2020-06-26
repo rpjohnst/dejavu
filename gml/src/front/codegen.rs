@@ -175,16 +175,14 @@ impl<'p, 'e> Codegen<'p, 'e> {
                 ref question, ref execution, target, relative, box ref arguments
             } => {
                 let target = target.map(|target| target as f64).unwrap_or(SELF);
-                // TODO: argument_relative
-                let _relative = relative.unwrap_or(false);
 
                 // TODO: move into peephole optimizer
                 let value = if target == SELF {
-                    self.emit_action_call(execution, arguments, action_span)
+                    self.emit_action_call(execution, relative, arguments, action_span)
                 } else {
                     let target = self.emit_real(target as f64, action_span.low);
                     self.emit_with(target, action_span.low, action_span.low, |self_| {
-                        self_.emit_action_call(execution, arguments, action_span)
+                        self_.emit_action_call(execution, relative, arguments, action_span)
                     })
                 };
 
@@ -260,7 +258,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
     }
 
     fn emit_action_call(
-        &mut self, exec: &ast::Exec, arguments: &[ast::Argument], span: Span
+        &mut self, exec: &ast::Exec, relative: Option<bool>, arguments: &[ast::Argument], span: Span
     ) -> ssa::Value {
         let symbol = match *exec {
             ast::Exec::Function(symbol) => (symbol, span),
@@ -268,8 +266,11 @@ impl<'p, 'e> Codegen<'p, 'e> {
         };
 
         let mut args = vec![];
+        let loc = span.low;
+        if let Some(relative) = relative {
+            args.push(self.emit_real(relative as u64 as f64, loc));
+        }
         for argument in arguments {
-            let loc = span.low;
             let value = match *argument {
                 ast::Argument::Expr(box ref expr) => self.emit_value(expr),
                 ast::Argument::String(symbol) => self.emit_string(symbol, loc),

@@ -44,7 +44,11 @@ impl State {
     pub fn set_y(&mut self, entity: vm::Entity, value: f32) { self.instances[entity].y = value }
 
     #[gml::function]
-    pub fn action_move_to(&mut self, entity: vm::Entity, x: f32, y: f32) {
+    pub fn action_move_to(&mut self, entity: vm::Entity, relative: bool, mut x: f32, mut y: f32) {
+        if relative {
+            x += self.instances[entity].x;
+            y += self.instances[entity].y;
+        }
         self.instances[entity].x = x;
         self.instances[entity].y = y;
     }
