@@ -1,17 +1,27 @@
-use std::fmt::Write;
+use std::io::{self, Write};
 use gml::vm;
 
-#[derive(Default)]
-pub struct State;
+pub struct State {
+    write: Box<dyn Write>,
+}
+
+impl Default for State {
+    fn default() -> State {
+        State { write: Box::new(io::stdout()) }
+    }
+}
 
 #[gml::bind(Api)]
 impl State {
+    pub fn set_write(&mut self, write: Box<dyn Write>) {
+        self.write = write;
+    }
+
     #[gml::function]
     pub fn show_debug_message(&mut self, arguments: &[vm::Value]) {
-        let mut message = String::default();
         for argument in arguments {
-            let _ = write!(&mut message, "{:?} ", argument);
+            let _ = write!(&mut *self.write, "{:?} ", argument);
         }
-        println!("{}", message);
+        let _ = writeln!(&mut *self.write);
     }
 }

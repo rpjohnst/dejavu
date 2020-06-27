@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io;
 
 use gml::{Function, ErrorPrinter};
 use gml::front::Span;
@@ -68,7 +69,7 @@ fn main() {
         }
     }"# });
 
-    let resources = gml::build(&game, &items).unwrap_or_else(|_| panic!());
+    let resources = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut engine = Engine::default();
     let mut thread = gml::vm::Thread::default();
 
@@ -80,10 +81,10 @@ fn main() {
         .unwrap_or_else(|_| panic!("object does not exist"));
 
     if let Err(error) = thread.execute(&mut engine, &resources, main, vec![]) {
-        let mut errors = ErrorPrinter::from_game(&game, error.function);
+        let mut errors = ErrorPrinter::from_game(&game, error.function, io::stderr());
         let location = resources.debug[&error.function].get_location(error.instruction as u32);
         let span = Span { low: location as usize, high: location as usize };
-        errors.error(span, format_args!("{}", error.kind));
+        ErrorPrinter::error(&mut errors, span, format_args!("{}", error.kind));
     }
 
     engine.instance.free_destroyed(&mut engine.world, &mut engine.motion);

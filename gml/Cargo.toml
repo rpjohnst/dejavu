@@ -8,6 +8,3 @@ edition = "2018"
 gml-meta = { path = "meta" }
 project = { path = "../project" }
 bstr = { version = "0.2", default-features = false }
-
-[target.wasm32-unknown-unknown.dependencies]
-wasm-host = { path = "../wasm-host" }

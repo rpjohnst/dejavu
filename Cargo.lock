@@ -33,8 +33,6 @@ version = "0.1.0"
 dependencies = [
  "bstr",
  "gml",
- "wasm-bindgen",
- "wasm-host",
 ]
 
 [[package]]
@@ -44,7 +42,6 @@ dependencies = [
  "bstr",
  "gml-meta",
  "project",
- "wasm-host",
 ]
 
 [[package]]
@@ -64,15 +61,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "076f042c5b7b98f31d205f1249267e12a6518c1481e9dae9764af19b707d2292"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "js-sys"
-version = "0.3.39"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa5a448de267e7358beaf4a5d849518fe9a0c13fce7afd44b06e68550e5562a7"
-dependencies = [
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -102,10 +90,8 @@ version = "0.1.0"
 dependencies = [
  "engine",
  "gml",
- "js-sys",
  "project",
  "wasm-bindgen",
- "wasm-host",
 ]
 
 [[package]]
@@ -209,11 +195,3 @@ name = "wasm-bindgen-shared"
 version = "0.2.62"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a91c2916119c17a8e316507afaaa2dd94b47646048014bbdf6bef098c1bb58ad"
-
-[[package]]
-name = "wasm-host"
-version = "0.1.0"
-dependencies = [
- "js-sys",
- "wasm-bindgen",
-]

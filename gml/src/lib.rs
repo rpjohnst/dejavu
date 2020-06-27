@@ -4,12 +4,8 @@
 #![feature(extern_types)]
 #![feature(untagged_unions)]
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-#[macro_use]
-extern crate wasm_host;
-
 use std::collections::HashMap;
-use std::fmt;
+use std::{fmt, io};
 
 use crate::symbol::Symbol;
 use crate::front::{Lexer, Parser, ActionParser, Lines, Position, Span};
@@ -49,8 +45,11 @@ pub enum Item<E> {
 }
 
 /// Build a Game Maker project.
-pub fn build<E>(game: &project::Game, engine: &HashMap<Symbol, Item<E>>) ->
+pub fn build<E, F, W>(game: &project::Game, engine: &HashMap<Symbol, Item<E>>, mut write: F) ->
     Result<vm::Resources<E>, (u32, vm::Resources<E>)>
+where
+    F: FnMut() -> W,
+    W: io::Write + 'static,
 {
     // Collect the prototypes of entities that may be referred to in code.
     let scripts = game.scripts.iter()
@@ -83,7 +82,7 @@ pub fn build<E>(game: &project::Game, engine: &HashMap<Symbol, Item<E>>) ->
     // Compile scripts.
     for (id, &project::Script { body, .. }) in game.scripts.iter().enumerate() {
         let function = Function::Script(id as i32);
-        let mut errors = ErrorPrinter::new(function, Lines::from_code(body));
+        let mut errors = ErrorPrinter::new(function, Lines::from_code(body), write());
         let program = Parser::new(Lexer::new(body, 0), &mut errors).parse_program();
         let program = front::Codegen::new(&prototypes, &mut errors).compile_program(&program);
         let (code, debug) = back::Codegen::new(&prototypes).compile(&program);
@@ -104,7 +103,7 @@ pub fn build<E>(game: &project::Game, engine: &HashMap<Symbol, Item<E>>) ->
         });
     for (event, actions) in events {
         let function = Function::Event(event);
-        let mut errors = ErrorPrinter::new(function, Lines::from_actions(actions));
+        let mut errors = ErrorPrinter::new(function, Lines::from_actions(actions), write());
         let program = ActionParser::new(actions.iter(), &mut errors).parse_event();
         let program = front::Codegen::new(&prototypes, &mut errors).compile_event(&program);
         let (code, debug) = back::Codegen::new(&prototypes).compile(&program);
@@ -137,18 +136,21 @@ impl fmt::Display for Event {
     }
 }
 
-pub struct ErrorPrinter {
+pub struct ErrorPrinter<W: ?Sized = dyn io::Write> {
     pub name: Function,
     pub lines: Lines,
     pub count: u32,
+    pub write: W,
 }
 
 impl ErrorPrinter {
-    pub fn new(name: Function, lines: Lines) -> ErrorPrinter {
-        ErrorPrinter { name, lines, count: 0 }
+    pub fn new<W: io::Write>(name: Function, lines: Lines, write: W) -> ErrorPrinter<W> {
+        ErrorPrinter { name, lines, count: 0, write }
     }
 
-    pub fn from_game(game: &project::Game, function: Function) -> ErrorPrinter {
+    pub fn from_game<W: io::Write>(game: &project::Game, function: Function, write: W) ->
+        ErrorPrinter<W>
+    {
         let lines = match function {
             Function::Script(script) => Lines::from_code(game.scripts[script as usize].body),
             Function::Event(Event { object_index, event_type, event_kind }) => {
@@ -158,25 +160,25 @@ impl ErrorPrinter {
                 Lines::from_actions(&event.actions[..])
             }
         };
-        ErrorPrinter::new(function, lines)
+        ErrorPrinter::new(function, lines, write)
     }
 
     pub fn error(&mut self, span: Span, message: fmt::Arguments<'_>) {
         let Position { action, argument, line, column } = self.lines.get_position(span.low);
-        eprint!("error in {}", self.name);
+        let _ = write!(self.write, "error in {}", self.name);
         if let Some(action) = action {
-            eprint!(", action {}", action);
+            let _ = write!(self.write, ", action {}", action);
         }
         if let (Some(argument), None) = (argument, line) {
-            eprint!(", argument {}", argument);
+            let _ = write!(self.write, ", argument {}", argument);
         }
         if let Some(line) = line {
-            eprint!(":{}", line);
+            let _ = write!(self.write, ":{}", line);
         }
         if let Some(column) = column {
-            eprint!(":{}", column);
+            let _ = write!(self.write, ":{}", column);
         }
-        eprintln!(": {}", message);
+        let _ = writeln!(self.write, ": {}", message);
         self.count += 1;
     }
 }

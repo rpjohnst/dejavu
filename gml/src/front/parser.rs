@@ -670,15 +670,16 @@ impl Infix {
 
 #[cfg(test)]
 mod tests {
+    use std::io;
     use crate::{Function, ErrorPrinter};
     use crate::symbol::Symbol;
     use crate::front::{Span, Lexer, Parser, Lines};
     use crate::front::ast::*;
 
-    fn setup<'s>(source: &'s [u8]) -> (ErrorPrinter, Lexer<'s>) {
+    fn setup<'s>(source: &'s [u8]) -> (Lexer<'s>, ErrorPrinter<io::Stderr>) {
         let lines = Lines::from_code(source);
-        let errors = ErrorPrinter::new(Function::Script(0), lines);
-        (errors, Lexer::new(source, 0))
+        let errors = ErrorPrinter::new(Function::Script(0), lines, io::stderr());
+        (Lexer::new(source, 0), errors)
     }
 
     fn span(low: usize, high: usize) -> Span {
@@ -687,7 +688,7 @@ mod tests {
 
     #[test]
     fn program() {
-        let (mut errors, reader) = setup(b"{ \
+        let (reader, mut errors) = setup(b"{ \
             var x; \
             x = 3 \
             show_message(x * y) \
@@ -723,7 +724,7 @@ mod tests {
 
     #[test]
     fn precedence() {
-        let (mut errors, reader) = setup(b"x + y * (3 + z)");
+        let (reader, mut errors) = setup(b"x + y * (3 + z)");
         let mut parser = Parser::new(reader, &mut errors);
 
         let x = Symbol::intern(b"x");

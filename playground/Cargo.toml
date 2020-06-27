@@ -4,13 +4,14 @@ version = "0.1.0"
 authors = ["Russell Johnston <rpjohnst@gmail.com>"]
 edition = "2018"
 
+[package.metadata.wasm-pack.profile.dev.wasm-bindgen]
+dwarf-debug-info = true
+
 [lib]
 crate-type = ["cdylib"]
 
-[dependencies]
+[target.wasm32-unknown-unknown.dependencies]
 gml = { path = "../gml" }
 engine = { path = "../engine" }
 project = { path = "../project" }
-wasm-host = { path = "../wasm-host" }
 wasm-bindgen = "0.2"
-js-sys = "0.3"

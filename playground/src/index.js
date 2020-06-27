@@ -1,11 +1,11 @@
-import init, { setup, run } from "playground";
+import init, { run } from "playground";
 import wasm from "playground/playground_bg.wasm";
+import { clear } from "./print.js";
 import ace from "ace-builds";
 
 (async () => {
   try {
     await init(wasm);
-    setup(out_print, err_print);
   } catch (error) {
     console.error(error);
   }
@@ -27,24 +27,9 @@ editor.commands.addCommand({
   exec: editor => exec(editor.getValue()),
 });
 
-const output = document.getElementById("output");
-
 function exec(string) {
-  output.innerHTML = "";
+  clear();
   run(string);
-}
-
-function out_print(string) {
-  const span = document.createElement("span");
-  span.innerText = string;
-  output.appendChild(span);
-}
-
-function err_print(string) {
-  const span = document.createElement("span");
-  span.className = "error";
-  span.innerText = string;
-  output.appendChild(span);
 }
 
 /*
