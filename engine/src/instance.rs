@@ -88,7 +88,7 @@ impl State {
     }
 
     #[gml::function]
-    pub fn instance_number(world: &mut vm::World, obj: i32) -> i32 {
+    pub fn instance_number(world: &vm::World, obj: i32) -> i32 {
         if obj == vm::ALL {
             world.instances.len() as i32
         } else {
@@ -108,7 +108,8 @@ impl State {
 
         let persistent = false;
 
-        let entity = world.create_entity(object_index, id);
+        let entity = world.create_entity();
+        world.add_entity(entity, object_index, id);
         let instance = Instance { object_index, id, persistent };
         self.instances.insert(entity, instance);
         let instance = motion::Instance::from_pos(x, y);
@@ -123,7 +124,7 @@ impl State {
             Some(instance) => instance,
             None => return,
         };
-        world.remove_entity(object_index, id, entity);
+        world.remove_entity(entity, object_index, id);
         self.destroyed.push(entity);
     }
 

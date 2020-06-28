@@ -36,16 +36,27 @@ impl Default for World {
 }
 
 impl World {
-    pub fn create_entity(&mut self, object_index: i32, id: i32) -> vm::Entity {
+    /// Create an entity with a scope, but do not add it to the instance lists.
+    pub fn create_entity(&mut self) -> vm::Entity {
         let entity = self.entities.create();
         self.members.insert(entity, HashMap::default());
-        self.objects.entry(object_index).or_default().push(entity);
-        self.instances.insert(id, entity);
         entity
     }
 
-    // Remove an instance from the world, but retain its entity, to be destroyed or re-added later.
-    pub fn remove_entity(&mut self, object_index: i32, id: i32, entity: vm::Entity) {
+    /// Remove an entity from the world. Should normally be called after `remove_entity`.
+    pub fn destroy_entity(&mut self, entity: vm::Entity) {
+        self.members.remove(entity);
+        self.entities.destroy(entity);
+    }
+
+    /// Add an entity to the instance lists.
+    pub fn add_entity(&mut self, entity: vm::Entity, object_index: i32, id: i32) {
+        self.objects.entry(object_index).or_default().push(entity);
+        self.instances.insert(id, entity);
+    }
+
+    /// Remove an entity from the instance lists, but retain its entity.
+    pub fn remove_entity(&mut self, entity: vm::Entity, object_index: i32, id: i32) {
         self.instances.remove(id);
 
         if let Some(object_instances) = self.objects.get_mut(&object_index) {
@@ -53,11 +64,6 @@ impl World {
                 object_instances.remove(position);
             }
         }
-    }
-
-    pub fn destroy_entity(&mut self, entity: vm::Entity) {
-        self.members.remove(entity);
-        self.entities.destroy(entity);
     }
 }
 
