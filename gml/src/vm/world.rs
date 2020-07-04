@@ -66,7 +66,3 @@ impl World {
         }
     }
 }
-
-pub trait Api {
-    fn receivers(&mut self) -> &mut World;
-}

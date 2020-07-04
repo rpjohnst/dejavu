@@ -3,12 +3,12 @@ use std::io;
 
 use gml::{Function, ErrorPrinter};
 use gml::front::Span;
-use engine::Engine;
+use engine::World;
 
 fn main() {
     let mut game = project::Game::default();
     let mut items = HashMap::default();
-    Engine::register(&mut items);
+    World::register(&mut items);
 
     let main = Function::Script(game.scripts.len() as i32);
     game.scripts.push(project::Script { name: b"main", body: br#"{
@@ -69,23 +69,23 @@ fn main() {
         }
     }"# });
 
-    let resources = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut engine = Engine::default();
+    let mut assets = engine::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let mut world = World::default();
     let mut thread = gml::vm::Thread::default();
 
-    let id = engine.instance.instance_create(&mut engine.world, &mut engine.motion, 0.0, 0.0, 0)
+    let id = world.instance.instance_create(&mut world.world, &mut world.motion, 0.0, 0.0, 0)
         .unwrap_or_else(|_| panic!("object does not exist"));
-    thread.set_self(engine.world.instances[id]);
+    thread.set_self(world.world.instances[id]);
 
-    engine.instance.instance_create(&mut engine.world, &mut engine.motion, 0.0, 0.0, 1)
+    world.instance.instance_create(&mut world.world, &mut world.motion, 0.0, 0.0, 1)
         .unwrap_or_else(|_| panic!("object does not exist"));
 
-    if let Err(error) = thread.execute(&mut engine, &resources, main, vec![]) {
+    if let Err(error) = thread.execute(&mut world, &mut assets, main, vec![]) {
         let mut errors = ErrorPrinter::from_game(&game, error.function, io::stderr());
-        let location = resources.debug[&error.function].get_location(error.instruction as u32);
+        let location = assets.code.debug[&error.function].get_location(error.instruction as u32);
         let span = Span { low: location as usize, high: location as usize };
         ErrorPrinter::error(&mut errors, span, format_args!("{}", error.kind));
     }
 
-    engine.instance.free_destroyed(&mut engine.world, &mut engine.motion);
+    world.instance.free_destroyed(&mut world.world, &mut world.motion);
 }

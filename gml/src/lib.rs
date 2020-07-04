@@ -39,17 +39,19 @@ pub struct Event {
 }
 
 /// An entity defined by the engine.
-pub enum Item<E> {
-    Native(vm::ApiFunction<E>, usize, bool),
-    Member(Option<vm::GetFunction<E>>, Option<vm::SetFunction<E>>),
+pub enum Item<W, A> {
+    Native(vm::ApiFunction<W, A>, usize, bool),
+    Member(Option<vm::GetFunction<W, A>>, Option<vm::SetFunction<W, A>>),
 }
 
-/// Build a Game Maker project.
-pub fn build<E, F, W>(game: &project::Game, engine: &HashMap<Symbol, Item<E>>, mut write: F) ->
-    Result<vm::Resources<E>, (u32, vm::Resources<E>)>
+/// Build the GML and D&D in a Game Maker project.
+pub fn build<W, A, F, E>(
+    game: &project::Game, engine: &HashMap<Symbol, Item<W, A>>, mut errors: F
+) ->
+    Result<vm::Assets<W, A>, (u32, vm::Assets<W, A>)>
 where
-    F: FnMut() -> W,
-    W: io::Write + 'static,
+    F: FnMut() -> E,
+    E: io::Write + 'static,
 {
     // Collect the prototypes of entities that may be referred to in code.
     let scripts = game.scripts.iter()
@@ -65,16 +67,16 @@ where
         });
     let prototypes: HashMap<Symbol, ssa::Prototype> = Iterator::chain(scripts, builtins).collect();
 
-    let mut resources = vm::Resources::default();
+    let mut assets = vm::Assets::default();
     let mut error_count = 0;
 
     // Insert engine entities.
     for (&name, item) in engine.iter() {
         match *item {
-            Item::Native(api, _, _) => { resources.api.insert(name, api); }
+            Item::Native(api, _, _) => { assets.api.insert(name, api); }
             Item::Member(get, set) => {
-                if let Some(get) = get { resources.get.insert(name, get); }
-                if let Some(set) = set { resources.set.insert(name, set); }
+                if let Some(get) = get { assets.get.insert(name, get); }
+                if let Some(set) = set { assets.set.insert(name, set); }
             }
         }
     }
@@ -82,14 +84,14 @@ where
     // Compile scripts.
     for (id, &project::Script { body, .. }) in game.scripts.iter().enumerate() {
         let function = Function::Script(id as i32);
-        let mut errors = ErrorPrinter::new(function, Lines::from_code(body), write());
+        let mut errors = ErrorPrinter::new(function, Lines::from_code(body), errors());
         let program = Parser::new(Lexer::new(body, 0), &mut errors).parse_program();
         let program = front::Codegen::new(&prototypes, &mut errors).compile_program(&program);
         let (code, debug) = back::Codegen::new(&prototypes).compile(&program);
         error_count += errors.count;
 
-        resources.scripts.insert(id as i32, code);
-        resources.debug.insert(function, debug);
+        assets.scripts.insert(id as i32, code);
+        assets.debug.insert(function, debug);
     }
 
     // Compile object events.
@@ -103,21 +105,21 @@ where
         });
     for (event, actions) in events {
         let function = Function::Event(event);
-        let mut errors = ErrorPrinter::new(function, Lines::from_actions(actions), write());
+        let mut errors = ErrorPrinter::new(function, Lines::from_actions(actions), errors());
         let program = ActionParser::new(actions.iter(), &mut errors).parse_event();
         let program = front::Codegen::new(&prototypes, &mut errors).compile_event(&program);
         let (code, debug) = back::Codegen::new(&prototypes).compile(&program);
         error_count += errors.count;
 
-        resources.events.insert(event, code);
-        resources.debug.insert(function, debug);
+        assets.events.insert(event, code);
+        assets.debug.insert(function, debug);
     }
 
     if error_count > 0 {
-        return Err((error_count, resources));
+        return Err((error_count, assets));
     }
 
-    Ok(resources)
+    Ok(assets)
 }
 
 impl fmt::Display for Function {

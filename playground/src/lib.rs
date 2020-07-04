@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 use gml::{Function, ErrorPrinter};
 use gml::front::Span;
-use engine::Engine;
+use engine::World;
 
 struct HostOut;
 struct HostErr();
@@ -15,13 +15,13 @@ struct HostErr();
 pub fn run(source: &str) {
     let mut game = project::Game::default();
     let mut items = HashMap::default();
-    Engine::register(&mut items);
+    World::register(&mut items);
 
     let script = Function::Script(game.scripts.len() as i32);
     game.scripts.push(project::Script { name: b"script", body: source.as_bytes() });
 
-    let resources = match gml::build(&game, &items, HostErr) {
-        Ok(resources) => resources,
+    let mut assets = match engine::build(&game, &items, HostErr) {
+        Ok(assets) => assets,
         Err((errors, _)) => {
             if errors > 1 {
                 let _ = write!(HostErr(), "aborting due to {} previous errors", errors);
@@ -32,16 +32,16 @@ pub fn run(source: &str) {
         }
     };
 
-    let mut engine = Engine::default();
-    engine.show.set_write(Box::new(HostOut));
-    let id = engine.instance.instance_create(&mut engine.world, &mut engine.motion, 0.0, 0.0, 0)
+    let mut world = World::default();
+    world.show.set_write(Box::new(HostOut));
+    let id = world.instance.instance_create(&mut world.world, &mut world.motion, 0.0, 0.0, 0)
         .unwrap_or_else(|_| { let _ = writeln!(HostErr(), "object does not exist"); panic!() });
 
     let mut thread = gml::vm::Thread::default();
-    thread.set_self(engine.world.instances[id]);
-    if let Err(error) = thread.execute(&mut engine, &resources, script, vec![]) {
+    thread.set_self(world.world.instances[id]);
+    if let Err(error) = thread.execute(&mut world, &mut assets, script, vec![]) {
         let mut errors = ErrorPrinter::from_game(&game, error.function, HostErr());
-        let location = resources.debug[&error.function].get_location(error.instruction as u32);
+        let location = assets.code.debug[&error.function].get_location(error.instruction as u32);
         let span = Span { low: location as usize, high: location as usize };
         ErrorPrinter::error(&mut errors, span, format_args!("{}", error.kind));
     }

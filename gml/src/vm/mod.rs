@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Range;
 
 use crate::symbol::Symbol;
 use crate::{Function, Event};
@@ -19,31 +20,36 @@ mod value;
 mod array;
 mod debug;
 
-pub struct Resources<E: ?Sized> {
+pub struct Assets<W: ?Sized, A: ?Sized> {
     pub scripts: HashMap<i32, code::Function>,
     pub events: HashMap<Event, code::Function>,
-
     pub debug: HashMap<Function, code::Debug>,
 
-    pub api: HashMap<Symbol, ApiFunction<E>>,
-    pub get: HashMap<Symbol, GetFunction<E>>,
-    pub set: HashMap<Symbol, SetFunction<E>>,
+    pub api: HashMap<Symbol, ApiFunction<W, A>>,
+    pub get: HashMap<Symbol, GetFunction<W, A>>,
+    pub set: HashMap<Symbol, SetFunction<W, A>>,
 }
 
-pub type ApiFunction<E> = fn(&mut E, &Resources<E>, Entity, &[Value]) -> Result<Value, ErrorKind>;
-pub type GetFunction<E> = fn(&mut E, Entity, usize) -> Value;
-pub type SetFunction<E> = fn(&mut E, Entity, usize, ValueRef);
+pub type ApiFunction<W, A> = unsafe fn(
+    &mut W, &mut A, &mut Thread, Range<usize>
+) -> Result<Value, ErrorKind>;
+pub type GetFunction<W, A> = fn(&mut W, &mut A, Entity, usize) -> Value;
+pub type SetFunction<W, A> = fn(&mut W, &mut A, Entity, usize, ValueRef);
 
-impl<E: ?Sized> Default for Resources<E> {
+impl<W: ?Sized, A: ?Sized> Default for Assets<W, A> {
     fn default() -> Self {
-        Resources {
-            scripts: Default::default(),
-            events: Default::default(),
-            debug: Default::default(),
+        Assets {
+            scripts: HashMap::default(),
+            events: HashMap::default(),
+            debug: HashMap::default(),
 
-            api: Default::default(),
-            get: Default::default(),
-            set: Default::default(),
+            api: HashMap::default(),
+            get: HashMap::default(),
+            set: HashMap::default(),
         }
     }
+}
+
+pub trait Api<'a, A: 'a> {
+    fn fields<'r>(&'r mut self, assets: &'r mut A) -> (&'r mut World, &'r mut Assets<Self, A>);
 }

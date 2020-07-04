@@ -33,6 +33,7 @@ version = "0.1.0"
 dependencies = [
  "bstr",
  "gml",
+ "project",
 ]
 
 [[package]]

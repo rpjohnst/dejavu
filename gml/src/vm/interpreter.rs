@@ -1,12 +1,14 @@
 use std::{mem, ptr, iter, slice, cmp, fmt, error};
 use std::convert::TryFrom;
 use std::mem::ManuallyDrop;
+use std::ops::Range;
 
 use crate::symbol::Symbol;
 use crate::rc_vec::RcVec;
 use crate::Function;
-use crate::vm::{code, world};
-use crate::vm::{World, Entity, Value, ValueRef, Data, to_i32, to_bool, Array, ArrayRef, Resources};
+use crate::vm::{self, world, code};
+use crate::vm::{World, Assets, Entity, Value, ValueRef, Data, Array, ArrayRef};
+use crate::vm::{to_i32, to_bool};
 
 /// A single thread of GML execution.
 pub struct Thread {
@@ -16,10 +18,6 @@ pub struct Thread {
 
     self_entity: Entity,
     other_entity: Entity,
-}
-
-extern {
-    type Engine;
 }
 
 /// A 64-bit stack slot for the VM.
@@ -124,23 +122,30 @@ impl Default for Thread {
 }
 
 impl Thread {
-    pub fn set_self(&mut self, entity: Entity) {
-        self.self_entity = entity;
+    pub fn self_entity(&self) -> Entity { self.self_entity }
+    pub fn set_self(&mut self, entity: Entity) { self.self_entity = entity; }
+
+    pub fn set_other(&mut self, entity: Entity) { self.other_entity = entity; }
+
+    /// Obtain the arguments to an API call.
+    ///
+    /// Safety: This function must be called from an API function,
+    /// with the `Range` passed in from `Thread::execute`,
+    /// before the API function does anything else with the `Thread`.
+    pub unsafe fn arguments(&self, arguments: Range<usize>) -> &[Value] {
+        mem::transmute(&self.stack[arguments])
     }
 
-    pub fn set_other(&mut self, entity: Entity) {
-        self.other_entity = entity;
-    }
-
-    pub fn execute<E: world::Api>(
-        &mut self,
-        engine: &mut E, resources: &Resources<E>,
-        function: Function, arguments: Vec<Value>
-    ) -> Result<Value, Error> {
-        let world = E::receivers(engine) as *mut _;
-        let engine = unsafe { &mut *(engine as *mut _ as *mut Engine) };
-        let resources = unsafe { &*(resources as *const _ as *const Resources<Engine>) };
-        execute_internal(self, engine, world, resources, function, arguments)
+    pub fn execute<'a, W, A: 'a>(
+        &mut self, world: &mut W, assets: &mut A, function: Function, arguments: Vec<Value>
+    ) -> Result<Value, Error> where W: vm::Api<'a, A> {
+        let engine = unsafe { &mut (
+            &mut *(world as *mut _ as *mut engine::World),
+            &mut *(assets as *mut _ as *mut engine::Assets),
+        ) };
+        let (world, assets) = vm::Api::fields(world, assets);
+        let assets = assets as *mut _ as *mut _;
+        execute_internal(self, engine, world, assets, function, arguments)
     }
 }
 
@@ -151,14 +156,25 @@ fn get_string(value: ValueRef<'_>) -> Symbol {
     }
 }
 
-fn execute_internal<'a>(
+type Engine<'e> = (&'e mut engine::World, &'e mut engine::Assets);
+
+// Opaque types to erase engine-side wrappers for `vm::World` and `vm::Assets`.
+mod engine {
+    extern {
+        pub(super) type World;
+        pub(super) type Assets;
+    }
+}
+
+fn execute_internal(
     thread: &mut Thread,
-    engine: &'a mut Engine, world: *mut World, resources: &Resources<Engine>,
+    engine: &mut Engine<'_>, world: *mut World, assets: *mut Assets<engine::World, engine::Assets>,
     function: Function, arguments: Vec<Value>
 ) -> Result<Value, Error> {
-    // Enforce that `world` is treated as a reborrow of `engine`.
-    fn constrain<F: for<'a> Fn(&'a mut Engine) -> &'a mut World>(f: F) -> F { f }
+    // Enforce that `vm::{World, Assets}` are treated as fields of `engine::{World, Assets}`.
+    fn constrain<T, F: for<'e> Fn(&mut Engine<'e>) -> &'e mut T>(f: F) -> F { f }
     let world = constrain(move |_| unsafe { &mut *world });
+    let assets = constrain(move |_| unsafe { &mut *assets });
 
     // Erase the lifetime of a `ValueRef` for use in a `Register`.
     unsafe fn erase_ref(r: ValueRef<'_>) -> ValueRef<'static> { mem::transmute(r) }
@@ -166,8 +182,8 @@ fn execute_internal<'a>(
     // Thread state not stored in `thread`:
     let mut function = function;
     let mut code = match function {
-        Function::Script(symbol) => &resources.scripts[&symbol],
-        Function::Event(event) => &resources.events[&event],
+        Function::Script(symbol) => &assets(engine).scripts[&symbol],
+        Function::Event(event) => &assets(engine).events[&event],
     };
     let mut instruction = 0;
     let mut reg_base = thread.stack.len();
@@ -701,7 +717,7 @@ fn execute_internal<'a>(
 
                 let id = callee as i32;
                 function = Function::Script(id);
-                code = &resources.scripts[&id];
+                code = &assets(engine).scripts[&id];
                 instruction = 0;
                 reg_base = reg_base + base;
 
@@ -717,50 +733,81 @@ fn execute_internal<'a>(
             }
 
             (code::Op::CallApi, callee, base, len) => {
-                let api_symbol = get_string(code.constants[callee].borrow());
-                let api = resources.api[&api_symbol];
+                let symbol = get_string(code.constants[callee].borrow());
+                let api = assets(engine).api[&symbol];
                 let reg_base = reg_base + base;
 
-                let registers = &mut thread.stack[reg_base..];
-                let entity = thread.self_entity;
-                let arguments = unsafe { mem::transmute::<_, &[Value]>(&registers[..len]) };
-                let value = match api(engine, resources, entity, arguments) {
-                    Ok(value) => value,
-                    Err(kind) => break kind,
+                let value = unsafe {
+                    let (world, assets) = engine;
+                    let arguments = reg_base..reg_base + len;
+                    match api(world, assets, thread, arguments) {
+                        Ok(value) => value,
+                        Err(kind) => break kind,
+                    }
                 };
+
+                // The call above may have mutated our `vm::Assets`.
+                // Reload the function body just in case. (This also keeps borrowck happy.)
+                code = match function {
+                    Function::Script(symbol) => &assets(engine).scripts[&symbol],
+                    Function::Event(event) => &assets(engine).events[&event],
+                };
+
+                let registers = &mut thread.stack[reg_base..];
                 registers[0] = Register { value: ManuallyDrop::new(value) };
             }
 
             (code::Op::CallGet, get, base, _) => {
                 let symbol = get_string(code.constants[get].borrow());
-                let get = match resources.get.get(&symbol) {
+                let get = match assets(engine).get.get(&symbol) {
                     Some(get) => get,
                     None => break ErrorKind::Name(symbol),
                 };
                 let reg_base = reg_base + base;
 
                 let registers = &mut thread.stack[reg_base..];
-                let entity = unsafe { registers[0].entity };
-                let i = unsafe { registers[1].value_ref };
-                let i = i32::try_from(i).unwrap_or(0) as usize;
-                let value = get(engine, entity, i);
+                let value = {
+                    let (world, assets) = engine;
+                    let entity = unsafe { registers[0].entity };
+                    let i = unsafe { registers[1].value_ref };
+                    let i = i32::try_from(i).unwrap_or(0) as usize;
+                    get(world, assets, entity, i)
+                };
+
+                // The call above may have mutated our `vm::Assets`.
+                // Reload the function body just in case. (This also keeps borrowck happy.)
+                code = match function {
+                    Function::Script(symbol) => &assets(engine).scripts[&symbol],
+                    Function::Event(event) => &assets(engine).events[&event],
+                };
+
                 registers[0] = Register { value: ManuallyDrop::new(value) };
             }
 
             (code::Op::CallSet, set, base, _) => {
                 let symbol = get_string(code.constants[set].borrow());
-                let set = match resources.set.get(&symbol) {
+                let set = match assets(engine).set.get(&symbol) {
                     Some(set) => set,
                     None => break ErrorKind::Write(symbol),
                 };
                 let reg_base = reg_base + base;
 
                 let registers = &thread.stack[reg_base..];
-                let value = unsafe { registers[0].value_ref };
-                let entity = unsafe { registers[1].entity };
-                let i = unsafe { registers[2].value_ref };
-                let i = i32::try_from(i).unwrap_or(0) as usize;
-                set(engine, entity, i, value);
+                {
+                    let (world, assets) = engine;
+                    let value = unsafe { registers[0].value_ref };
+                    let entity = unsafe { registers[1].entity };
+                    let i = unsafe { registers[2].value_ref };
+                    let i = i32::try_from(i).unwrap_or(0) as usize;
+                    set(world, assets, entity, i, value);
+                }
+
+                // The call above may have mutated our `vm::Assets`.
+                // Reload the function body just in case. (This also keeps borrowck happy.)
+                code = match function {
+                    Function::Script(symbol) => &assets(engine).scripts[&symbol],
+                    Function::Event(event) => &assets(engine).events[&event],
+                };
             }
 
             (code::Op::Ret, _, _, _) => {
@@ -774,8 +821,8 @@ fn execute_internal<'a>(
 
                 function = caller;
                 code = match function {
-                    Function::Script(symbol) => &resources.scripts[&symbol],
-                    Function::Event(event) => &resources.events[&event],
+                    Function::Script(symbol) => &assets(engine).scripts[&symbol],
+                    Function::Event(event) => &assets(engine).events[&event],
                 };
                 instruction = caller_instruction;
                 reg_base = caller_base;

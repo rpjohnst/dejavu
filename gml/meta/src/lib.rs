@@ -50,10 +50,8 @@ struct Property {
 /// A "receiver" type for a method or property.
 #[derive(Clone, Eq, PartialEq, Hash)]
 enum Receiver {
-    /// A reference to an engine module (including the bound API's self type).
-    Engine(Type),
-    /// A reference to vm::Resources.
-    Resources,
+    /// A world or assets module (including the bound API's self type).
+    Reference(Type),
     /// The GML-level `self` entity for the call.
     Entity,
 }
@@ -177,15 +175,10 @@ impl VisitBindings<'_> {
     fn extend_receivers(&mut self, receivers: &[Receiver]) {
         for receiver in receivers {
             let id = self.bindings.receivers.len();
-            self.bindings.receivers.entry(receiver.clone()).or_insert_with(move || {
-                match receiver {
-                    Receiver::Engine(_) => {
-                        let ident = &format!("receiver_{}", id);
-                        Ident::new(ident, proc_macro2::Span::call_site())
-                    }
-                    Receiver::Resources => Ident::new("resources", proc_macro2::Span::call_site()),
-                    Receiver::Entity => Ident::new("entity", proc_macro2::Span::call_site()),
-                }
+            let span = proc_macro2::Span::call_site();
+            self.bindings.receivers.entry(receiver.clone()).or_insert_with(move || match receiver {
+                Receiver::Reference(_) => Ident::new(&format!("receiver_{}", id), span),
+                Receiver::Entity => Ident::new("entity", span),
             });
         }
     }
@@ -296,11 +289,10 @@ fn parse_receivers(
     let mut receivers = Vec::default();
 
     let entity = parse_quote!(vm::Entity);
-    let resources = parse_quote!(vm::Resources);
     while let Some(&param) = inputs.peek() {
         match *param {
             FnArg::Receiver(_) => {
-                receivers.push(Receiver::Engine(self_ty.clone()));
+                receivers.push(Receiver::Reference(self_ty.clone()));
             }
 
             FnArg::Typed(PatType { ref ty, .. }) if **ty == entity => {
@@ -317,11 +309,7 @@ fn parse_receivers(
                     _ => break
                 };
 
-                if **target == resources {
-                    receivers.push(Receiver::Resources);
-                } else {
-                    receivers.push(Receiver::Engine((**target).clone()));
-                }
+                receivers.push(Receiver::Reference((**target).clone()));
             }
         }
         inputs.next();
@@ -350,12 +338,12 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
 
     let self_ty = &input.self_ty;
     let receiver_tys = bindings.receivers.iter().filter_map(|(receiver, _)| match *receiver {
-        Receiver::Engine(ref ty) => Some(quote! { #ty }),
+        Receiver::Reference(ref ty) => Some(quote! { #ty }),
         _ => None,
     });
     let receiver_idents = {
         let receivers = bindings.receivers.iter().filter_map(|(receiver, ident)| match *receiver {
-            Receiver::Engine(_) => Some(ident),
+            Receiver::Reference(_) => Some(ident),
             _ => None,
         });
         quote! { #(#receivers,)* }
@@ -427,11 +415,11 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
     });
 
     let output = quote! {
-        pub trait #trait_name {
-            fn receivers(&mut self) -> (#(&mut #receiver_tys,)*);
+        pub trait #trait_name<'a, A: 'a> {
+            fn fields<'r>(&'r mut self, assets: &'r mut A) -> (#(&'r mut #receiver_tys,)*);
 
             fn register(
-                items: &mut std::collections::HashMap<gml::symbol::Symbol, gml::Item<Self>>
+                items: &mut std::collections::HashMap<gml::symbol::Symbol, gml::Item<Self, A>>
             ) where
                 Self: Sized
             {
@@ -446,30 +434,33 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
                 );)*
             }
 
-            #(fn #api(
-                &mut self, resources: &vm::Resources<Self>, entity: vm::Entity, arguments: &[vm::Value]
+            #(unsafe fn #api(
+                &mut self, assets: &mut A,
+                thread: &mut vm::Thread, arguments: std::ops::Range<usize>,
             ) -> Result<vm::Value, vm::ErrorKind> {
                 #![allow(unused_imports, unused)]
                 use std::convert::TryInto;
 
-                let (#receiver_idents) = self.receivers();
+                let (#receiver_idents) = #trait_name::fields(self, assets);
+                let entity = thread.self_entity();
+                let arguments = thread.arguments(arguments);
                 let ret = #self_ty::#api(#api_receivers #api_arguments #api_rest) #api_try;
                 Ok(ret.into())
             })*
 
-            #(fn #get(&mut self, entity: vm::Entity, index: usize) -> vm::Value {
+            #(fn #get(&mut self, assets: &mut A, entity: vm::Entity, index: usize) -> vm::Value {
                 #![allow(unused)]
 
-                let (#receiver_idents) = self.receivers();
+                let (#receiver_idents) = #trait_name::fields(self, assets);
                 let value = #self_ty::#get(#get_receivers #get_index);
                 value.into()
             })*
 
-            #(fn #set(&mut self, entity: vm::Entity, index: usize, value: vm::ValueRef) {
+            #(fn #set(&mut self, assets: &mut A, entity: vm::Entity, index: usize, value: vm::ValueRef) {
                 #![allow(unused_imports, unused)]
                 use std::convert::TryInto;
 
-                let (#receiver_idents) = self.receivers();
+                let (#receiver_idents) = #trait_name::fields(self, assets);
                 #self_ty::#set(#set_receivers #set_index #set_value);
             })*
         }
