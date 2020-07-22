@@ -20,7 +20,8 @@ impl Function {
     }
 }
 
-pub struct Debug {
+#[derive(Default)]
+pub struct Locations {
     pub mappings: Vec<SourceMap>,
 }
 
@@ -29,11 +30,7 @@ pub struct SourceMap {
     pub location: u32,
 }
 
-impl Debug {
-    pub fn new() -> Debug {
-        Debug { mappings: vec![] }
-    }
-
+impl Locations {
     pub fn get_location(&self, offset: u32) -> u32 {
         let i = match self.mappings.binary_search_by_key(&offset, |map| map.offset) {
             Ok(i) => i,

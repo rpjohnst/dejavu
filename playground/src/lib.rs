@@ -17,12 +17,12 @@ pub fn run(source: &str) {
     let mut items = HashMap::default();
     World::register(&mut items);
 
-    let script = Function::Script(game.scripts.len() as i32);
+    let script = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"script", body: source.as_bytes() });
 
-    let mut assets = match engine::build(&game, &items, HostErr) {
+    let (mut assets, debug) = match engine::build(&game, &items, HostErr) {
         Ok(assets) => assets,
-        Err((errors, _)) => {
+        Err(errors) => {
             if errors > 1 {
                 let _ = write!(HostErr(), "aborting due to {} previous errors", errors);
             } else {
@@ -40,8 +40,9 @@ pub fn run(source: &str) {
     let mut thread = gml::vm::Thread::default();
     thread.set_self(world.world.instances[id]);
     if let Err(error) = thread.execute(&mut world, &mut assets, script, vec![]) {
-        let mut errors = ErrorPrinter::from_game(&game, error.function, HostErr());
-        let location = assets.code.debug[&error.function].get_location(error.instruction as u32);
+        let mut errors = ErrorPrinter::from_debug(&debug, error.function, HostErr());
+        let offset = error.instruction as u32;
+        let location = debug.locations[&error.function].locations.get_location(offset);
         let span = Span { low: location as usize, high: location as usize };
         ErrorPrinter::error(&mut errors, span, format_args!("{}", error.kind));
     }

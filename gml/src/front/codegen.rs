@@ -6,10 +6,10 @@ use crate::symbol::{Symbol, keyword};
 use crate::front::{self, ast, Span};
 use crate::back::ssa;
 
-pub struct Codegen<'p, 'e> {
+pub struct Codegen<'p, 'e, 'f> {
     function: ssa::Function,
     builder: front::ssa::Builder,
-    errors: &'e mut ErrorPrinter,
+    errors: &'e mut ErrorPrinter<'f>,
 
     prototypes: &'p HashMap<Symbol, ssa::Prototype>,
 
@@ -89,9 +89,9 @@ const GLOBAL: f64 = -5.0;
 // -6?
 const LOCAL: f64 = -7.0;
 
-impl<'p, 'e> Codegen<'p, 'e> {
+impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
     pub fn new(
-        prototypes: &'p HashMap<Symbol, ssa::Prototype>, errors: &'e mut ErrorPrinter
+        prototypes: &'p HashMap<Symbol, ssa::Prototype>, errors: &'e mut ErrorPrinter<'f>
     ) -> Self {
         let function = ssa::Function::new();
 
@@ -136,7 +136,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
     }
 
     fn with_program<F>(mut self, end_loc: usize, program: F) -> ssa::Function where
-        F: FnOnce(&mut Codegen<'_, '_>)
+        F: FnOnce(&mut Self)
     {
         let entry_block = self.current_block;
         self.seal_block(entry_block);
@@ -198,7 +198,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                             (value, action_span.low),
                             (|self_| self_.emit_action(true_action), action_end_loc(true_action)),
                             false_action.as_ref().map(|false_action| (
-                                move |self_: &mut Codegen<'_, '_>| self_.emit_action(false_action),
+                                move |self_: &mut Self| self_.emit_action(false_action),
                                 action_end_loc(false_action)
                             ))
                         );
@@ -348,7 +348,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
                     (value, loc(expr)),
                     (|self_| self_.emit_statement(true_branch), end_loc(true_branch)),
                     false_branch.as_ref().map(|false_branch| {
-                        (move |self_: &mut Codegen<'_, '_>| self_.emit_statement(false_branch), end_loc(false_branch))
+                        (move |self_: &mut Self| self_.emit_statement(false_branch), end_loc(false_branch))
                     })
                 );
             }
@@ -571,8 +571,8 @@ impl<'p, 'e> Codegen<'p, 'e> {
         true_branch: (T, usize),
         false_branch: Option<(F, usize)>,
     ) where
-        T: FnOnce(&mut Codegen<'_, '_>),
-        F: FnOnce(&mut Codegen<'_, '_>),
+        T: FnOnce(&mut Self),
+        F: FnOnce(&mut Self),
     {
         let true_block = self.make_block();
         let false_block = self.make_block();
@@ -603,7 +603,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
     }
 
     fn emit_repeat<F>(&mut self, expr: &(ast::Expr, Span), end_loc: usize, body: F) where
-        F: FnOnce(&mut Codegen<'_, '_>)
+        F: FnOnce(&mut Self)
     {
         let cond_block = self.make_block();
         let body_block = self.make_block();
@@ -636,7 +636,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
     fn emit_with<F, R>(
         &mut self, target: ssa::Value, with_loc: usize, end_loc: usize, body: F
     ) -> R where
-        F: FnOnce(&mut Codegen<'_, '_>) -> R
+        F: FnOnce(&mut Self) -> R
     {
         let self_value = self.emit_unary_real(ssa::Opcode::LoadScope, SELF, with_loc);
         let other_value = self.emit_unary_real(ssa::Opcode::LoadScope, OTHER, with_loc);
@@ -1064,7 +1064,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
 
     /// Iterate over each entity in a scope for writing. (Helper for `emit_store`.)
     fn emit_store_scope<F>(&mut self, scope: ssa::Value, location: usize, f: F) where
-        F: FnOnce(&mut Codegen<'_, '_>, ssa::Value)
+        F: FnOnce(&mut Self, ssa::Value)
     {
         // TODO: gms errors on empty iteration
         let With { cond_block, body_block, exit_block, entity } = self.emit_with_header(scope, location);
@@ -1154,7 +1154,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
     }
 
     fn with_loop<F, R>(&mut self, next: ssa::Label, exit: ssa::Label, f: F) -> R where
-        F: FnOnce(&mut Codegen<'_, '_>) -> R
+        F: FnOnce(&mut Self) -> R
     {
         let old_next = mem::replace(&mut self.current_next, Some(next));
         let old_exit = mem::replace(&mut self.current_exit, Some(exit));
@@ -1170,7 +1170,7 @@ impl<'p, 'e> Codegen<'p, 'e> {
     fn with_switch<F>(
         &mut self, switch: ssa::Value, expr: ssa::Label, exit: ssa::Label,
         f: F
-    ) where F: FnOnce(&mut Codegen<'_, '_>) {
+    ) where F: FnOnce(&mut Self) {
         let old_switch = mem::replace(&mut self.current_switch, Some(switch));
         let old_expr = mem::replace(&mut self.current_expr, Some(expr));
         let old_default = mem::replace(&mut self.current_default, None);

@@ -29,8 +29,7 @@ struct Entry {
 
 impl Symbol {
     /// Map a string to its interned symbol.
-    pub fn intern(string: &[u8]) -> Self {
-        let bytes = string.as_ref();
+    pub fn intern(bytes: &[u8]) -> Self {
         Interner::with(|interner| Symbol { index: interner.intern(bytes), _marker: PhantomData })
     }
 

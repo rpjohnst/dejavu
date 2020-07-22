@@ -10,6 +10,7 @@ use std::{fmt, io};
 use crate::symbol::Symbol;
 use crate::front::{Lexer, Parser, ActionParser, Lines, Position, Span};
 use crate::back::ssa;
+use crate::vm::code;
 
 pub use gml_meta::bind;
 
@@ -24,18 +25,10 @@ pub mod back;
 pub mod vm;
 
 /// The name of a single executable unit of GML or D&D actions.
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Function {
-    Event(Event),
-    Script(i32),
-}
-
-/// The name of an event.
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
-pub struct Event {
-    pub object_index: i32,
-    pub event_type: u32,
-    pub event_kind: i32,
+    Event { object_index: i32, event_type: u32, event_kind: i32 },
+    Script { id: i32 },
 }
 
 /// An entity defined by the engine.
@@ -45,124 +38,146 @@ pub enum Item<W, A> {
 }
 
 /// Build the GML and D&D in a Game Maker project.
-pub fn build<W, A, F, E>(
+pub fn build<W, A, F: FnMut() -> E, E: io::Write + 'static>(
     game: &project::Game, engine: &HashMap<Symbol, Item<W, A>>, mut errors: F
-) ->
-    Result<vm::Assets<W, A>, (u32, vm::Assets<W, A>)>
-where
-    F: FnMut() -> E,
-    E: io::Write + 'static,
-{
-    // Collect the prototypes of entities that may be referred to in code.
-    let scripts = game.scripts.iter()
-        .enumerate()
-        .map(|(id, &project::Script { ref name, .. })| {
-            let id = id as i32;
-            (Symbol::intern(name), ssa::Prototype::Script { id })
-        });
-    let builtins = engine.iter()
-        .map(|(&name, item)| match *item {
-            Item::Native(_, arity, variadic) => (name, ssa::Prototype::Native { arity, variadic }),
-            Item::Member(_, _) => (name, ssa::Prototype::Member),
-        });
-    let prototypes: HashMap<Symbol, ssa::Prototype> = Iterator::chain(scripts, builtins).collect();
-
+) -> Result<(vm::Assets<W, A>, vm::Debug), u32> {
     let mut assets = vm::Assets::default();
-    let mut error_count = 0;
+    let mut prototypes = HashMap::with_capacity(game.scripts.len() + engine.len());
+    let mut debug = vm::Debug::default();
 
-    // Insert engine entities.
+    // Collect the prototypes of entities that may be referred to in code.
     for (&name, item) in engine.iter() {
         match *item {
-            Item::Native(api, _, _) => { assets.api.insert(name, api); }
+            Item::Native(api, arity, variadic) => {
+                assets.api.insert(name, api);
+                prototypes.insert(name, ssa::Prototype::Native { arity, variadic });
+            }
             Item::Member(get, set) => {
                 if let Some(get) = get { assets.get.insert(name, get); }
                 if let Some(set) = set { assets.set.insert(name, set); }
+                prototypes.insert(name, ssa::Prototype::Member);
             }
         }
     }
+    for (id, &project::Script { name, .. }) in game.scripts.iter().enumerate() {
+        let id = id as i32;
+        let name = Symbol::intern(name);
+        prototypes.insert(name, ssa::Prototype::Script { id });
+        debug.scripts.push(name);
+    }
+    for &project::Object { name, .. } in game.objects.iter() {
+        let name = Symbol::intern(name);
+        debug.objects.push(name);
+    }
+
+    let mut total_errors = 0;
 
     // Compile scripts.
-    for (id, &project::Script { body, .. }) in game.scripts.iter().enumerate() {
-        let function = Function::Script(id as i32);
-        let mut errors = ErrorPrinter::new(function, Lines::from_code(body), errors());
-        let program = Parser::new(Lexer::new(body, 0), &mut errors).parse_program();
-        let program = front::Codegen::new(&prototypes, &mut errors).compile_program(&program);
-        let (code, debug) = back::Codegen::new(&prototypes).compile(&program);
-        error_count += errors.count;
-
-        assets.scripts.insert(id as i32, code);
-        assets.debug.insert(function, debug);
+    let resources = Iterator::zip(debug.scripts.iter(), game.scripts.iter());
+    for (id, (&script, &project::Script { body, .. })) in resources.enumerate() {
+        let function = Function::Script { id: id as i32 };
+        let name = FunctionDisplay::Script { script };
+        let (code, locations, errors) = compile_program(&prototypes, name, body, errors());
+        assets.code.insert(function, code);
+        debug.locations.insert(function, locations);
+        total_errors += errors;
     }
 
     // Compile object events.
-    let events = game.objects.iter()
-        .enumerate()
-        .flat_map(|(object_index, &project::Object { ref events, .. })| {
-            let object_index = object_index as i32;
-            events.iter().map(move |&project::Event { event_type, event_kind, ref actions }| {
-                (Event { object_index, event_type, event_kind }, &actions[..])
-            })
-        });
-    for (event, actions) in events {
-        let function = Function::Event(event);
-        let mut errors = ErrorPrinter::new(function, Lines::from_actions(actions), errors());
-        let program = ActionParser::new(actions.iter(), &mut errors).parse_event();
-        let program = front::Codegen::new(&prototypes, &mut errors).compile_event(&program);
-        let (code, debug) = back::Codegen::new(&prototypes).compile(&program);
-        error_count += errors.count;
-
-        assets.events.insert(event, code);
-        assets.debug.insert(function, debug);
-    }
-
-    if error_count > 0 {
-        return Err((error_count, assets));
-    }
-
-    Ok(assets)
-}
-
-impl fmt::Display for Function {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            Function::Event(event) => event.fmt(f),
-            Function::Script(script) => script.fmt(f),
+    let resources = Iterator::zip(debug.objects.iter(), game.objects.iter());
+    for (object_index, (&object, &project::Object { ref events, .. })) in resources.enumerate() {
+        let object_index = object_index as i32;
+        for &project::Event { event_type, event_kind, ref actions } in events {
+            let function = Function::Event { object_index, event_type, event_kind };
+            let event_kind = EventDisplay::from_debug(&debug, event_type, event_kind);
+            let name = FunctionDisplay::Event { object, event_type, event_kind };
+            let (code, locations, errors) = compile_event(&prototypes, name, actions, errors());
+            assets.code.insert(function, code);
+            debug.locations.insert(function, locations);
+            total_errors += errors;
         }
     }
-}
 
-impl fmt::Display for Event {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Event {}({}) for object {}", self.event_type, self.event_kind, self.object_index)?;
-        Ok(())
+    if total_errors > 0 {
+        return Err(total_errors);
     }
+
+    Ok((assets, debug))
 }
 
-pub struct ErrorPrinter<W: ?Sized = dyn io::Write> {
-    pub name: Function,
-    pub lines: Lines,
+fn compile_program<E: io::Write + 'static>(
+    prototypes: &HashMap<Symbol, ssa::Prototype>,
+    name: FunctionDisplay,
+    code: &[u8],
+    errors: E,
+) -> (code::Function, vm::Locations, u32) {
+    let lines = Lines::from_code(code);
+    let mut errors = ErrorPrinter::new(name, &lines, errors);
+    let program = Parser::new(Lexer::new(code, 0), &mut errors).parse_program();
+    let program = { front::Codegen::new(&prototypes, &mut errors).compile_program(&program) };
+    let (code, locations) = back::Codegen::new(prototypes).compile(&program);
+    let count = errors.count;
+    (code, vm::Locations { locations, lines }, count)
+}
+
+fn compile_event<E: io::Write + 'static>(
+    prototypes: &HashMap<Symbol, ssa::Prototype>,
+    name: FunctionDisplay,
+    actions: &[project::Action<'_>],
+    errors: E,
+) -> (code::Function, vm::Locations, u32) {
+    let lines = Lines::from_actions(actions);
+    let mut errors = ErrorPrinter::new(name, &lines, errors);
+    let program = ActionParser::new(actions.iter(), &mut errors).parse_event();
+    let program = front::Codegen::new(&prototypes, &mut errors).compile_event(&program);
+    let (code, locations) = back::Codegen::new(prototypes).compile(&program);
+    let count = errors.count;
+    (code, vm::Locations { locations, lines }, count)
+}
+
+pub struct ErrorPrinter<'a, W: ?Sized = dyn io::Write> {
+    pub name: FunctionDisplay,
+    pub lines: &'a Lines,
     pub count: u32,
     pub write: W,
 }
 
-impl ErrorPrinter {
-    pub fn new<W: io::Write>(name: Function, lines: Lines, write: W) -> ErrorPrinter<W> {
+pub enum FunctionDisplay {
+    Event { object: Symbol, event_type: u32, event_kind: EventDisplay },
+    Script { script: Symbol },
+}
+
+#[derive(Copy, Clone)]
+pub enum EventDisplay {
+    Id(i32),
+    Name(Symbol),
+}
+
+impl<'a> ErrorPrinter<'a> {
+    pub fn new<W: io::Write>(name: FunctionDisplay, lines: &'a Lines, write: W) ->
+        ErrorPrinter<'a, W>
+    {
         ErrorPrinter { name, lines, count: 0, write }
     }
 
-    pub fn from_game<W: io::Write>(game: &project::Game, function: Function, write: W) ->
+    pub fn from_debug<W: io::Write>(debug: &vm::Debug, function: Function, write: W) ->
         ErrorPrinter<W>
     {
-        let lines = match function {
-            Function::Script(script) => Lines::from_code(game.scripts[script as usize].body),
-            Function::Event(Event { object_index, event_type, event_kind }) => {
-                let event = game.objects[object_index as usize].events.iter()
-                    .find(|&e| (e.event_type, e.event_kind) == (event_type, event_kind))
-                    .unwrap();
-                Lines::from_actions(&event.actions[..])
+        let name = match function {
+            Function::Event { object_index, event_type, event_kind } => {
+                let object = debug.objects[object_index as usize];
+                let event_kind = EventDisplay::from_debug(debug, event_type, event_kind);
+                FunctionDisplay::Event { object, event_type, event_kind }
+            }
+            Function::Script { id } => {
+                let script = debug.scripts[id as usize];
+                FunctionDisplay::Script { script }
             }
         };
-        ErrorPrinter::new(function, lines, write)
+
+        let lines = &debug.locations[&function].lines;
+
+        ErrorPrinter::new(name, lines, write)
     }
 
     pub fn error(&mut self, span: Span, message: fmt::Arguments<'_>) {
@@ -183,4 +198,34 @@ impl ErrorPrinter {
         let _ = writeln!(self.write, ": {}", message);
         self.count += 1;
     }
+}
+
+impl EventDisplay {
+    fn from_debug(_: &vm::Debug, event_type: u32, event_kind: i32) -> EventDisplay {
+        match event_type {
+            _ => EventDisplay::Id(event_kind),
+        }
+    }
+}
+
+impl fmt::Display for FunctionDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            FunctionDisplay::Event { object, event_type, event_kind } =>
+                display_event(object, event_type, event_kind, f),
+            FunctionDisplay::Script { script } => write!(f, "script {}", script),
+        }
+    }
+}
+
+fn display_event(
+    object: Symbol, event_type: u32, event_kind: EventDisplay, f: &mut fmt::Formatter<'_>
+) -> fmt::Result {
+    write!(f, "event {}", event_type)?;
+    match event_kind {
+        EventDisplay::Id(id) => write!(f, "({})", id)?,
+        EventDisplay::Name(name) => write!(f, "({})", name)?,
+    }
+    write!(f, " for object {}", object)?;
+    Ok(())
 }

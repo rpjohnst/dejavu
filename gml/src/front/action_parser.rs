@@ -6,19 +6,19 @@ use crate::ErrorPrinter;
 use crate::symbol::Symbol;
 use crate::front::{ast, Lexer, Parser, Span};
 
-pub struct ActionParser<'s, 'e> {
+pub struct ActionParser<'s, 'e, 'f> {
     reader: slice::Iter<'s, Action<'s>>,
-    errors: &'e mut ErrorPrinter,
+    errors: &'e mut ErrorPrinter<'f>,
 
     current: Option<&'s Action<'s>>,
     span: Span,
 }
 
-impl<'s, 'e> ActionParser<'s, 'e> {
+impl<'s, 'e, 'f> ActionParser<'s, 'e, 'f> {
     pub fn new(
         reader: slice::Iter<'s, Action<'s>>,
-        errors: &'e mut ErrorPrinter
-    ) -> ActionParser<'s, 'e> {
+        errors: &'e mut ErrorPrinter<'f>,
+    ) -> ActionParser<'s, 'e, 'f> {
         let mut parser = ActionParser {
             reader,
             errors,

@@ -9,7 +9,7 @@ use crate::vm::{self, code};
 
 pub struct Codegen<'p> {
     function: code::Function,
-    debug: code::Debug,
+    locations: code::Locations,
 
     prototypes: &'p HashMap<Symbol, ssa::Prototype>,
 
@@ -28,7 +28,7 @@ impl<'p> Codegen<'p> {
     pub fn new(prototypes: &'p HashMap<Symbol, ssa::Prototype>) -> Codegen {
         Codegen {
             function: code::Function::new(),
-            debug: code::Debug::new(),
+            locations: code::Locations::default(),
 
             prototypes,
 
@@ -44,7 +44,7 @@ impl<'p> Codegen<'p> {
         }
     }
 
-    pub fn compile(mut self, program: &ssa::Function) -> (code::Function, code::Debug) {
+    pub fn compile(mut self, program: &ssa::Function) -> (code::Function, code::Locations) {
         let control_flow = ControlFlow::compute(program);
         let liveness = Liveness::compute(program, &control_flow);
         let interference = Interference::build(program, &liveness);
@@ -61,7 +61,7 @@ impl<'p> Codegen<'p> {
         self.function.params = param_count as u32;
         self.function.locals = self.register_count as u32;
 
-        (self.function, self.debug)
+        (self.function, self.locations)
     }
 
     fn emit_blocks(&mut self, program: &ssa::Function, block: ssa::Label) {
@@ -77,7 +77,7 @@ impl<'p> Codegen<'p> {
             let offset = self.function.instructions.len() as u32;
             let location = program.locations[value] as u32;
             if location != last_location {
-                self.debug.mappings.push(code::SourceMap { offset, location });
+                self.locations.mappings.push(code::SourceMap { offset, location });
                 last_location = location;
             }
 

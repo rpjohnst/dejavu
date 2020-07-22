@@ -11,12 +11,12 @@ fn arguments() -> Result<(), vm::Error> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
-    let select = Function::Script(game.scripts.len() as i32);
+    let select = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"select", body: b"{
         return argument0 + argument1
     }" });
 
-    let code = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut assets = Assets { code };
     let mut world = World::default();
     let mut thread = vm::Thread::default();
@@ -39,7 +39,7 @@ fn member() -> Result<(), vm::Error> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
-    let member = Function::Script(game.scripts.len() as i32);
+    let member = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"member", body: b"{
         a = 3
         b[3] = 5
@@ -48,7 +48,7 @@ fn member() -> Result<(), vm::Error> {
         return c
     }" });
 
-    let code = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut assets = Assets { code };
     let mut world = World::default();
     let mut thread = vm::Thread::default();
@@ -78,7 +78,7 @@ fn builtin() -> Result<(), vm::Error> {
     let global_array = Symbol::intern(b"global_array");
     items.insert(global_array, Item::Member(Some(World::get_global_array), Some(World::set_global_array)));
 
-    let builtin = Function::Script(game.scripts.len() as i32);
+    let builtin = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"builtin", body: b"{
         scalar = 3
         array[0] = 2 + scalar
@@ -89,7 +89,7 @@ fn builtin() -> Result<(), vm::Error> {
         return global_array[1]
     }" });
 
-    let code = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut assets = Assets { code };
     let mut world = World::default();
     let mut thread = vm::Thread::default();
@@ -117,7 +117,7 @@ fn global() -> Result<(), vm::Error> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
-    let global = Function::Script(game.scripts.len() as i32);
+    let global = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"global", body: b"{
         a = 3
         global.a = 5
@@ -125,7 +125,7 @@ fn global() -> Result<(), vm::Error> {
         return self.a + a
     }" });
 
-    let code = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut assets = Assets { code };
     let mut world = World::default();
     let mut thread = vm::Thread::default();
@@ -142,7 +142,7 @@ fn with_scopes() -> Result<(), vm::Error> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
-    let with = Function::Script(game.scripts.len() as i32);
+    let with = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"with", body: b"{
         c = 3
         with (all) {
@@ -158,7 +158,7 @@ fn with_scopes() -> Result<(), vm::Error> {
         return argument0.n + argument1.n + argument0.m + argument1.m
     }" });
 
-    let code = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut assets = Assets { code };
     let mut world = World::default();
     let mut thread = vm::Thread::default();
@@ -177,7 +177,7 @@ fn with_iterator() -> Result<(), vm::Error> {
     let mut game = project::Game::default();
     let mut items = HashMap::new();
 
-    let with = Function::Script(game.scripts.len() as i32);
+    let with = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"with", body: b"{
         with (all) {
             c = 3
@@ -196,7 +196,7 @@ fn with_iterator() -> Result<(), vm::Error> {
     let create_instance = Symbol::intern(b"create_instance");
     items.insert(create_instance, Item::Native(World::native_create_instance, 0, false));
 
-    let code = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut assets = Assets { code };
     let mut world = World::default();
     let mut thread = vm::Thread::default();
@@ -215,7 +215,7 @@ fn array() -> Result<(), vm::Error> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
-    let array = Function::Script(game.scripts.len() as i32);
+    let array = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"array", body: b"{
         var a, b, c;
         a[0] = 3
@@ -226,7 +226,7 @@ fn array() -> Result<(), vm::Error> {
         return a + a[1] + b[0] + b[1] + b[2] + c + c[1, 1]
     }" });
 
-    let code = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut assets = Assets { code };
     let mut world = World::default();
     let mut thread = vm::Thread::default();
@@ -251,7 +251,7 @@ fn conditional_initialization() -> Result<(), vm::Error> {
         return t
     }" });
 
-    let _: vm::Assets<World, Assets> = gml::build(&game, &items, io::stderr)
+    let _: (vm::Assets<World, Assets>, _) = gml::build(&game, &items, io::stderr)
         .unwrap_or_else(|_| panic!());
     Ok(())
 }
@@ -270,7 +270,7 @@ fn dead_undef() -> Result<(), vm::Error> {
         return i
     }" });
 
-    let _: vm::Assets<World, Assets> = gml::build(&game, &items, io::stderr)
+    let _: (vm::Assets<World, Assets>, _) = gml::build(&game, &items, io::stderr)
         .unwrap_or_else(|_| panic!());
     Ok(())
 }
@@ -281,7 +281,7 @@ fn for_loop() -> Result<(), vm::Error> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
-    let factorial = Function::Script(game.scripts.len() as i32);
+    let factorial = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"factorial", body: b"{
         var i, j;
         j = 1
@@ -291,7 +291,7 @@ fn for_loop() -> Result<(), vm::Error> {
         return j
     }" });
 
-    let code = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut assets = Assets { code };
     let mut world = World::default();
     let mut thread = vm::Thread::default();
@@ -306,7 +306,7 @@ fn switch() -> Result<(), vm::Error> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
-    let switch = Function::Script(game.scripts.len() as i32);
+    let switch = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"switch", body: b"{
         var i;
         switch (argument0) {
@@ -321,7 +321,7 @@ fn switch() -> Result<(), vm::Error> {
         return i
     }" });
 
-    let code = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut assets = Assets { code };
     let mut world = World::default();
     let mut thread = vm::Thread::default();
@@ -352,7 +352,7 @@ fn switch_empty() -> Result<(), vm::Error> {
         }
     }" });
 
-    let _: vm::Assets<World, Assets> = gml::build(&game, &items, io::stderr)
+    let _: (vm::Assets<World, Assets>, _) = gml::build(&game, &items, io::stderr)
         .unwrap_or_else(|_| panic!());
     Ok(())
 }
@@ -363,7 +363,7 @@ fn switch_fallthrough() -> Result<(), vm::Error> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
-    let switch = Function::Script(game.scripts.len() as i32);
+    let switch = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"switch", body: b"{
         var i;
         i = 0
@@ -377,7 +377,7 @@ fn switch_fallthrough() -> Result<(), vm::Error> {
         return i
     }" });
 
-    let code = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut assets = Assets { code };
     let mut world = World::default();
     let mut thread = vm::Thread::default();
@@ -405,10 +405,10 @@ fn call_script() -> Result<(), vm::Error> {
 
     game.scripts.push(project::Script { name: b"id", body: b"return argument0" });
 
-    let call = Function::Script(game.scripts.len() as i32);
+    let call = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"call", body: b"return id(3) + 5" });
 
-    let code = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut assets = Assets { code };
     let mut world = World::default();
     let mut thread = vm::Thread::default();
@@ -423,7 +423,7 @@ fn recurse() -> Result<(), vm::Error> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
-    let fibonacci = Function::Script(game.scripts.len() as i32);
+    let fibonacci = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"fibonacci", body: b"{
         if (argument0 < 2) {
             return 1
@@ -432,7 +432,7 @@ fn recurse() -> Result<(), vm::Error> {
         }
     }" });
 
-    let code = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut assets = Assets { code };
     let mut world = World::default();
     let mut thread = vm::Thread::default();
@@ -451,7 +451,7 @@ fn ffi() -> Result<(), vm::Error> {
     let add = Symbol::intern(b"add");
     items.insert(add, Item::Native(World::native_add, 2, false));
 
-    let caller = Function::Script(game.scripts.len() as i32);
+    let caller = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"caller", body: b"{
         var a, b, c;
         return call()
@@ -461,7 +461,7 @@ fn ffi() -> Result<(), vm::Error> {
         return add(3, 5) + 8
     }" });
 
-    let code = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut assets = Assets { code };
     let mut world = World::default();
     let mut thread = vm::Thread::default();

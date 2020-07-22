@@ -35,6 +35,7 @@ pub struct Span {
 ///
 /// Converting an absolute index (relative to a whole event) into a local index (relative to the
 /// parent item) works by subtracting the absolute index of the parent item's first child.
+#[derive(Default)]
 pub struct Lines {
     /// The byte offset of each action, and the absolute index of its first argument.
     pub actions: Vec<(usize, usize)>,

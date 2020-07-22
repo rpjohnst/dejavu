@@ -10,7 +10,7 @@ fn main() {
     let mut items = HashMap::default();
     World::register(&mut items);
 
-    let main = Function::Script(game.scripts.len() as i32);
+    let main = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"main", body: br#"{
         show_debug_message("hello world")
 
@@ -69,7 +69,7 @@ fn main() {
         }
     }"# });
 
-    let mut assets = engine::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (mut assets, debug) = engine::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut world = World::default();
     let mut thread = gml::vm::Thread::default();
 
@@ -81,8 +81,9 @@ fn main() {
         .unwrap_or_else(|_| panic!("object does not exist"));
 
     if let Err(error) = thread.execute(&mut world, &mut assets, main, vec![]) {
-        let mut errors = ErrorPrinter::from_game(&game, error.function, io::stderr());
-        let location = assets.code.debug[&error.function].get_location(error.instruction as u32);
+        let mut errors = ErrorPrinter::from_debug(&debug, error.function, io::stderr());
+        let offset = error.instruction as u32;
+        let location = debug.locations[&error.function].locations.get_location(offset);
         let span = Span { low: location as usize, high: location as usize };
         ErrorPrinter::error(&mut errors, span, format_args!("{}", error.kind));
     }

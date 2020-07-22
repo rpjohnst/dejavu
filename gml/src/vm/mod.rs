@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 use crate::symbol::Symbol;
-use crate::{Function, Event};
+use crate::{Function, front::Lines};
 
 pub use crate::vm::interpreter::{Thread, Error, ErrorKind, SELF, OTHER, ALL, NOONE, GLOBAL};
 pub use crate::vm::world::World;
@@ -16,18 +16,28 @@ pub mod world;
 mod entity_map;
 mod instance_map;
 mod interpreter;
+//mod serialize;
 mod value;
 mod array;
 mod debug;
 
 pub struct Assets<W: ?Sized, A: ?Sized> {
-    pub scripts: HashMap<i32, code::Function>,
-    pub events: HashMap<Event, code::Function>,
-    pub debug: HashMap<Function, code::Debug>,
-
+    pub code: HashMap<Function, code::Function>,
     pub api: HashMap<Symbol, ApiFunction<W, A>>,
     pub get: HashMap<Symbol, GetFunction<W, A>>,
     pub set: HashMap<Symbol, SetFunction<W, A>>,
+}
+
+#[derive(Default)]
+pub struct Debug {
+    pub locations: HashMap<Function, Locations>,
+    pub scripts: Vec<Symbol>,
+    pub objects: Vec<Symbol>,
+}
+
+pub struct Locations {
+    pub locations: code::Locations,
+    pub lines: Lines,
 }
 
 pub type ApiFunction<W, A> = unsafe fn(
@@ -39,10 +49,7 @@ pub type SetFunction<W, A> = fn(&mut W, &mut A, Entity, usize, ValueRef);
 impl<W: ?Sized, A: ?Sized> Default for Assets<W, A> {
     fn default() -> Self {
         Assets {
-            scripts: HashMap::default(),
-            events: HashMap::default(),
-            debug: HashMap::default(),
-
+            code: HashMap::default(),
             api: HashMap::default(),
             get: HashMap::default(),
             set: HashMap::default(),

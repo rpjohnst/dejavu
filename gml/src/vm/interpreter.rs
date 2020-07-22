@@ -79,7 +79,7 @@ pub enum ErrorKind {
 
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}+{}:{:?}", self.function, self.instruction, self.kind)
+        write!(f, "{:?}+{}: {:?}", self.function, self.instruction, self.kind)
     }
 }
 
@@ -181,10 +181,7 @@ fn execute_internal(
 
     // Thread state not stored in `thread`:
     let mut function = function;
-    let mut code = match function {
-        Function::Script(symbol) => &assets(engine).scripts[&symbol],
-        Function::Event(event) => &assets(engine).events[&event],
-    };
+    let mut code = &assets(engine).code[&function];
     let mut instruction = 0;
     let mut reg_base = thread.stack.len();
 
@@ -716,8 +713,8 @@ fn execute_internal(
                 thread.calls.push((function, instruction + 1, reg_base));
 
                 let id = callee as i32;
-                function = Function::Script(id);
-                code = &assets(engine).scripts[&id];
+                function = Function::Script { id };
+                code = &assets(engine).code[&function];
                 instruction = 0;
                 reg_base = reg_base + base;
 
@@ -748,10 +745,7 @@ fn execute_internal(
 
                 // The call above may have mutated our `vm::Assets`.
                 // Reload the function body just in case. (This also keeps borrowck happy.)
-                code = match function {
-                    Function::Script(symbol) => &assets(engine).scripts[&symbol],
-                    Function::Event(event) => &assets(engine).events[&event],
-                };
+                code = &assets(engine).code[&function];
 
                 let registers = &mut thread.stack[reg_base..];
                 registers[0] = Register { value: ManuallyDrop::new(value) };
@@ -776,10 +770,7 @@ fn execute_internal(
 
                 // The call above may have mutated our `vm::Assets`.
                 // Reload the function body just in case. (This also keeps borrowck happy.)
-                code = match function {
-                    Function::Script(symbol) => &assets(engine).scripts[&symbol],
-                    Function::Event(event) => &assets(engine).events[&event],
-                };
+                code = &assets(engine).code[&function];
 
                 registers[0] = Register { value: ManuallyDrop::new(value) };
             }
@@ -804,10 +795,7 @@ fn execute_internal(
 
                 // The call above may have mutated our `vm::Assets`.
                 // Reload the function body just in case. (This also keeps borrowck happy.)
-                code = match function {
-                    Function::Script(symbol) => &assets(engine).scripts[&symbol],
-                    Function::Event(event) => &assets(engine).events[&event],
-                };
+                code = &assets(engine).code[&function];
             }
 
             (code::Op::Ret, _, _, _) => {
@@ -820,10 +808,7 @@ fn execute_internal(
                 };
 
                 function = caller;
-                code = match function {
-                    Function::Script(symbol) => &assets(engine).scripts[&symbol],
-                    Function::Event(event) => &assets(engine).events[&event],
-                };
+                code = &assets(engine).code[&function];
                 instruction = caller_instruction;
                 reg_base = caller_base;
 
