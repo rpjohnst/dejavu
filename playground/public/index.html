@@ -28,7 +28,25 @@
           </ul>
         </nav>
 
-        <pre id="editor" class="left"></pre>
+        <pre id="editor" class="left">
+// Click “Run”!
+
+var i;
+for (i := 10; i &lt;&gt; 0; i -= 1)
+begin
+    var noun;
+    // GML has very flexible syntax, and Dejavu supports it all!
+    if i = 1 then noun := 'birb' else noun := 'birbs'
+    show_debug_message(string(i) + " beautiful " + noun + " in a tree, " + string(i) + " beautiful " + noun + ".")
+    if i == 1
+    {
+        show_debug_message("One flies down and circles around, no more birbs in a tree.")
+        break
+    }
+    if (i - 1 = 1) noun = 'birb' else noun = 'birbs'
+    show_debug_message("One flies down and circles around, " + string(i - 1) + " beautiful " + noun + ".")
+end
+        </pre>
         <pre id="output"></pre>
       </div>
     </div>
