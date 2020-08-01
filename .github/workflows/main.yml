@@ -1,3 +1,4 @@
+name: CI
 on:
   push:
     branches:
@@ -5,6 +6,8 @@ on:
   pull_request:
     branches:
       - master
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   build:
@@ -46,10 +49,11 @@ jobs:
         wasm-pack build --target web playground -- --locked
         npm ci --prefix playground
         npm run --prefix playground build
-    - name: Deploy
-      uses: bacongobbler/azure-blob-storage-upload@v1.1.1
+    - name: Login
+      uses: azure/login@v1
       with:
-        source_dir: playground/public
-        container_name: $web
-        connection_string: ${{ secrets.ConnectionString }}
-        sync: true
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Deploy
+      run: |
+        az storage blob sync --account-name dejavu --container \$web --source playground/public
+        az cdn endpoint purge --resource-group dejavu --profile-name dejavu --name dejavu --content-paths "/*"
