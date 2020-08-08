@@ -28,7 +28,6 @@ pub struct Value(u32);
 derive_handle!(Value);
 
 pub const ENTRY: Label = Label(0);
-pub const EXIT: Label = Label(1);
 
 pub struct Block {
     pub parameters: Vec<Value>,
@@ -63,11 +62,11 @@ pub enum Instruction {
 
     Nullary { op: Opcode },
     Unary { op: Opcode, arg: Value },
+    UnaryInt { op: Opcode, int: i32 },
     UnaryReal { op: Opcode, real: f64 },
     UnarySymbol { op: Opcode, symbol: Symbol },
     Binary { op: Opcode, args: [Value; 2] },
-    // TODO: remove along with StoreScope
-    BinaryReal { op: Opcode, arg: Value, real: f64 },
+    BinaryInt { op: Opcode, arg: Value, int: i32 },
     BinarySymbol { op: Opcode, arg: Value, symbol: Symbol },
     Ternary { op: Opcode, args: [Value; 3] },
     TernarySymbol { op: Opcode, args: [Value; 2], symbol: Symbol },
@@ -93,16 +92,17 @@ pub enum Opcode {
     BitInvert,
 
     /// Ensure a value is an array. Scalars are converted to single-element arrays.
+    /// Push the result onto the thread owned-value stack.
     ToArray,
     /// Ensure a value is a scalar. Arrays are converted to their first element.
     ToScalar,
-
-    Release,
-    Return,
+    /// Drop the top of the thread owned value stack.
+    ReleaseOwned,
 
     /// Build an iterator over a scope, producing a tuple of start and end.
+    /// Push ownership of the iterator onto the thread iterator stack.
     With,
-    /// Release the iterator created by the most recent `With`.
+    /// Drop the top of the thread iterator stack.
     ReleaseWith,
     /// Error that a scope does not exist.
     ScopeError,
@@ -176,12 +176,16 @@ pub enum Opcode {
     StoreIndex,
 
     // N-ary opcodes:
-
     // TODO: combine these using instruction types?
+
+    // Make a function call.
+    // The return value is pushed onto the thread owned-value stack.
     Call,
+    Return,
     CallApi,
     CallGet,
     CallSet,
+
     Jump,
     Branch,
 }
@@ -210,10 +214,9 @@ impl Function {
 
         let locations = HandleMap::new();
 
-        // Create the function with fixed entry and exit labels.
+        // Create the function with a fixed entry label.
         let mut function = Function { blocks, values, return_def, locations };
-        function.make_block();
-        function.make_block();
+        assert_eq!(function.make_block(), ENTRY);
 
         function
     }
@@ -269,10 +272,11 @@ impl Function {
 
             Nullary { op, .. } |
             Unary { op, .. } |
+            UnaryInt { op, .. } |
             UnaryReal { op, .. } |
             UnarySymbol { op, .. } |
             Binary { op, .. } |
-            BinaryReal { op, .. } |
+            BinaryInt { op, .. } |
             BinarySymbol { op, .. } |
             Ternary { op, .. } |
             TernarySymbol { op, .. } |
@@ -291,12 +295,12 @@ impl Function {
 
             // Zero-valued instructions:
             Nullary { op: Opcode::ReleaseWith } |
-            Unary { op: Opcode::Release, .. } |
-            Unary { op: Opcode::Return, .. } |
+            Unary { op: Opcode::ReleaseOwned, .. } |
             Unary { op: Opcode::ScopeError, .. } |
+            Unary { op: Opcode::Return, .. } |
             UnarySymbol { op: Opcode::DeclareGlobal, .. } |
             BinarySymbol { op: Opcode::Read, .. } |
-            BinaryReal { op: Opcode::StoreScope, .. } |
+            BinaryInt { op: Opcode::StoreScope, .. } |
             Ternary { .. } |
             TernarySymbol { .. } |
             Call { op: Opcode::CallSet, .. } |
@@ -309,10 +313,11 @@ impl Function {
             // The common case: single-valued instructions:
             Nullary { .. } |
             Unary { .. } |
+            UnaryInt { .. } |
             UnaryReal { .. } |
             UnarySymbol { .. } |
             Binary { .. } |
-            BinaryReal { .. } |
+            BinaryInt { .. } |
             BinarySymbol { .. } |
             Call { .. } => ValueRange { range: start..start + 1 },
         }
@@ -336,10 +341,11 @@ impl Function {
 
             Nullary { .. } => &[],
             Unary { ref arg, .. } => slice::from_ref(arg),
+            UnaryInt { .. } => &[],
             UnaryReal { .. } => &[],
             UnarySymbol { .. } => &[],
             Binary { ref args, .. } => args,
-            BinaryReal { ref arg, .. } => slice::from_ref(arg),
+            BinaryInt { ref arg, .. } => slice::from_ref(arg),
             BinarySymbol { ref arg, .. } => slice::from_ref(arg),
             Ternary { ref args, .. } => args,
             TernarySymbol { ref args, .. } => args,
@@ -359,10 +365,11 @@ impl Function {
 
             Nullary { .. } => &mut [],
             Unary { ref mut arg, .. } => slice::from_mut(arg),
+            UnaryInt { .. } => &mut [],
             UnaryReal { .. } => &mut [],
             UnarySymbol { .. } => &mut [],
             Binary { ref mut args, .. } => args,
-            BinaryReal { ref mut arg, .. } => slice::from_mut(arg),
+            BinaryInt { ref mut arg, .. } => slice::from_mut(arg),
             BinarySymbol { ref mut arg, .. } => slice::from_mut(arg),
             Ternary { ref mut args, .. } => args,
             TernarySymbol { ref mut args, .. } => args,
@@ -463,9 +470,10 @@ impl fmt::Debug for Function {
 
                 write_values(f, self.uses(value).iter().cloned())?;
                 match self.values[value] {
+                    UnaryInt { int, .. } => write!(f, "{}", int)?,
                     UnaryReal { real, .. } => write!(f, "{}", real)?,
                     UnarySymbol { symbol, .. } => write!(f, "{}", symbol)?,
-                    BinaryReal { real, .. } => write!(f, ", {}", real)?,
+                    BinaryInt { int, .. } => write!(f, ", {}", int)?,
                     BinarySymbol { symbol, .. } => write!(f, ", {}", symbol)?,
                     TernarySymbol { symbol, .. } => write!(f, ", {}", symbol)?,
                     _ => (),

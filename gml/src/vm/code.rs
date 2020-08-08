@@ -111,7 +111,7 @@ pub enum Op {
 
     ToArray,
     ToScalar,
-    Release,
+    ReleaseOwned,
 
     LoadField,
     LoadFieldDefault,
@@ -123,10 +123,10 @@ pub enum Op {
     StoreIndex,
 
     Call,
+    Ret,
     CallApi,
     CallGet,
     CallSet,
-    Ret,
 
     Jump,
     BranchFalse,
@@ -146,29 +146,32 @@ impl fmt::Debug for Function {
                 Op::Imm | Op::Lookup =>
                     writeln!(f, "  %{:?} = {:?} {:?}", a, op, self.constants[b])?,
                 Op::Move => writeln!(f, "  %{:?} = %{:?}", a, b)?,
+                Op::Neg | Op::Not | Op::BitNot | Op::ToArray | Op::ToScalar |
+                Op::LoadPointer | Op::NextPointer | Op::ExistsEntity |
+                Op::ScopeError =>
+                    writeln!(f, "  %{:?} = {:?} %{:?}", a, op, b)?,
                 Op::DeclareGlobal => writeln!(f, "  {:?} {:?}", op, self.constants[a])?,
                 Op::LoadScope => writeln!(f, "  %{:?} = {:?} {:?}", a, op, b as i32)?,
                 Op::StoreScope => writeln!(f, "  {:?} %{:?}, {:?}", op, a, b as i32)?,
+                Op::With => writeln!(f, "  %{:?}, %{:?} = {:?} %{:?}", a, b, op, c)?,
+                Op::ReleaseWith | Op::ReleaseOwned | Op::Ret =>
+                    writeln!(f, "  {:?}", op)?,
+                Op::Read => writeln!(f, "  {:?} %{:?}, {:?}", op, a, self.constants[b])?,
                 Op::LoadField | Op::LoadFieldDefault =>
                     writeln!(f, "  %{:?} = {:?} %{:?}.{:?}", a, op, b, self.constants[c])?,
-                Op::Release => writeln!(f, "  {:?} %{:?}", op, a)?,
-                Op::Read => writeln!(f, "  {:?} %{:?}, {:?}", op, a, self.constants[b])?,
+                Op::LoadRow | Op::LoadIndex | Op::StoreRow =>
+                    writeln!(f, "  %{:?} = {:?} %{:?}[%{:?}]", a, op, b, c)?,
                 Op::StoreField =>
                     writeln!(f, "  {:?} %{:?}, %{:?}.{:?}", op, a, b, self.constants[c])?,
-                Op::LoadIndex | Op::LoadRow | Op::StoreRow =>
-                    writeln!(f, "  %{:?} = {:?} %{:?}[%{:?}]", a, op, b, c)?,
                 Op::StoreIndex => writeln!(f, "  {:?} %{:?}, %{:?}[%{:?}]", op, a, b, c)?,
-                Op::Call | Op::CallApi | Op::CallGet =>
+                Op::Call =>
+                    writeln!(f, "  %{:?} = {:?} {:?}(%{:?} +{:?})", b, op, a, b, c)?,
+                Op::CallApi | Op::CallGet =>
                     writeln!(f, "  %{:?} = {:?} {:?}(%{:?} +{:?})", b, op, self.constants[a], b, c)?,
                 Op::CallSet =>
                     writeln!(f, "  {:?} {:?}(%{:?} +{:?})", op, self.constants[a], b, c)?,
-                Op::Ret => writeln!(f, "  {:?}", op)?,
                 Op::Jump => writeln!(f, "  {:?} {:?}", op, a)?,
                 Op::BranchFalse => writeln!(f, "  {:?} %{:?}, {:?}", op, a, b)?,
-                Op::Neg | Op::Not | Op::BitNot | Op::ToArray | Op::ToScalar |
-                Op::LoadPointer | Op::NextPointer | Op::ExistsEntity =>
-                    writeln!(f, "  %{:?} = {:?} %{:?}", a, op, b)?,
-                Op::With => writeln!(f, "  %{:?}, %{:?} = {:?} %{:?}", a, b, op, c)?,
                 _ => writeln!(f, "  %{:?} = {:?} %{:?}, %{:?}", a, op, b, c)?,
             }
         }

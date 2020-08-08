@@ -4,7 +4,8 @@ use std::ops::Range;
 use crate::symbol::Symbol;
 use crate::{Function, front::Lines};
 
-pub use crate::vm::interpreter::{Thread, Error, ErrorKind, SELF, OTHER, ALL, NOONE, GLOBAL};
+pub use crate::vm::interpreter::{Thread, Error, ErrorKind};
+pub use crate::vm::interpreter::{SELF, OTHER, ALL, NOONE, GLOBAL, LOCAL, PUSH_ARRAY, PUSH_ANY};
 pub use crate::vm::world::World;
 pub use crate::vm::entity_map::{Entity, EntityAllocator, EntityMap};
 pub use crate::vm::instance_map::InstanceMap;

@@ -109,6 +109,14 @@ impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { self.borrow().fmt(f) }
 }
 
+impl From<f64> for ValueRef<'_> {
+    fn from(value: f64) -> Self { Value::from(value).leak() }
+}
+
+impl From<Symbol> for ValueRef<'_> {
+    fn from(value: Symbol) -> Self { Value::from(value).leak() }
+}
+
 impl Default for ValueRef<'_> {
     fn default() -> Self { Value::default().leak() }
 }
@@ -184,14 +192,19 @@ pub fn to_bool(value: f64) -> bool { to_i32(value) > 0 }
 // `From` and `TryFrom` impls to marshal values in and out of API bindings:
 
 impl From<()> for Value { fn from(_: ()) -> Value { Value::from(0.0) } }
+impl From<()> for ValueRef<'_> { fn from(_: ()) -> Self { ValueRef::from(0.0) } }
 
 impl From<f32> for Value { fn from(value: f32) -> Value { Value::from(value as f64) } }
+impl From<f32> for ValueRef<'_> { fn from(value: f32) -> Self { ValueRef::from(value as f64) } }
 
 impl From<i32> for Value { fn from(value: i32) -> Value { Value::from(value as f64) } }
+impl From<i32> for ValueRef<'_> { fn from(value: i32) -> Self { ValueRef::from(value as f64) } }
 
 impl From<u32> for Value { fn from(value: u32) -> Value { Value::from(value as f64) } }
+impl From<u32> for ValueRef<'_> { fn from(value: u32) -> Self { ValueRef::from(value as f64) } }
 
 impl From<bool> for Value { fn from(value: bool) -> Value { Value::from(value as i32) } }
+impl From<bool> for ValueRef<'_> { fn from(value: bool) -> Self { ValueRef::from(value as i32) } }
 
 pub struct TryFromValueError;
 

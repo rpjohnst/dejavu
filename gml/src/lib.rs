@@ -2,7 +2,6 @@
 #![feature(box_patterns)]
 #![feature(box_syntax)]
 #![feature(extern_types)]
-#![feature(untagged_unions)]
 
 use std::collections::HashMap;
 use std::{fmt, io};

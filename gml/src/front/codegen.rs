@@ -5,6 +5,7 @@ use crate::ErrorPrinter;
 use crate::symbol::{Symbol, keyword};
 use crate::front::{self, ast, Span};
 use crate::back::ssa;
+use crate::vm;
 
 pub struct Codegen<'p, 'e, 'f> {
     function: ssa::Function,
@@ -18,8 +19,6 @@ pub struct Codegen<'p, 'e, 'f> {
     locals: HashMap<Symbol, Local>,
     /// The number of script arguments that have been created so far.
     arguments: u32,
-    /// The return value of the program.
-    return_value: front::ssa::Local,
 
     /// The number of entry-block instructions initializing local variables. This is used as an
     /// insertion point so more can be inserted.
@@ -80,24 +79,20 @@ struct With {
     entity: ssa::Value,
 }
 
-// TODO: deduplicate these with the ones from vm::interpreter?
-const SELF: f64 = -1.0;
-const OTHER: f64 = -2.0;
-const ALL: f64 = -3.0;
-const NOONE: f64 = -4.0;
-const GLOBAL: f64 = -5.0;
+const SELF: f64 = vm::SELF as f64;
+const OTHER: f64 = vm::OTHER as f64;
+const ALL: f64 = vm::ALL as f64;
+const NOONE: f64 = vm::NOONE as f64;
+const GLOBAL: f64 = vm::GLOBAL as f64;
 // -6?
-const LOCAL: f64 = -7.0;
+const LOCAL: f64 = vm::LOCAL as f64;
 
 impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
     pub fn new(
         prototypes: &'p HashMap<Symbol, ssa::Prototype>, errors: &'e mut ErrorPrinter<'f>
     ) -> Self {
         let function = ssa::Function::new();
-
-        let mut builder = front::ssa::Builder::new();
-        let return_value = builder.emit_local();
-
+        let builder = front::ssa::Builder::new();
         Codegen {
             function,
             builder,
@@ -107,7 +102,6 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
 
             locals: HashMap::new(),
             arguments: 0,
-            return_value: return_value,
 
             initializers: 0,
 
@@ -141,23 +135,10 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
         let entry_block = self.current_block;
         self.seal_block(entry_block);
 
-        let op = ssa::Opcode::Constant;
-        let zero = self.emit_initializer(ssa::Instruction::UnaryReal { op, real: 0.0 });
-        self.write_local(self.return_value, zero);
-
         program(&mut self);
 
-        self.emit_jump(ssa::EXIT, end_loc);
-        self.seal_block(ssa::EXIT);
-
-        self.current_block = ssa::EXIT;
-        let locals = mem::replace(&mut self.locals, HashMap::default());
-        for (_, Local { local, .. }) in locals {
-            let value = self.read_local(local);
-            self.emit_unary(ssa::Opcode::Release, value, end_loc);
-        }
-        let return_value = self.read_local(self.return_value);
-        self.emit_unary(ssa::Opcode::Return, return_value, end_loc);
+        let zero = self.emit_real(0.0, end_loc);
+        self.emit_unary(ssa::Opcode::Return, zero, end_loc);
 
         front::ssa::Builder::finish(&mut self.function);
         self.function.return_def = match self.function.blocks[ssa::ENTRY].parameters.get(0) {
@@ -174,10 +155,10 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
             ast::Action::Normal {
                 ref question, ref execution, target, relative, box ref arguments
             } => {
-                let target = target.map(|target| target as f64).unwrap_or(SELF);
+                let target = target.unwrap_or(vm::SELF);
 
                 // TODO: move into peephole optimizer
-                let value = if target == SELF {
+                let value = if target == vm::SELF {
                     self.emit_action_call(execution, relative, arguments, action_span)
                 } else {
                     let target = self.emit_real(target as f64, action_span.low);
@@ -231,7 +212,7 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
                 let op = (op, action_span);
 
                 // TODO: move into peephole optimizer
-                if target as f64 == SELF {
+                if target == vm::SELF {
                     self.emit_assign(op, place, value);
                 } else {
                     let target = self.emit_real(target as f64, action_span.low);
@@ -243,7 +224,7 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
 
             ast::Action::Code { target, code: box ref statement } => {
                 // TODO: move into peephole optimizer
-                if target as f64 == SELF {
+                if target == vm::SELF {
                     self.emit_statement(statement);
                 } else {
                     let target = self.emit_real(target as f64, action_span.low);
@@ -311,7 +292,8 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
 
             ast::Stmt::Declare(scope, box ref names) => {
                 let names: Vec<_> = names.iter().filter_map(|&(name, name_span)| {
-                    if name.is_argument() {
+                    // TODO: check resource names
+                    if name.is_argument() || self.field_is_builtin(name) {
                         self.errors.error(name_span,
                             format_args!("cannot redeclare a builtin variable"));
                         return None;
@@ -529,8 +511,7 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
                 let dead_block = self.make_block();
 
                 let expr = self.emit_value(expr);
-                self.write_local(self.return_value, expr);
-                self.emit_jump(ssa::EXIT, statement_span.low);
+                self.emit_unary(ssa::Opcode::Return, expr, statement_span.low);
 
                 self.current_block = dead_block;
                 self.seal_block(dead_block);
@@ -552,8 +533,7 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
         };
 
         let value = if let Some(op) = op {
-            let place = place.clone();
-            let left = self.emit_load(place, place_span);
+            let left = self.emit_load(place.clone(), place_span);
             let right = self.emit_value(value);
 
             let op = ast::Binary::Op(op);
@@ -638,9 +618,9 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
     ) -> R where
         F: FnOnce(&mut Self) -> R
     {
-        let self_value = self.emit_unary_real(ssa::Opcode::LoadScope, SELF, with_loc);
-        let other_value = self.emit_unary_real(ssa::Opcode::LoadScope, OTHER, with_loc);
-        self.emit_binary_real(ssa::Opcode::StoreScope, self_value, OTHER, with_loc);
+        let self_value = self.emit_unary_int(ssa::Opcode::LoadScope, vm::SELF, with_loc);
+        let other_value = self.emit_unary_int(ssa::Opcode::LoadScope, vm::OTHER, with_loc);
+        self.emit_binary_int(ssa::Opcode::StoreScope, self_value, vm::OTHER, with_loc);
 
         let With {
             cond_block,
@@ -651,7 +631,7 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
         self.seal_block(body_block);
 
         self.current_block = body_block;
-        self.emit_binary_real(ssa::Opcode::StoreScope, entity, SELF, with_loc);
+        self.emit_binary_int(ssa::Opcode::StoreScope, entity, vm::SELF, with_loc);
         let result = self.with_loop(cond_block, exit_block, move |self_| {
             body(self_)
         });
@@ -660,8 +640,8 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
         self.seal_block(exit_block);
 
         self.current_block = exit_block;
-        self.emit_binary_real(ssa::Opcode::StoreScope, self_value, SELF, end_loc);
-        self.emit_binary_real(ssa::Opcode::StoreScope, other_value, OTHER, end_loc);
+        self.emit_binary_int(ssa::Opcode::StoreScope, self_value, vm::SELF, end_loc);
+        self.emit_binary_int(ssa::Opcode::StoreScope, other_value, vm::OTHER, end_loc);
 
         result
     }
@@ -669,7 +649,9 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
     fn emit_exit(&mut self, loc: usize) {
         let dead_block = self.make_block();
 
-        self.emit_jump(ssa::EXIT, loc);
+        let zero = self.emit_real(0.0, loc);
+        self.emit_unary(ssa::Opcode::Return, zero, loc);
+
         self.current_block = dead_block;
         self.seal_block(dead_block);
     }
@@ -748,7 +730,7 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
 
         // TODO: this only happens pre-gms
         let value = self.emit_unary(ssa::Opcode::ToScalar, array, symbol_span.low);
-        self.emit_unary(ssa::Opcode::Release, array, symbol_span.low);
+        self.emit_nullary(ssa::Opcode::ReleaseOwned, symbol_span.low);
         value
     }
 
@@ -774,7 +756,7 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
                     // Built-in variables are always local; globalvar cannot redeclare them.
                     // TODO: move into peephole optimizer
                     let entity = if self.field_is_builtin(symbol) {
-                        self.emit_unary_real(ssa::Opcode::LoadScope, SELF, expression_span.low)
+                        self.emit_unary_int(ssa::Opcode::LoadScope, vm::SELF, expression_span.low)
                     } else {
                         self.emit_unary_symbol(ssa::Opcode::Lookup, symbol, expression_span.low)
                     };
@@ -787,21 +769,21 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
                 box (ast::Expr::Value(ast::Value::Ident(keyword::Self_)), expr_span),
                 (field, _field_span)
             ) => {
-                let entity = self.emit_unary_real(ssa::Opcode::LoadScope, SELF, expr_span.low);
+                let entity = self.emit_unary_int(ssa::Opcode::LoadScope, vm::SELF, expr_span.low);
                 Ok(Place { path: Path::Field(entity, field), index: None })
             }
             ast::Expr::Field(
                 box (ast::Expr::Value(ast::Value::Ident(keyword::Other)), expr_span),
                 (field, _field_span)
             ) => {
-                let entity = self.emit_unary_real(ssa::Opcode::LoadScope, OTHER, expr_span.low);
+                let entity = self.emit_unary_int(ssa::Opcode::LoadScope, vm::OTHER, expr_span.low);
                 Ok(Place { path: Path::Field(entity, field), index: None })
             }
             ast::Expr::Field(
                 box (ast::Expr::Value(ast::Value::Ident(keyword::Global)), expr_span),
                 (field, _field_span)
             ) => {
-                let entity = self.emit_unary_real(ssa::Opcode::LoadScope, GLOBAL, expr_span.low);
+                let entity = self.emit_unary_int(ssa::Opcode::LoadScope, vm::GLOBAL, expr_span.low);
                 Ok(Place { path: Path::Field(entity, field), index: None })
             }
 
@@ -904,7 +886,7 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
                 self.emit_jump(merge_block, place_span.low);
 
                 self.current_block = false_block;
-                let entity = self.emit_unary_real(ssa::Opcode::LoadScope, GLOBAL, place_span.low);
+                let entity = self.emit_unary_int(ssa::Opcode::LoadScope, vm::GLOBAL, place_span.low);
                 let value = self.emit_binary_symbol(ssa::Opcode::LoadField, entity, field, place_span.low);
                 let value = match index {
                     None => value,
@@ -954,19 +936,24 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
         // GML adjusts the given index arity to match the built-in variable.
         // TODO: pass a typed index to avoid conversions in CallGet
         let i = index.map_or_else(|| self.emit_real(0.0, location), |[_, j]| j);
-        self.emit_call(ssa::Opcode::CallGet, field, vec![entity, i], location)
+        let array = self.emit_call(ssa::Opcode::CallGet, field, vec![entity, i], location);
+
+        // TODO: this only happens pre-gms
+        let value = self.emit_unary(ssa::Opcode::ToScalar, array, location);
+        self.emit_nullary(ssa::Opcode::ReleaseOwned, location);
+        value
     }
 
     /// Load an element of an array. (Helper for `emit_load`.)
     fn emit_load_index(&mut self, value: ssa::Value, [i, j]: [ssa::Value; 2], location: usize) -> ssa::Value {
         // TODO: this only happens pre-gms
-        let array = self.emit_unary(ssa::Opcode::ToArray, value, location);
+        let array = self.emit_binary_int(ssa::Opcode::ToArray, value, vm::PUSH_ANY, location);
 
         let row = self.emit_binary(ssa::Opcode::LoadRow, [array, i], location);
         let value = self.emit_binary(ssa::Opcode::LoadIndex, [row, j], location);
 
         // TODO: this only happens pre-gms
-        self.emit_unary(ssa::Opcode::Release, array, location);
+        self.emit_nullary(ssa::Opcode::ReleaseOwned, location);
         value
     }
 
@@ -1000,7 +987,7 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
                         let array = self.read_local(local);
 
                         // TODO: this only happens pre-gms; gms does need to handle undef
-                        let array = self.emit_unary(ssa::Opcode::ToArray, array, location);
+                        let array = self.emit_binary_int(ssa::Opcode::ToArray, array, vm::PUSH_ARRAY, location);
                         self.write_local(local, array);
 
                         let row = self.emit_binary(ssa::Opcode::StoreRow, [array, i], location);
@@ -1045,7 +1032,7 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
                 self.emit_jump(merge_block, location);
 
                 self.current_block = false_block;
-                let entity = self.emit_unary_real(ssa::Opcode::LoadScope, GLOBAL, location);
+                let entity = self.emit_unary_int(ssa::Opcode::LoadScope, vm::GLOBAL, location);
                 self.emit_store_field(entity, field, index, value, location);
                 self.emit_jump(merge_block, location);
 
@@ -1086,7 +1073,7 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
         location: usize,
     ) {
         // GML adjusts the given index arity to match the built-in variable.
-        // TODO: pass a typed index to avoid conversions in CallGet
+        // TODO: pass a typed index to avoid conversions in CallSet
         let i = index.map_or_else(|| self.emit_real(0.0, location), |[_, j]| j);
         self.emit_call(ssa::Opcode::CallSet, field, vec![value, entity, i], location);
     }
@@ -1111,8 +1098,9 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
                 let array = self.emit_binary_symbol(ssa::Opcode::LoadFieldDefault, entity, field, location);
 
                 // TODO: this only happens pre-gms; gms does need to handle undef
-                let array = self.emit_unary(ssa::Opcode::ToArray, array, location);
+                let array = self.emit_binary_int(ssa::Opcode::ToArray, array, vm::PUSH_ANY, location);
                 self.emit_ternary_symbol(ssa::Opcode::StoreField, [array, entity], field, location);
+                self.emit_nullary(ssa::Opcode::ReleaseOwned, location);
 
                 let row = self.emit_binary(ssa::Opcode::StoreRow, [array, i], location);
                 self.emit_ternary(ssa::Opcode::StoreIndex, [value, row, j], location);
@@ -1270,6 +1258,11 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
         self.function.emit_instruction(self.current_block, instruction, location)
     }
 
+    fn emit_unary_int(&mut self, op: ssa::Opcode, int: i32, location: usize) -> ssa::Value {
+        let instruction = ssa::Instruction::UnaryInt { op, int };
+        self.function.emit_instruction(self.current_block, instruction, location)
+    }
+
     fn emit_unary_real(&mut self, op: ssa::Opcode, real: f64, location: usize) -> ssa::Value {
         let instruction = ssa::Instruction::UnaryReal { op, real };
         self.function.emit_instruction(self.current_block, instruction, location)
@@ -1285,8 +1278,8 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
         self.function.emit_instruction(self.current_block, instruction, location)
     }
 
-    fn emit_binary_real(&mut self, op: ssa::Opcode, arg: ssa::Value, real: f64, location: usize) -> ssa::Value {
-        let instruction = ssa::Instruction::BinaryReal { op, arg, real };
+    fn emit_binary_int(&mut self, op: ssa::Opcode, arg: ssa::Value, int: i32, location: usize) -> ssa::Value {
+        let instruction = ssa::Instruction::BinaryInt { op, arg, int };
         self.function.emit_instruction(self.current_block, instruction, location)
     }
 

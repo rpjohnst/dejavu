@@ -155,13 +155,10 @@ impl<'p> Codegen<'p> {
             match program.values[value] {
                 Alias { .. } | Project { .. } | Parameter => panic!("compiling non-instruction"),
 
-                // TODO: de-specialize these
-                UnaryReal { op: ssa::Opcode::LoadScope, real } => { inst.scope(real); }
-                BinaryReal { op: ssa::Opcode::StoreScope, real, .. } => { inst.scope(real); }
-
+                UnaryInt { int, .. } => { inst.int(int); }
                 UnaryReal { real, .. } => { inst.index(self.emit_real(real)); }
                 UnarySymbol { symbol, .. } => { inst.index(self.emit_string(symbol)); }
-                BinaryReal { real, .. } => { inst.index(self.emit_real(real)); }
+                BinaryInt { int, .. } => { inst.int(int); }
                 BinarySymbol { symbol, .. } => { inst.index(self.emit_string(symbol)); }
                 TernarySymbol { symbol, .. } => { inst.index(self.emit_string(symbol)); }
 
@@ -348,10 +345,10 @@ impl InstBuilder {
         self
     }
 
-    fn scope(&mut self, scope: f64) -> &mut Self {
-        assert!(scope <= i8::MAX as f64);
-        assert!(scope >= i8::MIN as f64);
-        self.fields[self.filled] = scope as i8 as u8;
+    fn int(&mut self, int: i32) -> &mut Self {
+        assert!(int <= i8::MAX as i32);
+        assert!(int >= i8::MIN as i32);
+        self.fields[self.filled] = int as i8 as u8;
         self.filled += 1;
         self
     }
@@ -377,9 +374,7 @@ impl From<ssa::Opcode> for code::Op {
 
             ssa::Opcode::ToArray => code::Op::ToArray,
             ssa::Opcode::ToScalar => code::Op::ToScalar,
-
-            ssa::Opcode::Release => code::Op::Release,
-            ssa::Opcode::Return => code::Op::Ret,
+            ssa::Opcode::ReleaseOwned => code::Op::ReleaseOwned,
 
             ssa::Opcode::With => code::Op::With,
             ssa::Opcode::ReleaseWith => code::Op::ReleaseWith,
@@ -434,9 +429,11 @@ impl From<ssa::Opcode> for code::Op {
             ssa::Opcode::StoreIndex => code::Op::StoreIndex,
 
             ssa::Opcode::Call => code::Op::Call,
+            ssa::Opcode::Return => code::Op::Ret,
             ssa::Opcode::CallApi => code::Op::CallApi,
             ssa::Opcode::CallGet => code::Op::CallGet,
             ssa::Opcode::CallSet => code::Op::CallSet,
+
             ssa::Opcode::Jump => code::Op::Jump,
             ssa::Opcode::Branch => code::Op::BranchFalse,
         }
