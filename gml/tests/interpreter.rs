@@ -7,7 +7,7 @@ use gml::{Function, Item, symbol::Symbol, vm};
 
 /// Read script arguments.
 #[test]
-fn arguments() -> Result<(), vm::Error> {
+fn arguments() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -35,7 +35,7 @@ fn arguments() -> Result<(), vm::Error> {
 
 /// Read and write member variables.
 #[test]
-fn member() -> Result<(), vm::Error> {
+fn member() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -54,7 +54,7 @@ fn member() -> Result<(), vm::Error> {
     let mut thread = vm::Thread::default();
 
     let (_, entity) = world.create_instance();
-    thread.set_self(entity);
+    let mut thread = thread.with_self(entity);
 
     assert_eq!(thread.execute(&mut world, &mut assets, member, vec![])?, vm::Value::from(8));
     Ok(())
@@ -62,7 +62,7 @@ fn member() -> Result<(), vm::Error> {
 
 /// Read and write builtin variables.
 #[test]
-fn builtin() -> Result<(), vm::Error> {
+fn builtin() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let mut items = HashMap::new();
 
@@ -96,7 +96,7 @@ fn builtin() -> Result<(), vm::Error> {
 
     let (_, entity) = world.create_instance();
     world.instances.insert(entity, Instance::default());
-    thread.set_self(entity);
+    let mut thread = thread.with_self(entity);
 
     assert_eq!(thread.execute(&mut world, &mut assets, builtin, vec![])?, vm::Value::from(34));
 
@@ -113,7 +113,7 @@ fn builtin() -> Result<(), vm::Error> {
 
 /// Read and write global variables.
 #[test]
-fn global() -> Result<(), vm::Error> {
+fn global() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -131,14 +131,14 @@ fn global() -> Result<(), vm::Error> {
     let mut thread = vm::Thread::default();
 
     let (_, entity) = world.create_instance();
-    thread.set_self(entity);
+    let mut thread = thread.with_self(entity);
 
     assert_eq!(thread.execute(&mut world, &mut assets, global, vec![])?, vm::Value::from(8));
     Ok(())
 }
 
 #[test]
-fn with_scopes() -> Result<(), vm::Error> {
+fn with_scopes() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -165,15 +165,15 @@ fn with_scopes() -> Result<(), vm::Error> {
 
     let (a, entity) = world.create_instance();
     let (b, _) = world.create_instance();
-    thread.set_self(entity);
+    let mut thread = thread.with_self(entity);
 
-    let arguments = vec![vm::Value::from(a), vm::Value::from(b)];
-    assert_eq!(thread.execute(&mut world, &mut assets, with, arguments)?, vm::Value::from(24.0));
+    let args = vec![vm::Value::from(a), vm::Value::from(b)];
+    assert_eq!(thread.execute(&mut world, &mut assets, with, args)?, vm::Value::from(24.0));
     Ok(())
 }
 
 #[test]
-fn with_iterator() -> Result<(), vm::Error> {
+fn with_iterator() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let mut items = HashMap::new();
 
@@ -203,7 +203,7 @@ fn with_iterator() -> Result<(), vm::Error> {
 
     let (_, entity) = world.create_instance();
     world.create_instance();
-    thread.set_self(entity);
+    let mut thread = thread.with_self(entity);
 
     assert_eq!(thread.execute(&mut world, &mut assets, with, vec![])?, vm::Value::from(16.0));
     Ok(())
@@ -211,7 +211,7 @@ fn with_iterator() -> Result<(), vm::Error> {
 
 /// Read and write arrays.
 #[test]
-fn array() -> Result<(), vm::Error> {
+fn array() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -239,7 +239,7 @@ fn array() -> Result<(), vm::Error> {
 ///
 /// Regression test to ensure conditionally-initialized values don't break the compiler.
 #[test]
-fn conditional_initialization() -> Result<(), vm::Error> {
+fn conditional_initialization() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -260,7 +260,7 @@ fn conditional_initialization() -> Result<(), vm::Error> {
 ///
 /// Regression test to ensure uses of undef don't break the register allocator.
 #[test]
-fn dead_undef() -> Result<(), vm::Error> {
+fn dead_undef() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -277,7 +277,7 @@ fn dead_undef() -> Result<(), vm::Error> {
 
 /// For loop working with locals.
 #[test]
-fn for_loop() -> Result<(), vm::Error> {
+fn for_loop() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -302,7 +302,7 @@ fn for_loop() -> Result<(), vm::Error> {
 
 /// Control flow across a switch statement.
 #[test]
-fn switch() -> Result<(), vm::Error> {
+fn switch() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -343,7 +343,7 @@ fn switch() -> Result<(), vm::Error> {
 
 /// An empty switch statement.
 #[test]
-fn switch_empty() -> Result<(), vm::Error> {
+fn switch_empty() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -359,7 +359,7 @@ fn switch_empty() -> Result<(), vm::Error> {
 
 /// A switch statement with fallthrough between cases.
 #[test]
-fn switch_fallthrough() -> Result<(), vm::Error> {
+fn switch_fallthrough() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -399,7 +399,7 @@ fn switch_fallthrough() -> Result<(), vm::Error> {
 
 /// Call a GML script.
 #[test]
-fn call_script() -> Result<(), vm::Error> {
+fn call_script() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -419,7 +419,7 @@ fn call_script() -> Result<(), vm::Error> {
 
 /// Recursively call a GML script.
 #[test]
-fn recurse() -> Result<(), vm::Error> {
+fn recurse() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -444,7 +444,7 @@ fn recurse() -> Result<(), vm::Error> {
 
 /// Call a native function.
 #[test]
-fn ffi() -> Result<(), vm::Error> {
+fn ffi() -> Result<(), Box<vm::Error>> {
     let mut game = project::Game::default();
     let mut items = HashMap::new();
 
@@ -507,7 +507,7 @@ impl Default for World {
 impl World {
     fn native_add(
         &mut self, _: &mut Assets, thread: &mut vm::Thread, arguments: Range<usize>
-    ) -> Result<vm::Value, vm::ErrorKind> {
+    ) -> Result<vm::Value, Box<vm::Error>> {
         let arguments = unsafe { thread.arguments(arguments) };
         let value = match (arguments[0].borrow().decode(), arguments[1].borrow().decode()) {
             (vm::Data::Real(a), vm::Data::Real(b)) => vm::Value::from(a + b),
@@ -519,7 +519,7 @@ impl World {
 
     fn native_create_instance(
         &mut self, _: &mut Assets, _thread: &mut vm::Thread, _arguments: Range<usize>
-    ) -> Result<vm::Value, vm::ErrorKind> {
+    ) -> Result<vm::Value, Box<vm::Error>> {
         let (id, _) = self.create_instance();
         Ok(vm::Value::from(id))
     }

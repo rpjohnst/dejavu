@@ -1,6 +1,6 @@
 use std::{mem, ptr, iter, slice, cmp, fmt, error};
 use std::convert::TryFrom;
-use std::ops::Range;
+use std::ops::{self, Range};
 
 use crate::symbol::Symbol;
 use crate::rc_vec::RcVec;
@@ -43,9 +43,13 @@ impl Default for Register {
 }
 
 pub struct Error {
+    pub frames: Vec<ErrorFrame>,
+    pub kind: ErrorKind,
+}
+
+pub struct ErrorFrame {
     pub function: Function,
     pub instruction: usize,
-    pub kind: ErrorKind,
 }
 
 #[derive(Debug)]
@@ -70,9 +74,41 @@ pub enum ErrorKind {
     Other(Box<dyn error::Error>),
 }
 
+impl Error {
+    pub fn type_unary(op: code::Op, a: Value) -> Box<Error> {
+        Box::from(ErrorKind::TypeUnary(op, a))
+    }
+    pub fn type_binary(op: code::Op, a: Value, b: Value) -> Box<Error> {
+        Box::from(ErrorKind::TypeBinary(op, a, b))
+    }
+    pub fn divide_by_zero() -> Box<Error> { Box::from(ErrorKind::DivideByZero) }
+    pub fn arity(arity: usize) -> Box<Error> { Box::from(ErrorKind::Arity(arity)) }
+    pub fn scope(scope: i32) -> Box<Error> { Box::from(ErrorKind::Scope(scope)) }
+    pub fn name(name: Symbol) -> Box<Error> { Box::from(ErrorKind::Name(name)) }
+    pub fn write(name: Symbol) -> Box<Error> { Box::from(ErrorKind::Write(name)) }
+    pub fn bounds(index: i32) -> Box<Error> { Box::from(ErrorKind::Bounds(index)) }
+}
+
+impl<E: 'static + error::Error> From<E> for Box<Error> {
+    fn from(error: E) -> Box<Error> {
+        let kind = ErrorKind::Other(Box::new(error));
+        Self::from(kind)
+    }
+}
+
+impl From<ErrorKind> for Box<Error> {
+    fn from(kind: ErrorKind) -> Box<Error> {
+        Box::new(Error { frames: Vec::default(), kind })
+    }
+}
+
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}+{}: {:?}", self.function, self.instruction, self.kind)
+        writeln!(f, "error: {}", self.kind)?;
+        for &ErrorFrame { ref function, instruction } in self.frames.iter() {
+            writeln!(f, "  {:?}+{}", function, instruction)?;
+        }
+        Ok(())
     }
 }
 
@@ -120,11 +156,31 @@ impl Default for Thread {
     }
 }
 
+pub struct SelfGuard<'a> {
+    thread: &'a mut Thread,
+    other: Entity,
+}
+
+impl ops::Deref for SelfGuard<'_> {
+    type Target = Thread;
+    fn deref(&self) -> &Thread { self.thread }
+}
+
+impl ops::DerefMut for SelfGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Thread { self.thread }
+}
+
+impl Drop for SelfGuard<'_> {
+    fn drop(&mut self) { self.thread.self_entity = self.other; }
+}
+
 impl Thread {
     pub fn self_entity(&self) -> Entity { self.self_entity }
-    pub fn set_self(&mut self, entity: Entity) { self.self_entity = entity; }
 
-    pub fn set_other(&mut self, entity: Entity) { self.other_entity = entity; }
+    pub fn with_self(&mut self, entity: Entity) -> SelfGuard<'_> {
+        let other = mem::replace(&mut self.self_entity, entity);
+        SelfGuard { thread: self, other }
+    }
 
     /// Obtain the arguments to an API call.
     ///
@@ -136,8 +192,9 @@ impl Thread {
     }
 
     pub fn execute<'a, W, A: 'a>(
-        &mut self, world: &mut W, assets: &mut A, function: Function, arguments: Vec<Value>
-    ) -> Result<Value, Error> where W: vm::Api<'a, A> {
+        &mut self, world: &mut W, assets: &mut A,
+        function: Function, arguments: Vec<Value>
+    ) -> Result<Value, Box<Error>> where W: vm::Api<'a, A> {
         let engine = unsafe { &mut (
             &mut *(world as *mut _ as *mut engine::World),
             &mut *(assets as *mut _ as *mut engine::Assets),
@@ -169,7 +226,7 @@ fn execute_internal(
     thread: &mut Thread,
     engine: &mut Engine<'_>, world: *mut World, assets: *mut Assets<engine::World, engine::Assets>,
     function: Function, arguments: Vec<Value>
-) -> Result<Value, Error> {
+) -> Result<Value, Box<Error>> {
     // Enforce that `vm::{World, Assets}` are treated as fields of `engine::{World, Assets}`.
     fn constrain<T, F: for<'e> Fn(&mut Engine<'e>) -> &'e mut T>(f: F) -> F { f }
     let world = constrain(move |_| unsafe { &mut *world });
@@ -203,7 +260,7 @@ fn execute_internal(
         reg.value = unsafe { erase_ref(arg) };
     }
 
-    let kind = loop {
+    let mut error = loop {
         let registers = &mut thread.stack[reg_base..];
 
         match code.instructions[instruction].decode() {
@@ -221,7 +278,7 @@ fn execute_internal(
                 let a = unsafe { registers[a].value };
                 registers[t].value = match a.decode() {
                     Data::Real(a) => ValueRef::from(-a),
-                    _ => break ErrorKind::TypeUnary(op, a.clone()),
+                    _ => break Error::type_unary(op, a.clone()),
                 };
             }
 
@@ -229,7 +286,7 @@ fn execute_internal(
                 let a = unsafe { registers[a].value };
                 registers[t].value = match a.decode() {
                     Data::Real(a) => ValueRef::from(!to_bool(a)),
-                    _ => break ErrorKind::TypeUnary(op, a.clone()),
+                    _ => break Error::type_unary(op, a.clone()),
                 };
             }
 
@@ -237,7 +294,7 @@ fn execute_internal(
                 let a = unsafe { registers[a].value };
                 registers[t].value = match a.decode() {
                     Data::Real(a) => ValueRef::from(!to_i32(a)),
-                    _ => break ErrorKind::TypeUnary(op, a.clone()),
+                    _ => break Error::type_unary(op, a.clone()),
                 };
             }
 
@@ -247,7 +304,7 @@ fn execute_internal(
                 registers[t].value = match (a.decode(), b.decode()) {
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(a < b),
                     (Data::String(a), Data::String(b)) => ValueRef::from(a < b),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -257,7 +314,7 @@ fn execute_internal(
                 registers[t].value = match (a.decode(), b.decode()) {
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(a <= b),
                     (Data::String(a), Data::String(b)) => ValueRef::from(a <= b),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -279,7 +336,7 @@ fn execute_internal(
                 registers[t].value = match (a.decode(), b.decode()) {
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(a >= b),
                     (Data::String(a), Data::String(b)) => ValueRef::from(a >= b),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -289,7 +346,7 @@ fn execute_internal(
                 registers[t].value = match (a.decode(), b.decode()) {
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(a > b),
                     (Data::String(a), Data::String(b)) => ValueRef::from(a > b),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -300,7 +357,7 @@ fn execute_internal(
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(a + b),
                     (Data::String(a), Data::String(b)) =>
                         ValueRef::from(Symbol::intern(&[a, b].concat())),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -309,7 +366,7 @@ fn execute_internal(
                 let b = unsafe { registers[b].value };
                 registers[t].value = match (a.decode(), b.decode()) {
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(a - b),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -320,7 +377,7 @@ fn execute_internal(
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(a * b),
                     (Data::Real(a), Data::String(b)) =>
                         ValueRef::from(Symbol::intern(&b.repeat(a as usize))),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -328,9 +385,9 @@ fn execute_internal(
                 let a = unsafe { registers[a].value };
                 let b = unsafe { registers[b].value };
                 registers[t].value = match (a.decode(), b.decode()) {
-                    (Data::Real(_), Data::Real(b)) if b == 0.0 => break ErrorKind::DivideByZero,
+                    (Data::Real(_), Data::Real(b)) if b == 0.0 => break Error::divide_by_zero(),
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(a / b),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -338,9 +395,9 @@ fn execute_internal(
                 let a = unsafe { registers[a].value };
                 let b = unsafe { registers[b].value };
                 registers[t].value = match (a.decode(), b.decode()) {
-                    (Data::Real(_), Data::Real(b)) if b == 0.0 => break ErrorKind::DivideByZero,
+                    (Data::Real(_), Data::Real(b)) if b == 0.0 => break Error::divide_by_zero(),
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(to_i32(a / b)),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -348,9 +405,9 @@ fn execute_internal(
                 let a = unsafe { registers[a].value };
                 let b = unsafe { registers[b].value };
                 registers[t].value = match (a.decode(), b.decode()) {
-                    (Data::Real(_), Data::Real(b)) if b == 0.0 => break ErrorKind::DivideByZero,
+                    (Data::Real(_), Data::Real(b)) if b == 0.0 => break Error::divide_by_zero(),
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(a % b),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -359,7 +416,7 @@ fn execute_internal(
                 let b = unsafe { registers[b].value };
                 registers[t].value = match (a.decode(), b.decode()) {
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(to_bool(a) && to_bool(b)),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -368,7 +425,7 @@ fn execute_internal(
                 let b = unsafe { registers[b].value };
                 registers[t].value = match (a.decode(), b.decode()) {
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(to_bool(a) || to_bool(b)),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -377,7 +434,7 @@ fn execute_internal(
                 let b = unsafe { registers[b].value };
                 registers[t].value = match (a.decode(), b.decode()) {
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(to_bool(a) != to_bool(b)),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -386,7 +443,7 @@ fn execute_internal(
                 let b = unsafe { registers[b].value };
                 registers[t].value = match (a.decode(), b.decode()) {
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(to_i32(a) & to_i32(b)),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -395,7 +452,7 @@ fn execute_internal(
                 let b = unsafe { registers[b].value };
                 registers[t].value = match (a.decode(), b.decode()) {
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(to_i32(a) | to_i32(b)),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -404,7 +461,7 @@ fn execute_internal(
                 let b = unsafe { registers[b].value };
                 registers[t].value = match (a.decode(), b.decode()) {
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(to_i32(a) ^ to_i32(b)),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -413,7 +470,7 @@ fn execute_internal(
                 let b = unsafe { registers[b].value };
                 registers[t].value = match (a.decode(), b.decode()) {
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(to_i32(a) << to_i32(b)),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -422,7 +479,7 @@ fn execute_internal(
                 let b = unsafe { registers[b].value };
                 registers[t].value = match (a.decode(), b.decode()) {
                     (Data::Real(a), Data::Real(b)) => ValueRef::from(to_i32(a) >> to_i32(b)),
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), b.clone()),
+                    _ => break Error::type_binary(op, a.clone(), b.clone()),
                 };
             }
 
@@ -450,7 +507,7 @@ fn execute_internal(
                     SELF => thread.self_entity,
                     OTHER => thread.other_entity,
                     GLOBAL => world::GLOBAL,
-                    scope => break ErrorKind::Scope(scope),
+                    scope => break Error::scope(scope),
                 };
             }
 
@@ -459,7 +516,7 @@ fn execute_internal(
                 match scope as i8 as i32 {
                     SELF => thread.self_entity = s,
                     OTHER => thread.other_entity = s,
-                    scope => break ErrorKind::Scope(scope),
+                    scope => break Error::scope(scope),
                 }
             }
 
@@ -467,7 +524,7 @@ fn execute_internal(
                 let scope = unsafe { registers[scope].value };
                 let scope = match scope.decode() {
                     Data::Real(scope) => to_i32(scope),
-                    _ => break ErrorKind::TypeUnary(op, scope.clone()),
+                    _ => break Error::type_unary(op, scope.clone()),
                 };
 
                 let mut values = RcVec::default();
@@ -541,9 +598,9 @@ fn execute_internal(
                 match a.decode() {
                     Data::Real(a) => if !to_bool(a) {
                         let local = get_string(code.constants[local].borrow());
-                        break ErrorKind::Name(local);
+                        break Error::name(local);
                     }
-                    _ => break ErrorKind::TypeUnary(op, a.clone()),
+                    _ => break Error::type_unary(op, a.clone()),
                 }
             }
 
@@ -565,8 +622,8 @@ fn execute_internal(
             (op @ code::Op::ScopeError, scope, _, _) => {
                 let scope = unsafe { registers[scope].value };
                 match scope.decode() {
-                    Data::Real(scope) => break ErrorKind::Scope(to_i32(scope)),
-                    _ => break ErrorKind::TypeUnary(op, scope.clone()),
+                    Data::Real(scope) => break Error::scope(to_i32(scope)),
+                    _ => break Error::type_unary(op, scope.clone()),
                 }
             }
 
@@ -595,11 +652,11 @@ fn execute_internal(
                         // The result of this operation *must* be a scalar to preserve GML
                         // semantics. This check guards against problems when mixing versions.
                         Some(a) => match a.borrow().decode() {
-                            Data::Array(_) => break ErrorKind::TypeUnary(op, a),
+                            Data::Array(_) => break Error::type_unary(op, a),
                             // Because `a` is a scalar, this does not actually leak anything.
                             _ => a.leak(),
                         }
-                        None => break ErrorKind::Bounds(0),
+                        None => break Error::bounds(0),
                     }
                     _ => a,
                 };
@@ -615,7 +672,7 @@ fn execute_internal(
                 let instance = &world(engine).members[entity];
                 registers[t].value = match instance.get(&field) {
                     Some(value) => unsafe { erase_ref(value.borrow()) },
-                    None => break ErrorKind::Name(field),
+                    None => break Error::name(field),
                 };
             }
 
@@ -637,11 +694,11 @@ fn execute_internal(
                         // Safety: Codegen always follows this with `LoadIndex` (see `get_jagged`).
                         Some(value) => match unsafe { (*value).borrow().decode() } {
                             Data::Array(array) => array,
-                            _ => break ErrorKind::TypeUnary(op, a.clone()),
+                            _ => break Error::type_unary(op, a.clone()),
                         }
-                        None => break ErrorKind::Bounds(to_i32(i)),
+                        None => break Error::bounds(to_i32(i)),
                     }
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), i.clone()),
+                    _ => break Error::type_binary(op, a.clone(), i.clone()),
                 };
             }
 
@@ -652,9 +709,9 @@ fn execute_internal(
                     Data::Real(j) => match r.get_raw(to_i32(j)) {
                         // Safety: Codegen always precedes this with `LoadRow` (see `get_jagged`).
                         Some(value) => unsafe { erase_ref((*value).borrow()) }
-                        None => break ErrorKind::Bounds(to_i32(j)),
+                        None => break Error::bounds(to_i32(j)),
                     }
-                    _ => break ErrorKind::TypeBinary(op, Value::from(r.clone()), j.clone()),
+                    _ => break Error::type_binary(op, Value::from(r.clone()), j.clone()),
                 };
             }
 
@@ -674,11 +731,11 @@ fn execute_internal(
                         // Safety: Codegen always follows this with `StoreIndex` (see `set_jagged`).
                         Some(value) => match unsafe { (*value).borrow().decode() } {
                             Data::Array(array) => array,
-                            _ => break ErrorKind::TypeUnary(op, a.clone())
+                            _ => break Error::type_unary(op, a.clone())
                         }
-                        None => break ErrorKind::Bounds(to_i32(i)),
+                        None => break Error::bounds(to_i32(i)),
                     }
-                    _ => break ErrorKind::TypeBinary(op, a.clone(), i.clone()),
+                    _ => break Error::type_binary(op, a.clone(), i.clone()),
                 };
             }
 
@@ -689,9 +746,9 @@ fn execute_internal(
                 match j.decode() {
                     Data::Real(j) => match r.set_flat(to_i32(j), s.clone()) {
                         Some(()) => {}
-                        None => break ErrorKind::Bounds(to_i32(j)),
+                        None => break Error::bounds(to_i32(j)),
                     }
-                    _ => break ErrorKind::TypeBinary(op, Value::from(r.clone()), j.clone()),
+                    _ => break Error::type_binary(op, Value::from(r.clone()), j.clone()),
                 }
             }
 
@@ -751,7 +808,7 @@ fn execute_internal(
                     let arguments = reg_base..reg_base + len;
                     match api(world, assets, thread, arguments) {
                         Ok(value) => value,
-                        Err(kind) => break kind,
+                        Err(error) => break error,
                     }
                 };
                 let value = unsafe { erase_ref(array.borrow()) };
@@ -769,7 +826,7 @@ fn execute_internal(
                 let symbol = get_string(code.constants[get].borrow());
                 let get = match assets(engine).get.get(&symbol) {
                     Some(get) => get,
-                    None => break ErrorKind::Name(symbol),
+                    None => break Error::name(symbol),
                 };
                 let reg_base = reg_base + base;
 
@@ -795,7 +852,7 @@ fn execute_internal(
                 let symbol = get_string(code.constants[set].borrow());
                 let set = match assets(engine).set.get(&symbol) {
                     Some(set) => set,
-                    None => break ErrorKind::Write(symbol),
+                    None => break Error::write(symbol),
                 };
                 let reg_base = reg_base + base;
 
@@ -826,7 +883,7 @@ fn execute_internal(
                         instruction = t_low | (t_high << 8);
                         continue;
                     }
-                    _ => break ErrorKind::TypeUnary(op, a.clone()),
+                    _ => break Error::type_unary(op, a.clone()),
                 }
             }
         }
@@ -834,9 +891,17 @@ fn execute_internal(
         instruction += 1;
     };
 
+    error.frames.push(ErrorFrame { function, instruction });
+    let cont = thread.calls.iter()
+        .skip(orig_calls)
+        .rev()
+        .map(|&(function, instruction, _, _)| ErrorFrame { function, instruction });
+    error.frames.extend(cont);
+
     thread.calls.truncate(orig_calls);
     thread.withs.truncate(orig_withs);
     thread.owned.truncate(orig_owned);
     thread.stack.truncate(orig_stack);
-    Err(Error { function, instruction, kind })
+
+    Err(error)
 }

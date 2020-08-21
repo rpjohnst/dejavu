@@ -75,17 +75,22 @@ fn main() {
 
     let id = world.instance.instance_create(&mut world.world, &mut world.motion, 0.0, 0.0, 0)
         .unwrap_or_else(|_| panic!("object does not exist"));
-    thread.set_self(world.world.instances[id]);
-
     world.instance.instance_create(&mut world.world, &mut world.motion, 0.0, 0.0, 1)
         .unwrap_or_else(|_| panic!("object does not exist"));
 
+    let mut thread = thread.with_self(world.world.instances[id]);
     if let Err(error) = thread.execute(&mut world, &mut assets, main, vec![]) {
-        let mut errors = ErrorPrinter::from_debug(&debug, error.function, io::stderr());
-        let offset = error.instruction as u32;
-        let location = debug.locations[&error.function].locations.get_location(offset);
-        let span = Span { low: location as usize, high: location as usize };
+        let (mut errors, span, stack) = match error.frames[..] {
+            [ref frame, ref stack @ ..] => {
+                let errors = ErrorPrinter::from_debug(&debug, frame.function, io::stderr());
+                let span = Span::from_debug(&debug, frame);
+                (errors, span, stack)
+            },
+            _ => return,
+        };
+
         ErrorPrinter::error(&mut errors, span, format_args!("{}", error.kind));
+        ErrorPrinter::stack_from_debug(&mut errors, &debug, stack);
     }
 
     world.instance.free_destroyed(&mut world.world, &mut world.motion);

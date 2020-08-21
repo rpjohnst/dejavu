@@ -4,7 +4,7 @@ use std::ops::Range;
 use crate::symbol::Symbol;
 use crate::{Function, front::Lines};
 
-pub use crate::vm::interpreter::{Thread, Error, ErrorKind};
+pub use crate::vm::interpreter::{Thread, Error, ErrorFrame};
 pub use crate::vm::interpreter::{SELF, OTHER, ALL, NOONE, GLOBAL, LOCAL, PUSH_ARRAY, PUSH_ANY};
 pub use crate::vm::world::World;
 pub use crate::vm::entity_map::{Entity, EntityAllocator, EntityMap};
@@ -43,7 +43,7 @@ pub struct Locations {
 
 pub type ApiFunction<W, A> = unsafe fn(
     &mut W, &mut A, &mut Thread, Range<usize>
-) -> Result<Value, ErrorKind>;
+) -> Result<Value, Box<Error>>;
 pub type GetFunction<W, A> = fn(&mut W, &mut A, Entity, usize) -> Value;
 pub type SetFunction<W, A> = fn(&mut W, &mut A, Entity, usize, ValueRef);
 

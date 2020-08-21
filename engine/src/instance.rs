@@ -100,7 +100,7 @@ impl State {
     pub fn instance_create(
         &mut self, world: &mut vm::World, motion: &mut motion::State,
         x: f32, y: f32, obj: i32
-    ) -> Result<i32, vm::ErrorKind> {
+    ) -> Result<i32, Box<vm::Error>> {
         let object_index = obj;
 
         let id = self.next_id;

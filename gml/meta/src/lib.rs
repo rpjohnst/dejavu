@@ -437,7 +437,7 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
             #(unsafe fn #api(
                 &mut self, assets: &mut A,
                 thread: &mut vm::Thread, arguments: std::ops::Range<usize>,
-            ) -> Result<vm::Value, vm::ErrorKind> {
+            ) -> Result<vm::Value, Box<vm::Error>> {
                 #![allow(unused_imports, unused)]
                 use std::convert::TryInto;
 

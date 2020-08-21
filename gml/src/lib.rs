@@ -162,7 +162,50 @@ impl<'a> ErrorPrinter<'a> {
     pub fn from_debug<W: io::Write>(debug: &vm::Debug, function: Function, write: W) ->
         ErrorPrinter<W>
     {
-        let name = match function {
+        let name = FunctionDisplay::from_debug(debug, function);
+        let lines = &debug.locations[&function].lines;
+        ErrorPrinter::new(name, lines, write)
+    }
+
+    pub fn error(&mut self, span: Span, message: fmt::Arguments<'_>) {
+        let _ = write!(self.write, "error in ");
+        Self::position(&mut self.write, &self.name, self.lines, span);
+        let _ = writeln!(self.write, ": {}", message);
+        self.count += 1;
+    }
+
+    pub fn stack_from_debug(&mut self, debug: &vm::Debug, stack: &[vm::ErrorFrame]) {
+        for frame in stack.iter() {
+            let name = FunctionDisplay::from_debug(debug, frame.function);
+            let lines = &debug.locations[&frame.function].lines;
+            let span = Span::from_debug(&debug, frame);
+            let _= write!(self.write, "  ");
+            Self::position(&mut self.write, &name, lines, span);
+            let _= writeln!(self.write);
+        }
+    }
+
+    fn position(write: &mut dyn io::Write, name: &FunctionDisplay, lines: &Lines, span: Span) {
+        let Position { action, argument, line, column } = lines.get_position(span.low);
+        let _ = write!(write, "{}", name);
+        if let Some(action) = action {
+            let _ = write!(write, ", action {}", action);
+        }
+        if let (Some(argument), None) = (argument, line) {
+            let _ = write!(write, ", argument {}", argument);
+        }
+        if let Some(line) = line {
+            let _ = write!(write, ":{}", line);
+        }
+        if let Some(column) = column {
+            let _ = write!(write, ":{}", column);
+        }
+    }
+}
+
+impl FunctionDisplay {
+    pub fn from_debug(debug: &vm::Debug, function: Function) -> FunctionDisplay {
+        match function {
             Function::Event { object_index, event_type, event_kind } => {
                 let object = debug.objects[object_index as usize];
                 let event_kind = EventDisplay::from_debug(debug, event_type, event_kind);
@@ -172,30 +215,7 @@ impl<'a> ErrorPrinter<'a> {
                 let script = debug.scripts[id as usize];
                 FunctionDisplay::Script { script }
             }
-        };
-
-        let lines = &debug.locations[&function].lines;
-
-        ErrorPrinter::new(name, lines, write)
-    }
-
-    pub fn error(&mut self, span: Span, message: fmt::Arguments<'_>) {
-        let Position { action, argument, line, column } = self.lines.get_position(span.low);
-        let _ = write!(self.write, "error in {}", self.name);
-        if let Some(action) = action {
-            let _ = write!(self.write, ", action {}", action);
         }
-        if let (Some(argument), None) = (argument, line) {
-            let _ = write!(self.write, ", argument {}", argument);
-        }
-        if let Some(line) = line {
-            let _ = write!(self.write, ":{}", line);
-        }
-        if let Some(column) = column {
-            let _ = write!(self.write, ":{}", column);
-        }
-        let _ = writeln!(self.write, ": {}", message);
-        self.count += 1;
     }
 }
 
@@ -204,6 +224,14 @@ impl EventDisplay {
         match event_type {
             _ => EventDisplay::Id(event_kind),
         }
+    }
+}
+
+impl Span {
+    pub fn from_debug(debug: &vm::Debug, frame: &vm::ErrorFrame) -> Span {
+        let offset = frame.instruction as u32;
+        let location = debug.locations[&frame.function].locations.get_location(offset);
+        Span { low: location as usize, high: location as usize }
     }
 }
 

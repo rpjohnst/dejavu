@@ -88,12 +88,6 @@ pub enum Type {
     Grid,
 }
 
-impl From<Error> for vm::ErrorKind {
-    fn from(error: Error) -> Self {
-        vm::ErrorKind::Other(Box::new(error))
-    }
-}
-
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
@@ -133,7 +127,7 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_list_destroy(&mut self, id: i32) -> Result<(), vm::ErrorKind> {
+    pub fn ds_list_destroy(&mut self, id: i32) -> Result<(), Box<vm::Error>> {
         use self::hash_map::Entry;
         let entry = match self.lists.entry(id) {
             Entry::Occupied(entry) => entry,
@@ -144,35 +138,35 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_list_clear(&mut self, id: i32) -> Result<(), vm::ErrorKind> {
+    pub fn ds_list_clear(&mut self, id: i32) -> Result<(), Box<vm::Error>> {
         let list = self.lists.get_mut(&id).ok_or(Error::Resource(Type::List, id))?;
         list.clear();
         Ok(())
     }
 
     #[gml::function]
-    pub fn ds_list_empty(&mut self, id: i32) -> Result<bool, vm::ErrorKind> {
+    pub fn ds_list_empty(&mut self, id: i32) -> Result<bool, Box<vm::Error>> {
         let list = self.lists.get(&id).ok_or(Error::Resource(Type::List, id))?;
         let empty = list.is_empty();
         Ok(empty)
     }
 
     #[gml::function]
-    pub fn ds_list_size(&mut self, id: i32) -> Result<i32, vm::ErrorKind> {
+    pub fn ds_list_size(&mut self, id: i32) -> Result<i32, Box<vm::Error>> {
         let list = self.lists.get(&id).ok_or(Error::Resource(Type::List, id))?;
         let size = list.len() as i32;
         Ok(size)
     }
 
     #[gml::function]
-    pub fn ds_list_add(&mut self, id: i32, vals: &[vm::Value]) -> Result<(), vm::ErrorKind> {
+    pub fn ds_list_add(&mut self, id: i32, vals: &[vm::Value]) -> Result<(), Box<vm::Error>> {
         let list = self.lists.get_mut(&id).ok_or(Error::Resource(Type::List, id))?;
         list.extend_from_slice(vals);
         Ok(())
     }
 
     #[gml::function]
-    pub fn ds_list_delete(&mut self, id: i32, pos: i32) -> Result<(), vm::ErrorKind> {
+    pub fn ds_list_delete(&mut self, id: i32, pos: i32) -> Result<(), Box<vm::Error>> {
         let list = self.lists.get_mut(&id).ok_or(Error::Resource(Type::List, id))?;
         if pos < 0 || list.len() <= pos as usize {
             return Ok(());
@@ -182,7 +176,7 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_list_find_index(&mut self, id: i32, val: vm::ValueRef) -> Result<i32, vm::ErrorKind> {
+    pub fn ds_list_find_index(&mut self, id: i32, val: vm::ValueRef) -> Result<i32, Box<vm::Error>> {
         let list = self.lists.get(&id).ok_or(Error::Resource(Type::List, id))?;
         let pos = list.iter()
             .position(move |e| e.borrow() == val)
@@ -191,7 +185,7 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_list_find_value(&mut self, id: i32, pos: i32) -> Result<vm::Value, vm::ErrorKind> {
+    pub fn ds_list_find_value(&mut self, id: i32, pos: i32) -> Result<vm::Value, Box<vm::Error>> {
         let list = self.lists.get(&id).ok_or(Error::Resource(Type::List, id))?;
         if pos < 0 || list.len() <= pos as usize {
             return Ok(vm::Value::from(0));
@@ -202,7 +196,7 @@ impl State {
 
     #[gml::function]
     pub fn ds_list_insert(&mut self, id: i32, pos: i32, val: vm::ValueRef) ->
-        Result<(), vm::ErrorKind>
+        Result<(), Box<vm::Error>>
     {
         let list = self.lists.get_mut(&id).ok_or(Error::Resource(Type::List, id))?;
         if pos < 0 || list.len() < pos as usize {
@@ -214,7 +208,7 @@ impl State {
 
     #[gml::function]
     pub fn ds_list_replace(&mut self, id: i32, pos: i32, val: vm::ValueRef) ->
-        Result<(), vm::ErrorKind>
+        Result<(), Box<vm::Error>>
     {
         let list = self.lists.get_mut(&id).ok_or(Error::Resource(Type::List, id))?;
         if pos < 0 || list.len() <= pos as usize {
@@ -235,7 +229,7 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_map_destroy(&mut self, id: i32) -> Result<(), vm::ErrorKind> {
+    pub fn ds_map_destroy(&mut self, id: i32) -> Result<(), Box<vm::Error>> {
         use self::hash_map::Entry;
         let entry = match self.maps.entry(id) {
             Entry::Occupied(entry) => entry,
@@ -246,21 +240,21 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_map_clear(&mut self, id: i32) -> Result<(), vm::ErrorKind> {
+    pub fn ds_map_clear(&mut self, id: i32) -> Result<(), Box<vm::Error>> {
         let map = self.maps.get_mut(&id).ok_or(Error::Resource(Type::Map, id))?;
         map.clear();
         Ok(())
     }
 
     #[gml::function]
-    pub fn ds_map_size(&mut self, id: i32) -> Result<i32, vm::ErrorKind> {
+    pub fn ds_map_size(&mut self, id: i32) -> Result<i32, Box<vm::Error>> {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
         let size = map.len() as i32;
         Ok(size)
     }
 
     #[gml::function]
-    pub fn ds_map_empty(&mut self, id: i32) -> Result<bool, vm::ErrorKind> {
+    pub fn ds_map_empty(&mut self, id: i32) -> Result<bool, Box<vm::Error>> {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
         let empty = map.is_empty();
         Ok(empty)
@@ -268,7 +262,7 @@ impl State {
 
     #[gml::function]
     pub fn ds_map_add(&mut self, id: i32, key: vm::ValueRef, val: vm::ValueRef) ->
-        Result<(), vm::ErrorKind>
+        Result<(), Box<vm::Error>>
     {
         use self::btree_map::Entry;
         let map = self.maps.get_mut(&id).ok_or(Error::Resource(Type::Map, id))?;
@@ -282,7 +276,7 @@ impl State {
 
     #[gml::function]
     pub fn ds_map_replace(&mut self, id: i32, key: vm::ValueRef, val: vm::ValueRef) ->
-        Result<(), vm::ErrorKind>
+        Result<(), Box<vm::Error>>
     {
         use self::btree_map::Entry;
         let map = self.maps.get_mut(&id).ok_or(Error::Resource(Type::Map, id))?;
@@ -295,14 +289,14 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_map_delete(&mut self, id: i32, key: vm::ValueRef) -> Result<(), vm::ErrorKind> {
+    pub fn ds_map_delete(&mut self, id: i32, key: vm::ValueRef) -> Result<(), Box<vm::Error>> {
         let map = self.maps.get_mut(&id).ok_or(Error::Resource(Type::Map, id))?;
         map.remove(MapKey::borrowed(&key));
         Ok(())
     }
 
     #[gml::function]
-    pub fn ds_map_exists(&mut self, id: i32, key: vm::ValueRef) -> Result<(), vm::ErrorKind> {
+    pub fn ds_map_exists(&mut self, id: i32, key: vm::ValueRef) -> Result<(), Box<vm::Error>> {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
         map.contains_key(MapKey::borrowed(&key));
         Ok(())
@@ -310,7 +304,7 @@ impl State {
 
     #[gml::function]
     pub fn ds_map_find_value(&mut self, id: i32, key: vm::ValueRef) ->
-        Result<vm::Value, vm::ErrorKind>
+        Result<vm::Value, Box<vm::Error>>
     {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
         let val = map.get(MapKey::borrowed(&key)).map_or(vm::Value::from(0), |val| val.clone());
@@ -319,7 +313,7 @@ impl State {
 
     #[gml::function]
     pub fn ds_map_find_next(&mut self, id: i32, key: vm::ValueRef) ->
-        Result<vm::Value, vm::ErrorKind>
+        Result<vm::Value, Box<vm::Error>>
     {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
         let key = map.range(MapKey::borrowed(&key)..).nth(1)
@@ -329,7 +323,7 @@ impl State {
 
     #[gml::function]
     pub fn ds_map_find_previous(&mut self, id: i32, key: vm::ValueRef) ->
-        Result<vm::Value, vm::ErrorKind>
+        Result<vm::Value, Box<vm::Error>>
     {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
         let key = map.range(..=MapKey::borrowed(&key)).rev().nth(1)
@@ -339,7 +333,7 @@ impl State {
 
     #[gml::function]
     pub fn ds_map_find_first(&mut self, id: i32) ->
-        Result<vm::Value, vm::ErrorKind>
+        Result<vm::Value, Box<vm::Error>>
     {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
         let key = map.keys().nth(0).map_or(vm::Value::from(0.0), |&MapKey(ref key)| key.clone());
@@ -348,7 +342,7 @@ impl State {
 
     #[gml::function]
     pub fn ds_map_find_last(&mut self, id: i32) ->
-        Result<vm::Value, vm::ErrorKind>
+        Result<vm::Value, Box<vm::Error>>
     {
         let map = self.maps.get(&id).ok_or(Error::Resource(Type::Map, id))?;
         let key = map.keys().rev().nth(0).map_or(vm::Value::from(0.0), |&MapKey(ref key)| key.clone());
@@ -368,7 +362,7 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_grid_destroy(&mut self, id: i32) -> Result<(), vm::ErrorKind> {
+    pub fn ds_grid_destroy(&mut self, id: i32) -> Result<(), Box<vm::Error>> {
         use self::hash_map::Entry;
         let entry = match self.grids.entry(id) {
             Entry::Occupied(entry) => entry,
@@ -379,7 +373,7 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_grid_resize(&mut self, id: i32, w: u32, h: u32) -> Result<(), vm::ErrorKind> {
+    pub fn ds_grid_resize(&mut self, id: i32, w: u32, h: u32) -> Result<(), Box<vm::Error>> {
         let grid = self.grids.get_mut(&id).ok_or(Error::Resource(Type::Grid, id))?;
 
         let new_data = vec![vm::Value::from(0.0); w as usize * h as usize].into_boxed_slice();
@@ -400,19 +394,19 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_grid_width(&mut self, id: i32) -> Result<u32, vm::ErrorKind> {
+    pub fn ds_grid_width(&mut self, id: i32) -> Result<u32, Box<vm::Error>> {
         let grid = self.grids.get(&id).ok_or(Error::Resource(Type::Grid, id))?;
         Ok(grid.width as u32)
     }
 
     #[gml::function]
-    pub fn ds_grid_height(&mut self, id: i32) -> Result<u32, vm::ErrorKind> {
+    pub fn ds_grid_height(&mut self, id: i32) -> Result<u32, Box<vm::Error>> {
         let grid = self.grids.get(&id).ok_or(Error::Resource(Type::Grid, id))?;
         Ok(grid.height() as u32)
     }
 
     #[gml::function]
-    pub fn ds_grid_clear(&mut self, id: i32, val: vm::ValueRef) -> Result<(), vm::ErrorKind> {
+    pub fn ds_grid_clear(&mut self, id: i32, val: vm::ValueRef) -> Result<(), Box<vm::Error>> {
         let grid = self.grids.get_mut(&id).ok_or(Error::Resource(Type::Grid, id))?;
         for cell in &mut *grid.data {
             *cell = val.clone();
@@ -422,7 +416,7 @@ impl State {
 
     #[gml::function]
     pub fn ds_grid_set(&mut self, id: i32, x: u32, y: u32, val: vm::ValueRef) ->
-        Result<(), vm::ErrorKind>
+        Result<(), Box<vm::Error>>
     {
         let grid = self.grids.get_mut(&id).ok_or(Error::Resource(Type::Grid, id))?;
         if grid.width <= x as usize {
@@ -437,7 +431,7 @@ impl State {
     }
 
     #[gml::function]
-    pub fn ds_grid_get(&self, id: i32, x: u32, y: u32) -> Result<vm::Value, vm::ErrorKind> {
+    pub fn ds_grid_get(&self, id: i32, x: u32, y: u32) -> Result<vm::Value, Box<vm::Error>> {
         let grid = self.grids.get(&id).ok_or(Error::Resource(Type::Grid, id))?;
         if grid.width <= x as usize {
             return Ok(vm::Value::from(0.0));
