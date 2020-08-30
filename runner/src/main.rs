@@ -69,18 +69,34 @@ fn main() {
         }
     }"# });
 
+    let first_obj = game.objects.len() as i32;
+    game.objects.push(project::Object {
+        name: b"first_obj",
+        persistent: false,
+        events: vec![],
+    });
+
+    let second_obj = game.objects.len() as i32;
+    game.objects.push(project::Object {
+        name: b"second_obj",
+        persistent: false,
+        events: vec![],
+    });
+
     let (assets, debug) = engine::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut world = World::default();
-
-    let id = world.instance.instance_create(&mut world.world, &mut world.motion, 0.0, 0.0, 0)
-        .unwrap_or_else(|_| panic!("object does not exist"));
-    let entity = world.world.instances[id];
-
-    world.instance.instance_create(&mut world.world, &mut world.motion, 0.0, 0.0, 1)
-        .unwrap_or_else(|_| panic!("object does not exist"));
+    let world = World::default();
 
     let mut thread = gml::vm::Thread::default();
     let mut cx = engine::Context { world, assets };
+
+    let id = engine::instance::State::instance_create(&mut cx, &mut thread, 0.0, 0.0, first_obj)
+        .unwrap_or_else(|_| panic!("object does not exist"));
+
+    engine::instance::State::instance_create(&mut cx, &mut thread, 0.0, 0.0, second_obj)
+        .unwrap_or_else(|_| panic!("object does not exist"));
+
+    let engine::Context { world, .. } = &mut cx;
+    let entity = world.world.instances[id];
 
     if let Err(error) = thread.with(entity).execute(&mut cx, main, vec![]) {
         let (mut errors, span, stack) = match error.frames[..] {

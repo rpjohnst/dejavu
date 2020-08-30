@@ -61,12 +61,6 @@ impl<'r> vm::Project<'r, (&'r mut instance::State, &'r mut vm::World)> for Conte
         (&mut world.instance, &mut world.world)
     }
 }
-impl<'r> vm::Project<'r, (&'r mut instance::State, &'r mut vm::World, &'r mut motion::State)> for Context {
-    fn fields(&'r mut self) -> (&'r mut instance::State, &'r mut vm::World, &'r mut motion::State) {
-        let Context { world, .. } = self;
-        (&mut world.instance, &mut world.world, &mut world.motion)
-    }
-}
 
 impl<'r> vm::Project<'r, (&'r mut show::State,)> for Context {
     fn fields(&'r mut self) -> (&'r mut show::State,) {

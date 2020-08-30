@@ -248,11 +248,10 @@ impl fmt::Display for FunctionDisplay {
 fn display_event(
     object: Symbol, event_type: u32, event_kind: EventDisplay, f: &mut fmt::Formatter<'_>
 ) -> fmt::Result {
-    write!(f, "event {}", event_type)?;
-    match event_kind {
-        EventDisplay::Id(id) => write!(f, "({})", id)?,
-        EventDisplay::Name(name) => write!(f, "({})", name)?,
-    }
+    match (event_type, event_kind) {
+        (project::event_type::CREATE, _) => write!(f, "create event")?,
+        _ => write!(f, "unknown event")?,
+    };
     write!(f, " for object {}", object)?;
     Ok(())
 }

@@ -166,4 +166,3 @@ macro_rules! impl_bind_self { ($rs:tt) => {
 impl_bind_self!(());
 impl_bind_self!((R0));
 impl_bind_self!((R0 R1));
-impl_bind_self!((R0 R1 R2));

@@ -1,5 +1,5 @@
 use gml::{self, vm};
-use crate::motion;
+use crate::{Context, motion};
 
 pub struct State {
     pub next_id: i32,
@@ -98,24 +98,41 @@ impl State {
 
     #[gml::api]
     pub fn instance_create(
-        &mut self, world: &mut vm::World, motion: &mut motion::State,
-        x: f32, y: f32, obj: i32
+        cx: &mut Context, thread: &mut vm::Thread,
+        x: f32, y: f32, object_index: i32
     ) -> Result<i32, Box<vm::Error>> {
-        let object_index = obj;
+        let Context { world, .. } = cx;
+        let id = world.instance.next_id;
+        world.instance.next_id += 1;
 
-        let id = self.next_id;
-        self.next_id += 1;
+        let entity = Self::instance_create_id(cx, x, y, object_index, id);
 
-        let persistent = false;
+        let Context { assets, .. } = cx;
+        let event_type = project::event_type::CREATE;
+        let create = gml::Function::Event { event_type, event_kind: 0, object_index };
+        if assets.code.code.contains_key(&create) {
+            thread.with(entity).execute(cx, create, vec![])?;
+        }
 
+        Ok(id)
+    }
+
+    pub fn instance_create_id(cx: &mut Context, x: f32, y: f32, object_index: i32, id: i32) ->
+        vm::Entity
+    {
+        let Context { world, assets } = cx;
+
+        let persistent = assets.objects[object_index as usize].persistent;
+
+        let crate::World { world, instance, motion, .. } = world;
         let entity = world.create_entity();
         world.add_entity(entity, object_index, id);
-        let instance = Instance { object_index, id, persistent };
-        self.instances.insert(entity, instance);
+        let inst = Instance { object_index, id, persistent };
+        instance.instances.insert(entity, inst);
         let instance = motion::Instance::from_pos(x, y);
         motion.instances.insert(entity, instance);
 
-        Ok(id)
+        entity
     }
 
     #[gml::api]
@@ -134,5 +151,24 @@ impl State {
             self.instances.remove(entity);
             world.destroy_entity(entity);
         }
+    }
+
+    #[gml::api]
+    pub fn action_create_object(
+        cx: &mut Context, thread: &mut vm::Thread,
+        entity: vm::Entity, relative: bool, obj: i32, mut x: f32, mut y: f32
+    ) -> Result<i32, Box<vm::Error>> {
+        let Context { world, .. } = cx;
+
+        if relative {
+            x += world.motion.instances[entity].x;
+            y += world.motion.instances[entity].y;
+        }
+        Self::instance_create(cx, thread, x, y, obj)
+    }
+
+    #[gml::api]
+    pub fn action_kill_object(&mut self, world: &mut vm::World, entity: vm::Entity) {
+        self.instance_destroy(world, entity);
     }
 }

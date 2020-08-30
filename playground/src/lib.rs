@@ -20,6 +20,13 @@ pub fn run(source: &str) {
     let script = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"<playground>", body: source.as_bytes() });
 
+    let object = game.objects.len() as i32;
+    game.objects.push(project::Object {
+        name: b"playground_obj",
+        persistent: false,
+        events: vec![],
+    });
+
     let (assets, debug) = match engine::build(&game, &items, HostErr) {
         Ok(assets) => assets,
         Err(errors) => {
@@ -34,11 +41,12 @@ pub fn run(source: &str) {
 
     let mut world = World::default();
     world.show.set_write(Box::new(HostOut));
-    let id = world.instance.instance_create(&mut world.world, &mut world.motion, 0.0, 0.0, 0)
-        .unwrap_or_else(|_| { let _ = writeln!(HostErr(), "object does not exist"); panic!() });
 
     let mut thread = gml::vm::Thread::default();
     let mut cx = engine::Context { world, assets };
+    let id = engine::instance::State::instance_create(&mut cx, &mut thread, 0.0, 0.0, object)
+        .unwrap_or_else(|_| { let _ = writeln!(HostErr(), "object does not exist"); panic!() });
+
     let engine::Context { world, .. } = &mut cx;
     let entity = world.world.instances[id];
 

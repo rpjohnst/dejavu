@@ -12,6 +12,7 @@ pub struct Script<'a> {
 #[derive(Default)]
 pub struct Object<'a> {
     pub name: &'a [u8],
+    pub persistent: bool,
     pub events: Vec<Event<'a>>,
 }
 
@@ -20,6 +21,10 @@ pub struct Event<'a> {
     pub event_type: u32,
     pub event_kind: i32,
     pub actions: Vec<Action<'a>>,
+}
+
+pub mod event_type {
+    pub const CREATE: u32 = 0;
 }
 
 #[derive(Default)]

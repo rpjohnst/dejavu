@@ -21,13 +21,21 @@ pub struct Context {
 #[derive(Default)]
 pub struct Assets {
     pub code: vm::Assets<Context>,
+    pub objects: Vec<Object>,
+}
+
+pub struct Object {
+    pub persistent: bool,
 }
 
 /// Build a Game Maker project.
 pub fn build<'a, F: FnMut() -> E, E: io::Write + 'static>(
     game: &'a project::Game, engine: &HashMap<Symbol, gml::Item<Context>>, errors: F
 ) -> Result<(Assets, vm::Debug), u32> {
-    let assets = Assets::default();
+    let mut assets = Assets::default();
+    assets.objects = game.objects.iter()
+        .map(|&project::Object { persistent, .. }| Object { persistent })
+        .collect();
     match gml::build(game, engine, errors) {
         Ok((code, debug)) => Ok((Assets { code, ..assets }, debug)),
         Err(count) => Err(count),
