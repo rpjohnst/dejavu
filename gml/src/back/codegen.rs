@@ -103,7 +103,15 @@ impl<'p> Codegen<'p> {
                 let inst = inst(op).index(a).index(b).index(c).encode();
                 self.function.instructions.push(inst);
 
-                self.emit_phis(slice::from_ref(&value), &parameters[..1]);
+                // Collect call defs into a fixed-size array, initialized with dummy values,
+                // to avoid allocating a `Vec` or pulling in a "small vector" dependency.
+                let mut results = [value, value];
+                let mut len = 0;
+                for result in program.defs(value) {
+                    results[len] = result;
+                    len += 1;
+                }
+                self.emit_phis(&results[..len], &parameters[..len]);
                 continue;
             }
 

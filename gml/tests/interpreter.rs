@@ -80,7 +80,9 @@ fn builtin() -> Result<(), Box<vm::Error>> {
 
     let builtin = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"builtin", body: b"{
-        scalar = 3
+        repeat 2 {
+            scalar = 3
+        }
         array[0] = 2 + scalar
         array[1] = scalar + array[0]
         global_scalar = array[0] + array[1]

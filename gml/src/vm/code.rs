@@ -170,8 +170,8 @@ impl fmt::Debug for Function {
                     writeln!(f, "  %{:?} = {:?} {:?}(%{:?} +{:?})", b, op, self.constants[a], b, c)?,
                 Op::CallSet =>
                     writeln!(f, "  {:?} {:?}(%{:?} +{:?})", op, self.constants[a], b, c)?,
-                Op::Jump => writeln!(f, "  {:?} {:?}", op, a)?,
-                Op::BranchFalse => writeln!(f, "  {:?} %{:?}, {:?}", op, a, b)?,
+                Op::Jump => writeln!(f, "  {:?} {:?}", op, a | (b << 8))?,
+                Op::BranchFalse => writeln!(f, "  {:?} %{:?}, {:?}", op, a, b | (c << 8))?,
                 _ => writeln!(f, "  %{:?} = {:?} %{:?}, %{:?}", a, op, b, c)?,
             }
         }
