@@ -11,13 +11,13 @@ impl Default for State {
     }
 }
 
-#[gml::bind(Api)]
+#[gml::bind]
 impl State {
     pub fn set_write(&mut self, write: Box<dyn Write>) {
         self.write = write;
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn show_debug_message(&mut self, arguments: &[vm::Value]) {
         for argument in arguments {
             let _ = write!(&mut *self.write, "{:?} ", argument);

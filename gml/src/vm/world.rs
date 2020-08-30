@@ -14,7 +14,7 @@ pub struct World {
     pub globals: HashSet<Symbol>,
 }
 
-pub const GLOBAL: vm::Entity = vm::Entity(0);
+pub const GLOBAL: vm::Entity = vm::Entity::NULL;
 
 impl Default for World {
     fn default() -> Self {

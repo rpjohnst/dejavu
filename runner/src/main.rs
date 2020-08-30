@@ -69,17 +69,20 @@ fn main() {
         }
     }"# });
 
-    let (mut assets, debug) = engine::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (assets, debug) = engine::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut world = World::default();
-    let mut thread = gml::vm::Thread::default();
 
     let id = world.instance.instance_create(&mut world.world, &mut world.motion, 0.0, 0.0, 0)
         .unwrap_or_else(|_| panic!("object does not exist"));
+    let entity = world.world.instances[id];
+
     world.instance.instance_create(&mut world.world, &mut world.motion, 0.0, 0.0, 1)
         .unwrap_or_else(|_| panic!("object does not exist"));
 
-    let mut thread = thread.with_self(world.world.instances[id]);
-    if let Err(error) = thread.execute(&mut world, &mut assets, main, vec![]) {
+    let mut thread = gml::vm::Thread::default();
+    let mut cx = engine::Context { world, assets };
+
+    if let Err(error) = thread.with(entity).execute(&mut cx, main, vec![]) {
         let (mut errors, span, stack) = match error.frames[..] {
             [ref frame, ref stack @ ..] => {
                 let errors = ErrorPrinter::from_debug(&debug, frame.function, io::stderr());
@@ -93,5 +96,6 @@ fn main() {
         ErrorPrinter::stack_from_debug(&mut errors, &debug, stack);
     }
 
+    let engine::Context { world, .. } = &mut cx;
     world.instance.free_destroyed(&mut world.world, &mut world.motion);
 }

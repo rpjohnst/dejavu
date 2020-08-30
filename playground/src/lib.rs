@@ -20,7 +20,7 @@ pub fn run(source: &str) {
     let script = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"<playground>", body: source.as_bytes() });
 
-    let (mut assets, debug) = match engine::build(&game, &items, HostErr) {
+    let (assets, debug) = match engine::build(&game, &items, HostErr) {
         Ok(assets) => assets,
         Err(errors) => {
             if errors > 1 {
@@ -38,8 +38,11 @@ pub fn run(source: &str) {
         .unwrap_or_else(|_| { let _ = writeln!(HostErr(), "object does not exist"); panic!() });
 
     let mut thread = gml::vm::Thread::default();
-    let mut thread = thread.with_self(world.world.instances[id]);
-    if let Err(error) = thread.execute(&mut world, &mut assets, script, vec![]) {
+    let mut cx = engine::Context { world, assets };
+    let engine::Context { world, .. } = &mut cx;
+    let entity = world.world.instances[id];
+
+    if let Err(error) = thread.with(entity).execute(&mut cx, script, vec![]) {
         let (mut errors, span, stack) = match error.frames[..] {
             [ref frame, ref stack @ ..] => {
                 let errors = ErrorPrinter::from_debug(&debug, frame.function, HostErr());
@@ -51,7 +54,7 @@ pub fn run(source: &str) {
 
         ErrorPrinter::error(&mut errors, span, format_args!("{}", error.kind));
         ErrorPrinter::stack_from_debug(&mut errors, &debug, stack);
-    }
+    };
 }
 
 impl io::Write for HostOut {

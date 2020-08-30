@@ -2,80 +2,37 @@ extern crate proc_macro;
 
 use std::iter;
 use std::collections::HashMap;
-use indexmap::IndexMap;
 use proc_macro::TokenStream;
 use proc_macro2;
 use syn::{
     self, parse_quote, parenthesized, punctuated,
-    ItemImpl, ImplItemMethod, Attribute, Signature, FnArg, PatType, ReturnType,
+    ItemImpl, ImplItemMethod, Attribute, Signature, FnArg, PatType,
     Type, TypeReference, Path, Ident
 };
 use syn::parse::{Parse, ParseStream, Result, Error};
 use syn::visit_mut::VisitMut;
-use syn::spanned::Spanned;
 use quote::quote;
 
+#[derive(Default)]
 struct ItemBindings {
-    functions: Vec<Function>,
-    members: HashMap<Ident, Member>,
+    apis: Vec<Function>,
+    fields: HashMap<Ident, Field>,
+}
 
-    /// Ordered map from receiver types to their variable names.
-    ///
-    /// The order needs to be consistent because it determines the order of things in the output,
-    /// like tuple type elements.
-    receivers: IndexMap<Receiver, Ident>,
+#[derive(Default)]
+struct Field {
+    getter: Option<Function>,
+    setter: Option<Function>,
 }
 
 struct Function {
     name: Ident,
-    receivers: Vec<Receiver>,
-    parameters: Vec<Parameter>,
-    rest: Option<()>,
-    output: Return,
-}
-
-#[derive(Default)]
-struct Member {
-    getter: Option<Property>,
-    setter: Option<Property>,
-}
-
-struct Property {
-    name: Ident,
-    receivers: Vec<Receiver>,
-    index: Option<()>,
-    value: Option<Parameter>,
-}
-
-/// A "receiver" type for a method or property.
-#[derive(Clone, Eq, PartialEq, Hash)]
-enum Receiver {
-    /// A world or assets module (including the bound API's self type).
-    Reference(Type),
-    /// The GML-level `self` entity for the call.
-    Entity,
-}
-
-#[derive(Copy, Clone)]
-enum Parameter {
-    Direct,
-    Convert,
-}
-
-#[derive(Copy, Clone)]
-enum Return {
-    Value,
-    Result,
+    receivers: Vec<Type>,
 }
 
 impl ItemBindings {
     fn parse(item: &mut ItemImpl) -> std::result::Result<Self, Vec<Error>> {
-        let mut bindings = ItemBindings {
-            functions: Vec::new(),
-            members: HashMap::new(),
-
-            receivers: IndexMap::default(),
-        };
+        let mut bindings = ItemBindings::default();
 
         let mut errors = Vec::new();
         {
@@ -85,7 +42,7 @@ impl ItemBindings {
 
                 self_ty: (*item.self_ty).clone(),
 
-                function: parse_quote!(gml::function),
+                api: parse_quote!(gml::api),
                 get: parse_quote!(gml::get),
                 set: parse_quote!(gml::set),
             };
@@ -105,7 +62,7 @@ struct VisitBindings<'a> {
 
     self_ty: Type,
 
-    function: Path,
+    api: Path,
     get: Path,
     set: Path,
 }
@@ -119,74 +76,48 @@ impl VisitMut for VisitBindings<'_> {
 
 impl VisitBindings<'_> {
     fn process_attribute(&mut self, attr: &Attribute, sig: &Signature) -> bool {
-        if attr.path == self.function {
-            let function = match Function::parse(&self.self_ty, sig) {
-                Ok(function) => function,
-                Err(err) => {
-                    self.errors.push(err);
-                    return true;
-                }
-            };
-
-            self.extend_receivers(&function.receivers[..]);
-
-            self.bindings.functions.push(function);
+        if attr.path == self.api {
+            match Function::parse(&self.self_ty, sig) {
+                Ok(function) => { self.bindings.apis.push(function); }
+                Err(err) => { self.errors.push(err); }
+            }
             true
         } else if attr.path == self.get || attr.path == self.set {
-            let meta: PropertyMeta = match syn::parse2(attr.tokens.clone()) {
-                Ok(meta) => meta,
+            let (span, member) = match syn::parse2(attr.tokens.clone()) {
+                Ok(PropertyMeta { name }) => {
+                    (name.span(), self.bindings.fields.entry(name).or_default())
+                }
                 Err(err) => {
                     self.errors.push(err);
                     return true;
                 }
             };
-            let property = match Property::parse(&self.self_ty, sig) {
-                Ok(property) => property,
-                Err(err) => {
-                    self.errors.push(err);
-                    return true;
-                }
-            };
-
-            self.extend_receivers(&property.receivers[..]);
-
-            let member = self.bindings.members.entry(meta.name.clone()).or_default();
-            if attr.path == self.get {
+            let field = if attr.path == self.get {
                 if member.getter.is_some() {
-                    let message = "getter is defined multiple times";
-                    self.errors.push(Error::new(meta.name.span(), message));
+                    self.errors.push(Error::new(span, "getter is defined multiple times"));
                     return true;
                 }
-                member.getter = Some(property);
-            } else if attr.path == self.set {
+                &mut member.getter
+            } else {
                 if member.setter.is_some() {
-                    let message = "setter is defined multiple times";
-                    self.errors.push(Error::new(meta.name.span(), message));
+                    self.errors.push(Error::new(span, "setter is defined multiple times"));
                     return true;
                 }
-                member.setter = Some(property);
+                &mut member.setter
+            };
+
+            match Function::parse(&self.self_ty, sig) {
+                Ok(function) => { *field = Some(function); }
+                Err(err) => { self.errors.push(err); }
             }
             true
         } else {
             false
         }
     }
-
-    fn extend_receivers(&mut self, receivers: &[Receiver]) {
-        for receiver in receivers {
-            let id = self.bindings.receivers.len();
-            let span = proc_macro2::Span::call_site();
-            self.bindings.receivers.entry(receiver.clone()).or_insert_with(move || match receiver {
-                Receiver::Reference(_) => Ident::new(&format!("receiver_{}", id), span),
-                Receiver::Entity => Ident::new("entity", span),
-            });
-        }
-    }
 }
 
-struct PropertyMeta {
-    name: Ident,
-}
+struct PropertyMeta { name: Ident }
 
 impl Parse for PropertyMeta {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
@@ -201,128 +132,54 @@ impl Function {
         let name = sig.ident.clone();
         let mut inputs = sig.inputs.iter().peekable();
 
-        let receivers = parse_receivers(self_ty, &mut inputs);
-        let mut parameters = Vec::new();
-        let mut rest = None;
+        let receivers = parse_receivers(self_ty, &mut inputs)?;
 
-        let value = parse_quote!(vm::ValueRef);
-        let values = parse_quote!(&[vm::Value]);
-        while let Some(&param) = inputs.peek() {
-            match *param {
-                FnArg::Typed(PatType { ref ty, .. }) if *ty == value =>
-                    parameters.push(Parameter::Direct),
-
-                FnArg::Typed(PatType { ref ty, .. }) if *ty == values => {
-                    rest = Some(());
-                    inputs.next();
-                    break;
-                }
-
-                _ => parameters.push(Parameter::Convert),
-            }
-            inputs.next();
-        }
-
-        if let Some(param) = inputs.next() {
-            return Err(Error::new(param.span(), "unexpected parameter"));
-        }
-
-        let result: Ident = parse_quote!(Result);
-        let output = match sig.output {
-            ReturnType::Default => Return::Value,
-            ReturnType::Type(_, ref ty) => match **ty {
-                Type::Path(ref ty) if ty.path.segments[0].ident == result => Return::Result,
-                _ => Return::Value,
-            },
-        };
-
-        Ok(Function { name, receivers, parameters, rest, output })
-    }
-}
-
-impl Property {
-    fn parse(self_ty: &Type, sig: &Signature) -> Result<Self> {
-        let name = sig.ident.clone();
-        let mut inputs = sig.inputs.iter().peekable();
-
-        let receivers = parse_receivers(self_ty, &mut inputs);
-        let mut index = None;
-        let mut value = None;
-
-        let usize_ty = parse_quote!(usize);
-        while let Some(&param) = inputs.peek() {
-            match *param {
-                FnArg::Typed(PatType { ref ty, .. }) if *ty == usize_ty =>
-                    index = Some(()),
-
-                _ => break,
-            }
-            inputs.next();
-        }
-
-        let value_ty = parse_quote!(vm::ValueRef);
-        while let Some(&param) = inputs.peek() {
-            match *param {
-                FnArg::Typed(PatType { ref ty, .. }) if *ty == value_ty =>
-                    value = Some(Parameter::Direct),
-
-                FnArg::Typed(PatType { .. }) =>
-                    value = Some(Parameter::Convert),
-
-                _ => break,
-            }
-            inputs.next();
-            break;
-        }
-
-        if let Some(param) = inputs.next() {
-            return Err(Error::new(param.span(), "unexpected parameter"));
-        }
-
-        Ok(Property { name, receivers, index, value })
+        Ok(Function { name, receivers })
     }
 }
 
 fn parse_receivers(
     self_ty: &Type, inputs: &mut iter::Peekable<punctuated::Iter<'_, FnArg>>
-) -> Vec<Receiver> {
+) -> Result<Vec<Type>> {
     let mut receivers = Vec::default();
 
-    let entity = parse_quote!(vm::Entity);
+    let thread = parse_quote!(&mut vm::Thread);
     while let Some(&param) = inputs.peek() {
         match *param {
+            FnArg::Typed(PatType { ref ty, .. }) if **ty == thread => break,
+
             FnArg::Receiver(_) => {
-                receivers.push(Receiver::Reference(self_ty.clone()));
+                receivers.push(self_ty.clone());
             }
 
-            FnArg::Typed(PatType { ref ty, .. }) if **ty == entity => {
-                receivers.push(Receiver::Entity);
-            }
-
-            FnArg::Typed(PatType { ref ty, .. }) => {
-                let target = match **ty {
-                    Type::Reference(TypeReference { ref elem, .. }) => elem,
-                    _ => break,
-                };
-                match **target {
-                    Type::Path(_) => {}
-                    _ => break
-                };
-
-                receivers.push(Receiver::Reference((**target).clone()));
+            _ => match param_reference_type(param) {
+                Some(target) => { receivers.push(target.clone()); }
+                None => { break; }
             }
         }
         inputs.next();
     }
 
-    receivers
+    Ok(receivers)
+}
+
+fn param_reference_type(param: &FnArg) -> Option<&Type> {
+    match *param {
+        FnArg::Typed(PatType { ref ty, .. }) => match **ty {
+            Type::Reference(TypeReference { ref elem, .. }) => match **elem {
+                Type::Path(_) => Some(&**elem),
+                _ => None,
+            }
+            _ => None,
+        }
+        _ => None,
+    }
 }
 
 #[proc_macro_attribute]
-pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
+pub fn bind(_attr: TokenStream, input: TokenStream) -> TokenStream {
     // Parse the impl and collect method attributes.
 
-    let trait_name: Ident = syn::parse_macro_input!(attr);
     let mut input: ItemImpl = syn::parse_macro_input!(input);
     let bindings = match ItemBindings::parse(&mut input) {
         Ok(bindings) => bindings,
@@ -337,135 +194,78 @@ pub fn bind(attr: TokenStream, input: TokenStream) -> TokenStream {
     // Generate the API glue trait.
 
     let self_ty = &input.self_ty;
-    let receiver_tys = bindings.receivers.iter().filter_map(|(receiver, _)| match *receiver {
-        Receiver::Reference(ref ty) => Some(quote! { #ty }),
-        _ => None,
-    });
-    let receiver_idents = {
-        let receivers = bindings.receivers.iter().filter_map(|(receiver, ident)| match *receiver {
-            Receiver::Reference(_) => Some(ident),
-            _ => None,
-        });
-        quote! { #(#receivers,)* }
-    };
 
-    let api = bindings.functions.iter().map(|function| &function.name);
-    let api_binding = api.clone();
-    let api_arity = bindings.functions.iter().map(|function| function.parameters.len());
-    let api_variadic = bindings.functions.iter().map(|function| function.rest.is_some());
-    let api_receivers = bindings.functions.iter().map(|function| {
-        let receivers = function.receivers.iter().map(|receiver| &bindings.receivers[receiver]);
-        quote! { #(#receivers,)* }
+    let api_binding = bindings.apis.iter().map(|function| &function.name);
+    let api_context = bindings.apis.iter().map(|function| {
+        let receivers = function.receivers.iter();
+        quote! { #(&'r mut #receivers,)* }
     });
-    let api_arguments = bindings.functions.iter().map(|function| {
-        let api_arguments = function.parameters.iter().enumerate().map(|(i, &param)| match param {
-            Parameter::Direct => quote! { arguments[#i].borrow() },
-            Parameter::Convert => quote! { arguments[#i].borrow().try_into().unwrap_or_default() },
-        });
-        quote! { #(#api_arguments,)* }
+
+    let member = bindings.fields.iter().map(|(name, _)| name);
+
+    let getter = bindings.fields.iter().map(|(_, member)| member.getter.as_ref());
+    let get_binding = getter.clone().map(|getter| getter.map_or_else(
+        || quote! { None },
+        |&Function { ref name, .. }| quote! {
+            Some(|cx: &mut W, entity, i| {
+                let bind = vm::Bind(#self_ty::#name, std::marker::PhantomData);
+                vm::GetBind::call(bind, cx, entity, i)
+            })
+        },
+    ));
+    let get_context = getter.clone().flatten().map(|getter| {
+        let receivers = getter.receivers.iter();
+        quote! { #(&'r mut #receivers,)* }
     });
-    let api_rest = bindings.functions.iter().map(|function| {
-        let arity = function.parameters.len();
-        let rest = function.rest.iter().map(|()| quote! { &arguments[#arity..] });
-        quote! { #(#rest,)* }
-    });
-    let api_try = bindings.functions.iter().map(|function| {
-        match function.output {
-            Return::Value => None,
-            Return::Result => Some(quote! { ? }),
+
+    let setter = bindings.fields.iter().map(|(_, member)| member.setter.as_ref());
+    let set_binding = setter.clone().map(|setter| setter.map_or_else(
+        || quote! { None },
+        |&Function { ref name, .. }| quote! {
+            Some(|cx: &mut W, entity, i, value| {
+                let bind = vm::Bind(#self_ty::#name, std::marker::PhantomData);
+                vm::SetBind::call(bind, cx, entity, i, value);
+            })
         }
-    });
-
-    let member = bindings.members.iter().map(|(name, _)| name);
-
-    let getter = bindings.members.iter().map(|(_, member)| member.getter.as_ref());
-    let get_option = getter.clone().map(|getter| getter.map_or_else(
-        || quote! { None },
-        |&Property { ref name, .. }| quote! { Some(Self::#name) },
     ));
-    let get = getter.clone().flatten().map(|getter| &getter.name);
-    let get_receivers = getter.clone().flatten().map(|getter| {
-        let receivers = getter.receivers.iter().map(|receiver| &bindings.receivers[receiver]);
-        quote! { #(#receivers,)* }
-    });
-    let get_index = getter.clone().flatten().map(|getter| {
-        let index = getter.index.iter().map(|()| quote! { index });
-        quote! { #(#index,)* }
-    });
-
-    let setter = bindings.members.iter().map(|(_, member)| member.setter.as_ref());
-    let set_option = setter.clone().map(|setter| setter.map_or_else(
-        || quote! { None },
-        |&Property { ref name, .. }| quote! { Some(Self::#name) },
-    ));
-    let set = setter.clone().flatten().map(|setter| &setter.name);
-    let set_receivers = setter.clone().flatten().map(|setter| {
-        let receivers = setter.receivers.iter().map(|receiver| &bindings.receivers[receiver]);
-        quote! { #(#receivers,)* }
-    });
-    let set_index = setter.clone().flatten().map(|setter| {
-        let index = setter.index.iter().map(|()| quote! { index });
-        quote! { #(#index,)* }
-    });
-    let set_value = setter.clone().flatten().map(|setter| {
-        setter.value.map(|param| match param {
-            Parameter::Direct => quote! { value },
-            Parameter::Convert => quote! { value.try_into().unwrap_or_default() },
-        })
+    let set_context = setter.clone().flatten().map(|setter| {
+        let receivers = setter.receivers.iter();
+        quote! { #(&'r mut #receivers,)* }
     });
 
     let output = quote! {
-        pub trait #trait_name<'a, A: 'a> {
-            fn fields<'r>(&'r mut self, assets: &'r mut A) -> (#(&'r mut #receiver_tys,)*);
-
-            fn register(
-                items: &mut std::collections::HashMap<gml::symbol::Symbol, gml::Item<Self, A>>
-            ) where
-                Self: Sized
-            {
-                #(items.insert(
-                    gml::symbol::Symbol::intern(stringify!(#api_binding).as_bytes()),
-                    gml::Item::Native(Self::#api_binding, #api_arity, #api_variadic),
-                );)*
-
-                #(items.insert(
-                    gml::symbol::Symbol::intern(stringify!(#member).as_bytes()),
-                    gml::Item::Member(#get_option, #set_option),
-                );)*
-            }
-
-            #(unsafe fn #api(
-                &mut self, assets: &mut A,
-                thread: &mut vm::Thread, arguments: std::ops::Range<usize>,
-            ) -> Result<vm::Value, Box<vm::Error>> {
-                #![allow(unused_imports, unused)]
-                use std::convert::TryInto;
-
-                let (#receiver_idents) = #trait_name::fields(self, assets);
-                let entity = thread.self_entity();
-                let arguments = thread.arguments(arguments);
-                let ret = #self_ty::#api(#api_receivers #api_arguments #api_rest) #api_try;
-                Ok(ret.into())
-            })*
-
-            #(fn #get(&mut self, assets: &mut A, entity: vm::Entity, index: usize) -> vm::Value {
-                #![allow(unused)]
-
-                let (#receiver_idents) = #trait_name::fields(self, assets);
-                let value = #self_ty::#get(#get_receivers #get_index);
-                value.into()
-            })*
-
-            #(fn #set(&mut self, assets: &mut A, entity: vm::Entity, index: usize, value: vm::ValueRef) {
-                #![allow(unused_imports, unused)]
-                use std::convert::TryInto;
-
-                let (#receiver_idents) = #trait_name::fields(self, assets);
-                #self_ty::#set(#set_receivers #set_index #set_value);
-            })*
-        }
-
         #input
+
+        impl #self_ty {
+            pub fn register<W>(
+                items: &mut std::collections::HashMap<gml::symbol::Symbol, gml::Item<W>>
+            ) where
+                #(W: for<'r> gml::vm::Project<'r, (#api_context)>,)*
+                #(W: for<'r> gml::vm::Project<'r, (#get_context)>,)*
+                #(W: for<'r> gml::vm::Project<'r, (#set_context)>,)*
+            {
+                use gml::{symbol::Symbol, vm};
+
+                #({
+                    let symbol = Symbol::intern(stringify!(#api_binding).as_bytes());
+                    let api = |cx: &mut W, thread: &mut vm::Thread, range| unsafe {
+                        let bind = vm::Bind(#self_ty::#api_binding, std::marker::PhantomData);
+                        vm::FnBind::call(bind, cx, thread, range)
+                    };
+                    let bind = vm::Bind(#self_ty::#api_binding, std::marker::PhantomData);
+                    let arity = vm::bind::arity::<_, W>(&bind);
+                    let variadic = vm::bind::variadic::<_, W>(&bind);
+                    let item = gml::Item::Native(api, arity, variadic);
+                    items.insert(symbol, item);
+                })*
+
+                #({
+                    let symbol = Symbol::intern(stringify!(#member).as_bytes());
+                    let item = gml::Item::Member(#get_binding, #set_binding);
+                    items.insert(symbol, item);
+                })*
+            }
+        }
     };
     output.into()
 }

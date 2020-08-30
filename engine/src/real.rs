@@ -16,7 +16,7 @@ impl Default for State {
     }
 }
 
-#[gml::bind(Api)]
+#[gml::bind]
 impl State {
     /// Emulate Delphi's LCG to advance the current random state.
     fn random_next(&mut self) -> u32 {
@@ -43,121 +43,121 @@ impl State {
         seed as f64 / 0x1_0000_0000u64 as f64
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn random(&mut self, x: f64) -> f64 {
         self.random_f64() * x
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn random_range(&mut self, x1: f64, x2: f64) -> f64 {
         x1 + self.random(x2 - x1)
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn irandom(&mut self, x: u32) -> u32 {
         self.random_u32(x + 1)
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn irandom_range(&mut self, x1: u32, x2: u32) -> u32 {
         x1 + self.irandom(x2 - x1 + 1)
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn random_set_seed(&mut self, seed: i32) {
         self.random_seed = Wrapping(seed);
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn random_get_seed(&mut self) -> i32 {
         let Wrapping(seed) = self.random_seed;
         seed
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn randomize(&mut self) {
         // TODO: set the seed to the low bits of QueryPerformanceCounter
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn choose(&mut self, vals: &[vm::Value]) -> vm::Value {
         vals[self.irandom(vals.len() as u32 - 1) as usize].clone()
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn abs(x: f64) -> f64 { f64::abs(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn sign(x: f64) -> f64 { f64::signum(x) }
 
     /// Round x to the nearest integer.
     ///
     /// The rounding actually occurs in i32::try_from(vm::Value), to ensure consistency with other
     /// instances of rounding in the language.
-    #[gml::function]
+    #[gml::api]
     pub fn round(x: i32) -> i32 { x }
 
-    #[gml::function]
+    #[gml::api]
     pub fn floor(x: f64) -> f64 { f64::floor(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn ceil(x: f64) -> f64 { f64::ceil(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn frac(x: f64) -> f64 { f64::fract(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn sqrt(x: f64) -> f64 { f64::sqrt(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn sqr(x: f64) -> f64 { x * x }
 
-    #[gml::function]
+    #[gml::api]
     pub fn power(x: f64, n: f64) -> f64 { f64::powf(x, n) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn exp(x: f64) -> f64 { f64::exp(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn ln(x: f64) -> f64 { f64::ln(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn log2(x: f64) -> f64 { f64::log2(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn log10(x: f64) -> f64 { f64::log10(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn logn(n: f64, x: f64) -> f64 { f64::log(x, n) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn sin(x: f64) -> f64 { f64::sin(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn cos(x: f64) -> f64 { f64::cos(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn tan(x: f64) -> f64 { f64::tan(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn arcsin(x: f64) -> f64 { f64::asin(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn arccos(x: f64) -> f64 { f64::acos(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn arctan(x: f64) -> f64 { f64::atan(x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn arctan2(y: f64, x: f64) -> f64 { f64::atan2(y, x) }
 
-    #[gml::function]
+    #[gml::api]
     pub fn degtorad(x: f64) -> f64 { x / 180.0 * f64::consts::PI }
 
-    #[gml::function]
+    #[gml::api]
     pub fn radtodeg(x: f64) -> f64 { x * 180.0 / f64::consts::PI }
 
-    #[gml::function]
+    #[gml::api]
     pub fn min(vals: &[vm::Value]) -> vm::Value {
         let (mut min, rest) = match vals.split_first() {
             None => return vm::Value::default(),
@@ -179,7 +179,7 @@ impl State {
         min.clone()
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn max(vals: &[vm::Value]) -> vm::Value {
         let (mut max, rest) = match vals.split_first() {
             None => return vm::Value::default(),
@@ -201,7 +201,7 @@ impl State {
         max.clone()
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn mean(vals: &[vm::Value]) -> f64 {
         let sum: f64 = vals.iter()
             .map(|val| f64::try_from(val.borrow()).unwrap_or_default())
@@ -213,7 +213,7 @@ impl State {
         }
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn median(vals: &[vm::Value]) -> f64 {
         // Because vm::Value is NaN-boxed, sorting shouldn't encounter NaNs.
         // TODO: this may no longer be true in GMS
@@ -228,36 +228,36 @@ impl State {
         }
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn point_distance(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
         let x = x2 - x1;
         let y = y2 - y1;
         f64::sqrt(x * x + y * y)
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn point_direction(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
         let x = x2 - x1;
         let y = y2 - y1;
         Self::radtodeg(Self::arctan2(y, x))
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn lengthdir_x(len: f64, dir: f64) -> f64 {
         len * Self::cos(dir)
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn lengthdir_y(len: f64, dir: f64) -> f64 {
         len * -Self::sin(dir)
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn is_real(x: vm::ValueRef) -> bool {
         match x.decode() { vm::Data::Real(_) => true, _ => false }
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn is_string(x: vm::ValueRef) -> bool {
         match x.decode() { vm::Data::String(_) => true, _ => false }
     }

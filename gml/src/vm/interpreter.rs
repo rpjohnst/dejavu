@@ -42,6 +42,8 @@ impl Default for Register {
     fn default() -> Self { Register { uninit: () } }
 }
 
+pub type Result<T> = std::result::Result<T, Box<Error>>;
+
 pub struct Error {
     pub frames: Vec<ErrorFrame>,
     pub kind: ErrorKind,
@@ -150,8 +152,8 @@ impl Default for Thread {
             owned: Vec::default(),
             stack: Vec::default(),
 
-            self_entity: Entity(0),
-            other_entity: Entity(0),
+            self_entity: Entity::NULL,
+            other_entity: Entity::NULL,
         }
     }
 }
@@ -177,7 +179,7 @@ impl Drop for SelfGuard<'_> {
 impl Thread {
     pub fn self_entity(&self) -> Entity { self.self_entity }
 
-    pub fn with_self(&mut self, entity: Entity) -> SelfGuard<'_> {
+    pub fn with(&mut self, entity: Entity) -> SelfGuard<'_> {
         let other = mem::replace(&mut self.self_entity, entity);
         SelfGuard { thread: self, other }
     }
@@ -191,17 +193,12 @@ impl Thread {
         mem::transmute(&self.stack[arguments])
     }
 
-    pub fn execute<'a, W, A: 'a>(
-        &mut self, world: &mut W, assets: &mut A,
-        function: Function, arguments: Vec<Value>
-    ) -> Result<Value, Box<Error>> where W: vm::Api<'a, A> {
-        let engine = unsafe { &mut (
-            &mut *(world as *mut _ as *mut engine::World),
-            &mut *(assets as *mut _ as *mut engine::Assets),
-        ) };
-        let (world, assets) = vm::Api::fields(world, assets);
-        let assets = assets as *mut _ as *mut _;
-        execute_internal(self, engine, world, assets, function, arguments)
+    pub fn execute<'r, W: vm::Project<'r, (&'r mut World, &'r mut Assets<W>)>>(
+        &mut self, cx: &'r mut W, f: Function, args: Vec<Value>
+    ) -> Result<Value> {
+        let cx: &mut dyn vm::Project<(&mut World, &mut Assets<W>)> = cx;
+        let cx = unsafe { &mut *(cx as *mut _ as *mut _) };
+        execute_internal(self, cx, f, args)
     }
 }
 
@@ -212,25 +209,14 @@ fn get_string(value: ValueRef<'_>) -> Symbol {
     }
 }
 
-type Engine<'e> = (&'e mut engine::World, &'e mut engine::Assets);
-
-// Opaque types to erase engine-side wrappers for `vm::World` and `vm::Assets`.
-mod engine {
-    extern {
-        pub(super) type World;
-        pub(super) type Assets;
-    }
-}
+// Opaque type to erase the engine-side container for `vm::World` and `vm::Assets`.
+extern { type W; }
 
 fn execute_internal(
-    thread: &mut Thread,
-    engine: &mut Engine<'_>, world: *mut World, assets: *mut Assets<engine::World, engine::Assets>,
+    thread: &mut Thread, cx: &mut dyn for<'r> vm::Project<'r, (&'r mut World, &'r mut Assets<W>)>,
     function: Function, arguments: Vec<Value>
-) -> Result<Value, Box<Error>> {
-    // Enforce that `vm::{World, Assets}` are treated as fields of `engine::{World, Assets}`.
-    fn constrain<T, F: for<'e> Fn(&mut Engine<'e>) -> &'e mut T>(f: F) -> F { f }
-    let world = constrain(move |_| unsafe { &mut *world });
-    let assets = constrain(move |_| unsafe { &mut *assets });
+) -> Result<Value> {
+    let (mut world, mut assets) = cx.fields();
 
     // Erase the lifetime of a `ValueRef` for use in a `Register`.
     unsafe fn erase_ref(r: ValueRef<'_>) -> ValueRef<'static> { mem::transmute(r) }
@@ -243,7 +229,7 @@ fn execute_internal(
 
     // Thread state not stored in `thread`:
     let mut function = function;
-    let mut code = &assets(engine).code[&function];
+    let mut code = &assets.code[&function];
     let mut instruction = 0;
     let mut reg_base = thread.stack.len();
 
@@ -485,15 +471,15 @@ fn execute_internal(
 
             (code::Op::DeclareGlobal, name, _, _) => {
                 let name = get_string(code.constants[name].borrow());
-                world(engine).globals.insert(name);
+                world.globals.insert(name);
 
-                let instance = &mut world(engine).members[world::GLOBAL];
+                let instance = &mut world.members[world::GLOBAL];
                 instance.entry(name).or_insert(Value::from(0.0));
             }
 
             (code::Op::Lookup, t, name, _) => {
                 let name = get_string(code.constants[name].borrow());
-                registers[t].entity = if world(engine).globals.contains(&name) {
+                registers[t].entity = if world.globals.contains(&name) {
                     world::GLOBAL
                 } else {
                     thread.self_entity
@@ -532,18 +518,18 @@ fn execute_internal(
                     SELF => slice::from_ref(&thread.self_entity),
                     OTHER => slice::from_ref(&thread.other_entity),
                     ALL => {
-                        values = world(engine).instances.values().clone();
+                        values = world.instances.values().clone();
                         &values[..]
                     }
                     NOONE => &[],
                     GLOBAL => slice::from_ref(&world::GLOBAL),
                     LOCAL => &[], // TODO: error
                     object if (0..=100_000).contains(&object) => {
-                        values = world(engine).objects[&object].clone();
+                        values = world.objects[&object].clone();
                         &values[..]
                     }
                     instance if (100_001..).contains(&instance) =>
-                        slice::from_ref(&world(engine).instances[instance]),
+                        slice::from_ref(&world.instances[instance]),
                     _ => &[], // TODO: error
                 };
 
@@ -587,7 +573,7 @@ fn execute_internal(
 
             (code::Op::ExistsEntity, t, entity, _) => {
                 let entity = unsafe { registers[entity].entity };
-                let exists = world(engine).members.contains_key(entity);
+                let exists = world.members.contains_key(entity);
                 registers[t].value = ValueRef::from(exists);
             }
 
@@ -669,7 +655,7 @@ fn execute_internal(
             (code::Op::LoadField, t, entity, field) => {
                 let entity = unsafe { registers[entity].entity };
                 let field = get_string(code.constants[field].borrow());
-                let instance = &world(engine).members[entity];
+                let instance = &world.members[entity];
                 registers[t].value = match instance.get(&field) {
                     Some(value) => unsafe { erase_ref(value.borrow()) },
                     None => break Error::name(field),
@@ -679,7 +665,7 @@ fn execute_internal(
             (code::Op::LoadFieldDefault, t, entity, field) => {
                 let entity = unsafe { registers[entity].entity };
                 let field = get_string(code.constants[field].borrow());
-                let instance = &world(engine).members[entity];
+                let instance = &world.members[entity];
                 registers[t].value = match instance.get(&field) {
                     Some(value) => unsafe { erase_ref(value.borrow()) },
                     None => ValueRef::default(),
@@ -719,7 +705,7 @@ fn execute_internal(
                 let s = unsafe { registers[s].value };
                 let entity = unsafe { registers[entity].entity };
                 let field = get_string(code.constants[field].borrow());
-                let instance = &mut world(engine).members[entity];
+                let instance = &mut world.members[entity];
                 instance.insert(field, s.clone());
             }
 
@@ -757,7 +743,7 @@ fn execute_internal(
 
                 let id = callee as i32;
                 function = Function::Script { id };
-                code = &assets(engine).code[&function];
+                code = &assets.code[&function];
                 instruction = 0;
                 reg_base = reg_base + base;
 
@@ -787,7 +773,7 @@ fn execute_internal(
                 };
 
                 function = cont;
-                code = &assets(engine).code[&function];
+                code = &assets.code[&function];
                 instruction = cont_instruction;
                 reg_base = cont_base;
 
@@ -800,13 +786,13 @@ fn execute_internal(
 
             (code::Op::CallApi, callee, base, len) => {
                 let symbol = get_string(code.constants[callee].borrow());
-                let api = assets(engine).api[&symbol];
+                let api = assets.api[&symbol];
                 let reg_base = reg_base + base;
 
                 let array = unsafe {
-                    let (world, assets) = engine;
+                    let cx = &mut *(cx as *mut _ as *mut _);
                     let arguments = reg_base..reg_base + len;
-                    match api(world, assets, thread, arguments) {
+                    match api(cx, thread, arguments) {
                         Ok(value) => value,
                         Err(error) => break error,
                     }
@@ -814,9 +800,12 @@ fn execute_internal(
                 let value = unsafe { erase_ref(array.borrow()) };
                 thread.owned.push(array);
 
-                // The call above may have mutated our `vm::Assets`.
-                // Reload the function body just in case. (This also keeps borrowck happy.)
-                code = &assets(engine).code[&function];
+                // The call above may have mutated anything reachable through `cx`.
+                // Reload any invalidated borrows.
+                let (w, a) = cx.fields();
+                world = w;
+                assets = a;
+                code = &assets.code[&function];
 
                 let registers = &mut thread.stack[reg_base..];
                 registers[0].value = value;
@@ -824,51 +813,57 @@ fn execute_internal(
 
             (code::Op::CallGet, get, base, _) => {
                 let symbol = get_string(code.constants[get].borrow());
-                let get = match assets(engine).get.get(&symbol) {
-                    Some(get) => get,
+                let get = match assets.get.get(&symbol) {
+                    Some(&get) => get,
                     None => break Error::name(symbol),
                 };
                 let reg_base = reg_base + base;
 
                 let registers = &mut thread.stack[reg_base..];
                 let array = {
-                    let (world, assets) = engine;
+                    let cx = unsafe { &mut *(cx as *mut _ as *mut _) };
                     let entity = unsafe { registers[0].entity };
                     let i = unsafe { registers[1].value };
                     let i = i32::try_from(i).unwrap_or(0) as usize;
-                    get(world, assets, entity, i)
+                    get(cx, entity, i)
                 };
                 let value = unsafe { erase_ref(array.borrow()) };
                 thread.owned.push(array);
 
-                // The call above may have mutated our `vm::Assets`.
-                // Reload the function body just in case. (This also keeps borrowck happy.)
-                code = &assets(engine).code[&function];
+                // The call above may have mutated anything reachable through `cx`.
+                // Reload any invalidated borrows.
+                let (w, a) = cx.fields();
+                world = w;
+                assets = a;
+                code = &assets.code[&function];
 
                 registers[0].value = value;
             }
 
             (code::Op::CallSet, set, base, _) => {
                 let symbol = get_string(code.constants[set].borrow());
-                let set = match assets(engine).set.get(&symbol) {
-                    Some(set) => set,
+                let set = match assets.set.get(&symbol) {
+                    Some(&set) => set,
                     None => break Error::write(symbol),
                 };
                 let reg_base = reg_base + base;
 
                 let registers = &thread.stack[reg_base..];
                 {
-                    let (world, assets) = engine;
+                    let cx = unsafe { &mut *(cx as *mut _ as *mut _) };
                     let value = unsafe { registers[0].value };
                     let entity = unsafe { registers[1].entity };
                     let i = unsafe { registers[2].value };
                     let i = i32::try_from(i).unwrap_or(0) as usize;
-                    set(world, assets, entity, i, value);
+                    set(cx, entity, i, value);
                 }
 
-                // The call above may have mutated our `vm::Assets`.
-                // Reload the function body just in case. (This also keeps borrowck happy.)
-                code = &assets(engine).code[&function];
+                // The call above may have mutated anything reachable through `cx`.
+                // Reload any invalidated borrows.
+                let (w, a) = cx.fields();
+                world = w;
+                assets = a;
+                code = &assets.code[&function];
             }
 
             (code::Op::Jump, t_low, t_high, _) => {

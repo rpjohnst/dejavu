@@ -23,7 +23,7 @@ impl Default for State {
     }
 }
 
-#[gml::bind(Api)]
+#[gml::bind]
 impl State {
     #[gml::get(object_index)]
     pub fn get_object_index(&self, entity: vm::Entity) -> i32 {
@@ -56,7 +56,7 @@ impl State {
         self.instances[entity].id
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn instance_find(&mut self, world: &mut vm::World, obj: i32, n: i32) -> i32 {
         let n = n as usize;
         let entity = if obj == vm::ALL {
@@ -76,7 +76,7 @@ impl State {
         self.instances[entity].id
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn instance_exists(world: &mut vm::World, obj: i32) -> bool {
         if obj == vm::ALL {
             !world.instances.is_empty()
@@ -87,8 +87,8 @@ impl State {
         }
     }
 
-    #[gml::function]
-    pub fn instance_number(world: &vm::World, obj: i32) -> i32 {
+    #[gml::api]
+    pub fn instance_number(world: &mut vm::World, obj: i32) -> i32 {
         if obj == vm::ALL {
             world.instances.len() as i32
         } else {
@@ -96,7 +96,7 @@ impl State {
         }
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn instance_create(
         &mut self, world: &mut vm::World, motion: &mut motion::State,
         x: f32, y: f32, obj: i32
@@ -118,7 +118,7 @@ impl State {
         Ok(id)
     }
 
-    #[gml::function]
+    #[gml::api]
     pub fn instance_destroy(&mut self, world: &mut vm::World, entity: vm::Entity) {
         let &Instance { object_index, id, .. } = match self.instances.get(entity) {
             Some(instance) => instance,

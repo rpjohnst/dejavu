@@ -15,47 +15,80 @@ pub struct World {
     pub data: data::State,
 }
 
-impl vm::Api<'_, Assets> for World {
-    fn fields<'r>(&'r mut self, assets: &'r mut Assets) ->
-        (&'r mut vm::World, &'r mut vm::Assets<World, Assets>)
-    { (&mut self.world, &mut assets.code) }
+impl<'r> vm::Project<'r, (&'r mut vm::World,)> for Context {
+    fn fields(&'r mut self) -> (&'r mut vm::World,) {
+        let Context { world, .. } = self;
+        (&mut world.world,)
+    }
+}
+impl<'r> vm::Project<'r, (&'r mut vm::World, &'r mut vm::Assets<Self>)> for Context {
+    fn fields(&'r mut self) -> (&'r mut vm::World, &'r mut vm::Assets<Self>) {
+        let Context { world, assets } = self;
+        (&mut world.world, &mut assets.code)
+    }
 }
 
-impl real::Api<'_, Assets> for World {
-    fn fields(&mut self, _: &mut Assets) -> (&mut real::State,) { (&mut self.real,) }
+impl<'r> vm::Project<'r, (&'r mut real::State,)> for Context {
+    fn fields(&'r mut self) -> (&'r mut real::State,) {
+        let Context { world, .. } = self;
+        (&mut world.real,)
+    }
 }
 
-impl string::Api<'_, Assets> for World {
-    fn fields(&mut self, _: &mut Assets) -> () {}
+impl<'r> vm::Project<'r, (&'r mut string::State,)> for Context {
+    fn fields(&'r mut self) -> (&'r mut string::State,) {
+        let Context { world, .. } = self;
+        (&mut world.string,)
+    }
 }
 
-impl motion::Api<'_, Assets> for World {
-    fn fields(&mut self, _: &mut Assets) -> (&mut motion::State,) { (&mut self.motion,) }
+impl<'r> vm::Project<'r, (&'r mut motion::State,)> for Context {
+    fn fields(&'r mut self) -> (&'r mut motion::State,) {
+        let Context { world, .. } = self;
+        (&mut world.motion,)
+    }
 }
 
-impl instance::Api<'_, Assets> for World {
-    fn fields<'r>(&'r mut self, _: &'r mut Assets) -> (
-        &'r mut instance::State, &'r mut vm::World, &'r mut motion::State,
-    ) { (
-        &mut self.instance, &mut self.world, &mut self.motion,
-    ) }
+impl<'r> vm::Project<'r, (&'r mut instance::State,)> for Context {
+    fn fields(&'r mut self) -> (&'r mut instance::State,) {
+        let Context { world, .. } = self;
+        (&mut world.instance,)
+    }
+}
+impl<'r> vm::Project<'r, (&'r mut instance::State, &'r mut vm::World)> for Context {
+    fn fields(&'r mut self) -> (&'r mut instance::State, &'r mut vm::World) {
+        let Context { world, .. } = self;
+        (&mut world.instance, &mut world.world)
+    }
+}
+impl<'r> vm::Project<'r, (&'r mut instance::State, &'r mut vm::World, &'r mut motion::State)> for Context {
+    fn fields(&'r mut self) -> (&'r mut instance::State, &'r mut vm::World, &'r mut motion::State) {
+        let Context { world, .. } = self;
+        (&mut world.instance, &mut world.world, &mut world.motion)
+    }
 }
 
-impl show::Api<'_, Assets> for World {
-    fn fields(&mut self, _: &mut Assets) -> (&mut show::State,) { (&mut self.show,) }
+impl<'r> vm::Project<'r, (&'r mut show::State,)> for Context {
+    fn fields(&'r mut self) -> (&'r mut show::State,) {
+        let Context { world, .. } = self;
+        (&mut world.show,)
+    }
 }
 
-impl data::Api<'_, Assets> for World {
-    fn fields(&mut self, _: &mut Assets) -> (&mut data::State,) { (&mut self.data,) }
+impl<'r> vm::Project<'r, (&'r mut data::State,)> for Context {
+    fn fields(&'r mut self) -> (&'r mut data::State,) {
+        let Context { world, .. } = self;
+        (&mut world.data,)
+    }
 }
 
 impl World {
-    pub fn register(items: &mut HashMap<Symbol, gml::Item<Self, Assets>>) {
-        real::Api::register(items);
-        string::Api::register(items);
-        motion::Api::register(items);
-        instance::Api::register(items);
-        show::Api::register(items);
-        data::Api::register(items);
+    pub fn register(items: &mut HashMap<Symbol, gml::Item<Context>>) {
+        real::State::register(items);
+        string::State::register(items);
+        motion::State::register(items);
+        instance::State::register(items);
+        show::State::register(items);
+        data::State::register(items);
     }
 }

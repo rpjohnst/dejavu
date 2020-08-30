@@ -31,15 +31,15 @@ pub enum Function {
 }
 
 /// An entity defined by the engine.
-pub enum Item<W, A> {
-    Native(vm::ApiFunction<W, A>, usize, bool),
-    Member(Option<vm::GetFunction<W, A>>, Option<vm::SetFunction<W, A>>),
+pub enum Item<W> {
+    Native(vm::ApiFunction<W>, usize, bool),
+    Member(Option<vm::GetFunction<W>>, Option<vm::SetFunction<W>>),
 }
 
 /// Build the GML and D&D in a Game Maker project.
-pub fn build<W, A, F: FnMut() -> E, E: io::Write + 'static>(
-    game: &project::Game, engine: &HashMap<Symbol, Item<W, A>>, mut errors: F
-) -> Result<(vm::Assets<W, A>, vm::Debug), u32> {
+pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
+    game: &project::Game, engine: &HashMap<Symbol, Item<W>>, mut errors: F
+) -> Result<(vm::Assets<W>, vm::Debug), u32> {
     let mut assets = vm::Assets::default();
     let mut prototypes = HashMap::with_capacity(game.scripts.len() + engine.len());
     let mut debug = vm::Debug::default();

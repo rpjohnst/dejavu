@@ -31,7 +31,7 @@ impl Instance {
     }
 }
 
-#[gml::bind(Api)]
+#[gml::bind]
 impl State {
     #[gml::get(x)]
     pub fn get_x(&self, entity: vm::Entity) -> f32 { self.instances[entity].x }
@@ -43,7 +43,7 @@ impl State {
     #[gml::set(y)]
     pub fn set_y(&mut self, entity: vm::Entity, value: f32) { self.instances[entity].y = value }
 
-    #[gml::function]
+    #[gml::api]
     pub fn action_move_to(&mut self, entity: vm::Entity, relative: bool, mut x: f32, mut y: f32) {
         if relative {
             x += self.instances[entity].x;

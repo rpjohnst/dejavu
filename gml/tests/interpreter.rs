@@ -17,18 +17,20 @@ fn arguments() -> Result<(), Box<vm::Error>> {
     }" });
 
     let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut assets = Assets { code };
-    let mut world = World::default();
+    let assets = Assets { code };
+    let world = World::default();
+
     let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
 
     let arguments = vec![vm::Value::from(3), vm::Value::from(5)];
-    assert_eq!(thread.execute(&mut world, &mut assets, select, arguments)?, vm::Value::from(8));
+    assert_eq!(thread.execute(&mut cx, select, arguments)?, vm::Value::from(8));
 
     let a = Symbol::intern(b"a");
     let b = Symbol::intern(b"b");
     let ab = Symbol::intern(b"ab");
     let arguments = vec![vm::Value::from(a), vm::Value::from(b)];
-    assert_eq!(thread.execute(&mut world, &mut assets, select, arguments)?, vm::Value::from(ab));
+    assert_eq!(thread.execute(&mut cx, select, arguments)?, vm::Value::from(ab));
 
     Ok(())
 }
@@ -49,14 +51,15 @@ fn member() -> Result<(), Box<vm::Error>> {
     }" });
 
     let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut assets = Assets { code };
+    let assets = Assets { code };
     let mut world = World::default();
-    let mut thread = vm::Thread::default();
 
     let (_, entity) = world.create_instance();
-    let mut thread = thread.with_self(entity);
 
-    assert_eq!(thread.execute(&mut world, &mut assets, member, vec![])?, vm::Value::from(8));
+    let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
+
+    assert_eq!(thread.with(entity).execute(&mut cx, member, vec![])?, vm::Value::from(8));
     Ok(())
 }
 
@@ -92,16 +95,18 @@ fn builtin() -> Result<(), Box<vm::Error>> {
     }" });
 
     let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut assets = Assets { code };
+    let assets = Assets { code };
     let mut world = World::default();
-    let mut thread = vm::Thread::default();
 
     let (_, entity) = world.create_instance();
     world.instances.insert(entity, Instance::default());
-    let mut thread = thread.with_self(entity);
 
-    assert_eq!(thread.execute(&mut world, &mut assets, builtin, vec![])?, vm::Value::from(34));
+    let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
 
+    assert_eq!(thread.with(entity).execute(&mut cx, builtin, vec![])?, vm::Value::from(34));
+
+    let Context { world, .. } = cx;
     let instance = &world.instances[&entity];
     assert_eq!(instance.scalar, 3.0);
     assert_eq!(instance.array[0], 5);
@@ -128,14 +133,15 @@ fn global() -> Result<(), Box<vm::Error>> {
     }" });
 
     let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut assets = Assets { code };
+    let assets = Assets { code };
     let mut world = World::default();
-    let mut thread = vm::Thread::default();
 
     let (_, entity) = world.create_instance();
-    let mut thread = thread.with_self(entity);
 
-    assert_eq!(thread.execute(&mut world, &mut assets, global, vec![])?, vm::Value::from(8));
+    let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
+
+    assert_eq!(thread.with(entity).execute(&mut cx, global, vec![])?, vm::Value::from(8));
     Ok(())
 }
 
@@ -161,16 +167,17 @@ fn with_scopes() -> Result<(), Box<vm::Error>> {
     }" });
 
     let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut assets = Assets { code };
+    let assets = Assets { code };
     let mut world = World::default();
-    let mut thread = vm::Thread::default();
 
     let (a, entity) = world.create_instance();
     let (b, _) = world.create_instance();
-    let mut thread = thread.with_self(entity);
 
-    let args = vec![vm::Value::from(a), vm::Value::from(b)];
-    assert_eq!(thread.execute(&mut world, &mut assets, with, args)?, vm::Value::from(24.0));
+    let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
+
+    let arguments = vec![vm::Value::from(a), vm::Value::from(b)];
+    assert_eq!(thread.with(entity).execute(&mut cx, with, arguments)?, vm::Value::from(24.0));
     Ok(())
 }
 
@@ -199,15 +206,16 @@ fn with_iterator() -> Result<(), Box<vm::Error>> {
     items.insert(create_instance, Item::Native(World::native_create_instance, 0, false));
 
     let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut assets = Assets { code };
+    let assets = Assets { code };
     let mut world = World::default();
-    let mut thread = vm::Thread::default();
 
     let (_, entity) = world.create_instance();
     world.create_instance();
-    let mut thread = thread.with_self(entity);
 
-    assert_eq!(thread.execute(&mut world, &mut assets, with, vec![])?, vm::Value::from(16.0));
+    let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
+
+    assert_eq!(thread.with(entity).execute(&mut cx, with, vec![])?, vm::Value::from(16.0));
     Ok(())
 }
 
@@ -229,11 +237,13 @@ fn array() -> Result<(), Box<vm::Error>> {
     }" });
 
     let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut assets = Assets { code };
-    let mut world = World::default();
-    let mut thread = vm::Thread::default();
+    let assets = Assets { code };
+    let world = World::default();
 
-    assert_eq!(thread.execute(&mut world, &mut assets, array, vec![])?, vm::Value::from(50));
+    let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
+
+    assert_eq!(thread.execute(&mut cx, array, vec![])?, vm::Value::from(50));
     Ok(())
 }
 
@@ -253,7 +263,7 @@ fn conditional_initialization() -> Result<(), Box<vm::Error>> {
         return t
     }" });
 
-    let _: (vm::Assets<World, Assets>, _) = gml::build(&game, &items, io::stderr)
+    let _: (vm::Assets<Context>, _) = gml::build(&game, &items, io::stderr)
         .unwrap_or_else(|_| panic!());
     Ok(())
 }
@@ -272,7 +282,7 @@ fn dead_undef() -> Result<(), Box<vm::Error>> {
         return i
     }" });
 
-    let _: (vm::Assets<World, Assets>, _) = gml::build(&game, &items, io::stderr)
+    let _: (vm::Assets<Context>, _) = gml::build(&game, &items, io::stderr)
         .unwrap_or_else(|_| panic!());
     Ok(())
 }
@@ -294,11 +304,13 @@ fn for_loop() -> Result<(), Box<vm::Error>> {
     }" });
 
     let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut assets = Assets { code };
-    let mut world = World::default();
-    let mut thread = vm::Thread::default();
+    let assets = Assets { code };
+    let world = World::default();
 
-    assert_eq!(thread.execute(&mut world, &mut assets, factorial, vec![])?, vm::Value::from(24));
+    let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
+
+    assert_eq!(thread.execute(&mut cx, factorial, vec![])?, vm::Value::from(24));
     Ok(())
 }
 
@@ -324,21 +336,23 @@ fn switch() -> Result<(), Box<vm::Error>> {
     }" });
 
     let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut assets = Assets { code };
-    let mut world = World::default();
+    let assets = Assets { code };
+    let world = World::default();
+
     let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
 
     let arguments = vec![vm::Value::from(3)];
-    assert_eq!(thread.execute(&mut world, &mut assets, switch, arguments)?, vm::Value::from(5));
+    assert_eq!(thread.execute(&mut cx, switch, arguments)?, vm::Value::from(5));
 
     let arguments = vec![vm::Value::from(8)];
-    assert_eq!(thread.execute(&mut world, &mut assets, switch, arguments)?, vm::Value::from(13));
+    assert_eq!(thread.execute(&mut cx, switch, arguments)?, vm::Value::from(13));
 
     let arguments = vec![vm::Value::from(21)];
-    assert_eq!(thread.execute(&mut world, &mut assets, switch, arguments)?, vm::Value::from(21));
+    assert_eq!(thread.execute(&mut cx, switch, arguments)?, vm::Value::from(21));
 
     let arguments = vec![vm::Value::from(34)];
-    assert_eq!(thread.execute(&mut world, &mut assets, switch, arguments)?, vm::Value::from(21));
+    assert_eq!(thread.execute(&mut cx, switch, arguments)?, vm::Value::from(21));
 
     Ok(())
 }
@@ -354,7 +368,7 @@ fn switch_empty() -> Result<(), Box<vm::Error>> {
         }
     }" });
 
-    let _: (vm::Assets<World, Assets>, _) = gml::build(&game, &items, io::stderr)
+    let _: (vm::Assets<Context>, _) = gml::build(&game, &items, io::stderr)
         .unwrap_or_else(|_| panic!());
     Ok(())
 }
@@ -380,21 +394,23 @@ fn switch_fallthrough() -> Result<(), Box<vm::Error>> {
     }" });
 
     let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut assets = Assets { code };
-    let mut world = World::default();
+    let assets = Assets { code };
+    let world = World::default();
+
     let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
 
     let arguments = vec![vm::Value::from(0)];
-    assert_eq!(thread.execute(&mut world, &mut assets, switch, arguments)?, vm::Value::from(0));
+    assert_eq!(thread.execute(&mut cx, switch, arguments)?, vm::Value::from(0));
 
     let arguments = vec![vm::Value::from(1)];
-    assert_eq!(thread.execute(&mut world, &mut assets, switch, arguments)?, vm::Value::from(8));
+    assert_eq!(thread.execute(&mut cx, switch, arguments)?, vm::Value::from(8));
 
     let arguments = vec![vm::Value::from(2)];
-    assert_eq!(thread.execute(&mut world, &mut assets, switch, arguments)?, vm::Value::from(5));
+    assert_eq!(thread.execute(&mut cx, switch, arguments)?, vm::Value::from(5));
 
     let arguments = vec![vm::Value::from(3)];
-    assert_eq!(thread.execute(&mut world, &mut assets, switch, arguments)?, vm::Value::from(5));
+    assert_eq!(thread.execute(&mut cx, switch, arguments)?, vm::Value::from(5));
 
     Ok(())
 }
@@ -411,11 +427,13 @@ fn call_script() -> Result<(), Box<vm::Error>> {
     game.scripts.push(project::Script { name: b"call", body: b"return id(3) + 5" });
 
     let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut assets = Assets { code };
-    let mut world = World::default();
-    let mut thread = vm::Thread::default();
+    let assets = Assets { code };
+    let world = World::default();
 
-    assert_eq!(thread.execute(&mut world, &mut assets, call, vec![])?, vm::Value::from(8));
+    let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
+
+    assert_eq!(thread.execute(&mut cx, call, vec![])?, vm::Value::from(8));
     Ok(())
 }
 
@@ -435,12 +453,14 @@ fn recurse() -> Result<(), Box<vm::Error>> {
     }" });
 
     let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut assets = Assets { code };
-    let mut world = World::default();
+    let assets = Assets { code };
+    let world = World::default();
+
     let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
 
     let arguments = vec![vm::Value::from(6)];
-    assert_eq!(thread.execute(&mut world, &mut assets, fibonacci, arguments)?, vm::Value::from(13));
+    assert_eq!(thread.execute(&mut cx, fibonacci, arguments)?, vm::Value::from(13));
     Ok(())
 }
 
@@ -464,12 +484,19 @@ fn ffi() -> Result<(), Box<vm::Error>> {
     }" });
 
     let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut assets = Assets { code };
-    let mut world = World::default();
-    let mut thread = vm::Thread::default();
+    let assets = Assets { code };
+    let world = World::default();
 
-    assert_eq!(thread.execute(&mut world, &mut assets, caller, vec![])?, vm::Value::from(16.0));
+    let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
+
+    assert_eq!(thread.execute(&mut cx, caller, vec![])?, vm::Value::from(16.0));
     Ok(())
+}
+
+struct Context {
+    world: World,
+    assets: Assets,
 }
 
 struct World {
@@ -483,13 +510,14 @@ struct World {
 }
 
 struct Assets {
-    code: vm::Assets<World, Self>,
+    code: vm::Assets<Context>,
 }
 
-impl vm::Api<'_, Assets> for World {
-    fn fields<'r>(&'r mut self, assets: &'r mut Assets) ->
-        (&'r mut vm::World, &'r mut vm::Assets<World, Assets>)
-    { (&mut self.world, &mut assets.code) }
+impl<'r> vm::Project<'r, (&'r mut vm::World, &'r mut vm::Assets<Self>)> for Context {
+    fn fields(&'r mut self) -> (&'r mut vm::World, &'r mut vm::Assets<Self>) {
+        let Context { world, assets } = self;
+        (&mut world.world, &mut assets.code)
+    }
 }
 
 impl Default for World {
@@ -508,8 +536,8 @@ impl Default for World {
 
 impl World {
     fn native_add(
-        &mut self, _: &mut Assets, thread: &mut vm::Thread, arguments: Range<usize>
-    ) -> Result<vm::Value, Box<vm::Error>> {
+        _: &mut Context, thread: &mut vm::Thread, arguments: Range<usize>
+    ) -> vm::Result<vm::Value> {
         let arguments = unsafe { thread.arguments(arguments) };
         let value = match (arguments[0].borrow().decode(), arguments[1].borrow().decode()) {
             (vm::Data::Real(a), vm::Data::Real(b)) => vm::Value::from(a + b),
@@ -520,9 +548,10 @@ impl World {
     }
 
     fn native_create_instance(
-        &mut self, _: &mut Assets, _thread: &mut vm::Thread, _arguments: Range<usize>
-    ) -> Result<vm::Value, Box<vm::Error>> {
-        let (id, _) = self.create_instance();
+        cx: &mut Context, _thread: &mut vm::Thread, _arguments: Range<usize>
+    ) -> vm::Result<vm::Value> {
+        let Context { world, .. } = cx;
+        let (id, _) = world.create_instance();
         Ok(vm::Value::from(id))
     }
 
@@ -535,18 +564,22 @@ impl World {
         (id, entity)
     }
 
-    fn get_global_scalar(&mut self, _: &mut Assets, _: vm::Entity, _: usize) -> vm::Value {
-        vm::Value::from(self.global_scalar)
+    fn get_global_scalar(cx: &mut Context, _: vm::Entity, _: usize) -> vm::Value {
+        let Context { world, .. } = cx;
+        vm::Value::from(world.global_scalar)
     }
-    fn set_global_scalar(&mut self, _: &mut Assets, _: vm::Entity, _: usize, value: vm::ValueRef) {
-        self.global_scalar = i32::try_from(value).unwrap_or(0);
+    fn set_global_scalar(cx: &mut Context, _: vm::Entity, _: usize, value: vm::ValueRef) {
+        let Context { world, .. } = cx;
+        world.global_scalar = i32::try_from(value).unwrap_or(0);
     }
 
-    fn get_global_array(&mut self, _: &mut Assets, _: vm::Entity, i: usize) -> vm::Value {
-        vm::Value::from(self.global_array[i] as f64)
+    fn get_global_array(cx: &mut Context, _: vm::Entity, i: usize) -> vm::Value {
+        let Context { world, .. } = cx;
+        vm::Value::from(world.global_array[i] as f64)
     }
-    fn set_global_array(&mut self, _: &mut Assets, _: vm::Entity, i: usize, value: vm::ValueRef) {
-        self.global_array[i] = f64::try_from(value).unwrap_or(0.0) as f32;
+    fn set_global_array(cx: &mut Context, _: vm::Entity, i: usize, value: vm::ValueRef) {
+        let Context { world, .. } = cx;
+        world.global_array[i] = f64::try_from(value).unwrap_or(0.0) as f32;
     }
 }
 
@@ -557,20 +590,24 @@ struct Instance {
 }
 
 impl Instance {
-    pub fn get_scalar(world: &mut World, _: &mut Assets, entity: vm::Entity, _: usize) -> vm::Value {
+    pub fn get_scalar(cx: &mut Context, entity: vm::Entity, _: usize) -> vm::Value {
+        let Context { world, .. } = cx;
         let instance = &world.instances[&entity];
         vm::Value::from(instance.scalar as f64)
     }
-    pub fn set_scalar(world: &mut World, _: &mut Assets, entity: vm::Entity, _: usize, value: vm::ValueRef) {
+    pub fn set_scalar(cx: &mut Context, entity: vm::Entity, _: usize, value: vm::ValueRef) {
+        let Context { world, .. } = cx;
         let instance = world.instances.get_mut(&entity).unwrap();
         instance.scalar = f64::try_from(value).unwrap_or(0.0) as f32;
     }
 
-    pub fn get_array(world: &mut World, _: &mut Assets, entity: vm::Entity, i: usize) -> vm::Value {
+    pub fn get_array(cx: &mut Context, entity: vm::Entity, i: usize) -> vm::Value {
+        let Context { world, .. } = cx;
         let instance = &world.instances[&entity];
         vm::Value::from(instance.array[i])
     }
-    pub fn set_array(world: &mut World, _: &mut Assets, entity: vm::Entity, i: usize, value: vm::ValueRef) {
+    pub fn set_array(cx: &mut Context, entity: vm::Entity, i: usize, value: vm::ValueRef) {
+        let Context { world, .. } = cx;
         let instance = world.instances.get_mut(&entity).unwrap();
         instance.array[i] = i32::try_from(value).unwrap_or(0);
     }
