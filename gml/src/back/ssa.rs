@@ -196,12 +196,12 @@ pub enum Opcode {
 // TODO: gms tracks function arity
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Prototype {
-    /// A GML script.
-    Script { id: i32 },
     /// A native API function.
     Native { arity: usize, variadic: bool },
     /// A built-in member accessed via getter and setter.
     Member,
+    /// A GML script.
+    Script { id: i32 },
 }
 
 impl Function {

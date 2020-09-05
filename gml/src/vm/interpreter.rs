@@ -760,17 +760,16 @@ fn execute_internal(
 
             (code::Op::Ret, _, _, _) => {
                 let array = unsafe { registers[0].value.clone() };
-                let (cont, cont_instruction, cont_base, cont_owned) = match thread.calls.pop() {
-                    Some(frame) => frame,
-                    None => {
-                        thread.calls.truncate(orig_calls);
-                        thread.withs.truncate(orig_withs);
-                        thread.owned.truncate(orig_owned);
-                        thread.stack.truncate(orig_stack);
+                if thread.calls.len() == orig_calls {
+                    thread.calls.truncate(orig_calls);
+                    thread.withs.truncate(orig_withs);
+                    thread.owned.truncate(orig_owned);
+                    thread.stack.truncate(orig_stack);
 
-                        return Ok(array);
-                    }
-                };
+                    return Ok(array);
+                }
+
+                let (cont, cont_instruction, cont_base, cont_owned) = thread.calls.pop().unwrap();
 
                 function = cont;
                 code = &assets.code[&function];

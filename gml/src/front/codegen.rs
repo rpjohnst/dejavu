@@ -698,6 +698,15 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
             }
 
             _ => {
+                if let ast::Expr::Value(ast::Value::Ident(resource)) = *expr {
+                    match self.prototypes.get(&resource) {
+                        Some(&ssa::Prototype::Script { id }) => {
+                            return self.emit_real(id as f64, expr_loc)
+                        }
+                        _ => {}
+                    }
+                }
+
                 let place = self.emit_place(expression)
                     .expect("_ is not a valid expression");
                 self.emit_load(place, expr_span)

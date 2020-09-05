@@ -7,7 +7,7 @@ use gml::{Function, Item, symbol::Symbol, vm};
 
 /// Read script arguments.
 #[test]
-fn arguments() -> Result<(), Box<vm::Error>> {
+fn arguments() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -37,7 +37,7 @@ fn arguments() -> Result<(), Box<vm::Error>> {
 
 /// Read and write member variables.
 #[test]
-fn member() -> Result<(), Box<vm::Error>> {
+fn member() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -65,7 +65,7 @@ fn member() -> Result<(), Box<vm::Error>> {
 
 /// Read and write builtin variables.
 #[test]
-fn builtin() -> Result<(), Box<vm::Error>> {
+fn builtin() -> vm::Result<()> {
     let mut game = project::Game::default();
     let mut items = HashMap::new();
 
@@ -120,7 +120,7 @@ fn builtin() -> Result<(), Box<vm::Error>> {
 
 /// Read and write global variables.
 #[test]
-fn global() -> Result<(), Box<vm::Error>> {
+fn global() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -146,7 +146,7 @@ fn global() -> Result<(), Box<vm::Error>> {
 }
 
 #[test]
-fn with_scopes() -> Result<(), Box<vm::Error>> {
+fn with_scopes() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -182,7 +182,7 @@ fn with_scopes() -> Result<(), Box<vm::Error>> {
 }
 
 #[test]
-fn with_iterator() -> Result<(), Box<vm::Error>> {
+fn with_iterator() -> vm::Result<()> {
     let mut game = project::Game::default();
     let mut items = HashMap::new();
 
@@ -221,7 +221,7 @@ fn with_iterator() -> Result<(), Box<vm::Error>> {
 
 /// Read and write arrays.
 #[test]
-fn array() -> Result<(), Box<vm::Error>> {
+fn array() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -251,7 +251,7 @@ fn array() -> Result<(), Box<vm::Error>> {
 ///
 /// Regression test to ensure conditionally-initialized values don't break the compiler.
 #[test]
-fn conditional_initialization() -> Result<(), Box<vm::Error>> {
+fn conditional_initialization() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -272,7 +272,7 @@ fn conditional_initialization() -> Result<(), Box<vm::Error>> {
 ///
 /// Regression test to ensure uses of undef don't break the register allocator.
 #[test]
-fn dead_undef() -> Result<(), Box<vm::Error>> {
+fn dead_undef() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -289,7 +289,7 @@ fn dead_undef() -> Result<(), Box<vm::Error>> {
 
 /// For loop working with locals.
 #[test]
-fn for_loop() -> Result<(), Box<vm::Error>> {
+fn for_loop() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -316,7 +316,7 @@ fn for_loop() -> Result<(), Box<vm::Error>> {
 
 /// Control flow across a switch statement.
 #[test]
-fn switch() -> Result<(), Box<vm::Error>> {
+fn switch() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -359,7 +359,7 @@ fn switch() -> Result<(), Box<vm::Error>> {
 
 /// An empty switch statement.
 #[test]
-fn switch_empty() -> Result<(), Box<vm::Error>> {
+fn switch_empty() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -375,7 +375,7 @@ fn switch_empty() -> Result<(), Box<vm::Error>> {
 
 /// A switch statement with fallthrough between cases.
 #[test]
-fn switch_fallthrough() -> Result<(), Box<vm::Error>> {
+fn switch_fallthrough() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -417,7 +417,7 @@ fn switch_fallthrough() -> Result<(), Box<vm::Error>> {
 
 /// Call a GML script.
 #[test]
-fn call_script() -> Result<(), Box<vm::Error>> {
+fn call_script() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -439,7 +439,7 @@ fn call_script() -> Result<(), Box<vm::Error>> {
 
 /// Recursively call a GML script.
 #[test]
-fn recurse() -> Result<(), Box<vm::Error>> {
+fn recurse() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
@@ -466,7 +466,7 @@ fn recurse() -> Result<(), Box<vm::Error>> {
 
 /// Call a native function.
 #[test]
-fn ffi() -> Result<(), Box<vm::Error>> {
+fn ffi() -> vm::Result<()> {
     let mut game = project::Game::default();
     let mut items = HashMap::new();
 
@@ -491,6 +491,38 @@ fn ffi() -> Result<(), Box<vm::Error>> {
     let mut cx = Context { world, assets };
 
     assert_eq!(thread.execute(&mut cx, caller, vec![])?, vm::Value::from(16.0));
+    Ok(())
+}
+
+#[test]
+fn reentrant() -> vm::Result<()> {
+    let mut game = project::Game::default();
+    let mut items = HashMap::new();
+
+    let execute = Symbol::intern(b"execute");
+    items.insert(execute, Item::Native(World::native_execute, 2, false));
+
+    let entry = Function::Script { id: game.scripts.len() as i32 };
+    game.scripts.push(project::Script { name: b"entry", body: b"{
+        return caller()
+    }" });
+
+    game.scripts.push(project::Script { name: b"caller", body: b"{
+        return execute(callee, 3) + 13
+    }" });
+
+    game.scripts.push(project::Script { name: b"callee", body: b"{
+        return argument0 + 5
+    }" });
+
+    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let assets = Assets { code };
+    let world = World::default();
+
+    let mut thread = vm::Thread::default();
+    let mut cx = Context { world, assets };
+
+    assert_eq!(thread.execute(&mut cx, entry, vec![])?, vm::Value::from(29.0));
     Ok(())
 }
 
@@ -545,6 +577,21 @@ impl World {
         };
 
         Ok(value)
+    }
+
+    fn native_execute(cx: &mut Context, thread: &mut vm::Thread, arguments: Range<usize>) ->
+        vm::Result<vm::Value>
+    {
+        let arguments = unsafe { thread.arguments(arguments) };
+        let scr = i32::try_from(arguments[0].borrow()).unwrap_or_default();
+        let arg = i32::try_from(arguments[1].borrow()).unwrap_or_default();
+
+        let callee = Function::Script { id: scr };
+        let arguments = vec![vm::Value::from(arg)];
+        let result = thread.execute(cx, callee, arguments)?;
+
+        let value = i32::try_from(result.borrow()).unwrap_or_default();
+        Ok(vm::Value::from(value + 8))
     }
 
     fn native_create_instance(
