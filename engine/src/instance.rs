@@ -100,7 +100,7 @@ impl State {
     pub fn instance_create(
         cx: &mut Context, thread: &mut vm::Thread,
         x: f32, y: f32, object_index: i32
-    ) -> Result<i32, Box<vm::Error>> {
+    ) -> vm::Result<i32> {
         let Context { world, .. } = cx;
         let id = world.instance.next_id;
         world.instance.next_id += 1;
@@ -136,13 +136,27 @@ impl State {
     }
 
     #[gml::api]
-    pub fn instance_destroy(&mut self, world: &mut vm::World, entity: vm::Entity) {
-        let &Instance { object_index, id, .. } = match self.instances.get(entity) {
+    pub fn instance_destroy(cx: &mut Context, thread: &mut vm::Thread, entity: vm::Entity) ->
+        vm::Result<()>
+    {
+        let Context { world, assets, .. } = cx;
+        let event_type = project::event_type::DESTROY;
+        let crate::World { instance, .. } = world;
+        let &Instance { object_index, id, .. } = match instance.instances.get(entity) {
             Some(instance) => instance,
-            None => return,
+            None => return Ok(()),
         };
+        let destroy = gml::Function::Event { event_type, event_kind: 0, object_index };
+        if assets.code.code.contains_key(&destroy) {
+            thread.with(entity).execute(cx, destroy, vec![])?;
+        }
+
+        let Context { world, .. } = cx;
+        let crate::World { world, instance, .. } = world;
         world.remove_entity(entity, object_index, id);
-        self.destroyed.push(entity);
+        instance.destroyed.push(entity);
+
+        Ok(())
     }
 
     pub fn free_destroyed(&mut self, world: &mut vm::World, motion: &mut motion::State) {
@@ -168,7 +182,9 @@ impl State {
     }
 
     #[gml::api]
-    pub fn action_kill_object(&mut self, world: &mut vm::World, entity: vm::Entity) {
-        self.instance_destroy(world, entity);
+    pub fn action_kill_object(cx: &mut Context, thread: &mut vm::Thread, entity: vm::Entity) ->
+        vm::Result<()>
+    {
+        Self::instance_destroy(cx, thread, entity)
     }
 }

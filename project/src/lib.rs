@@ -1,6 +1,9 @@
 pub struct Game<'a> {
     pub scripts: Vec<Script<'a>>,
     pub objects: Vec<Object<'a>>,
+    pub rooms: Vec<Room<'a>>,
+
+    pub last_instance: i32,
 }
 
 #[derive(Default)]
@@ -25,6 +28,7 @@ pub struct Event<'a> {
 
 pub mod event_type {
     pub const CREATE: u32 = 0;
+    pub const DESTROY: u32 = 1;
 }
 
 #[derive(Default)]
@@ -85,11 +89,32 @@ pub mod argument_type {
     pub const FONT_STRING: u32 = 15;
 }
 
+#[derive(Default)]
+pub struct Room<'a> {
+    pub name: &'a [u8],
+
+    pub code: &'a [u8],
+
+    pub instances: Vec<Instance<'a>>,
+}
+
+#[derive(Default)]
+pub struct Instance<'a> {
+    pub x: i32,
+    pub y: i32,
+    pub object_index: i32,
+    pub id: i32,
+    pub code: &'a [u8],
+}
+
 impl<'a> Default for Game<'a> {
     fn default() -> Game<'a> {
         Game {
             scripts: Vec::default(),
             objects: Vec::default(),
+            rooms: Vec::default(),
+
+            last_instance: 100000,
         }
     }
 }

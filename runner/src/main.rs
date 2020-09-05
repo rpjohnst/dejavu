@@ -83,22 +83,45 @@ fn main() {
         events: vec![],
     });
 
+    let first_rm = game.rooms.len() as i32;
+
+    game.last_instance += 1;
+    let first_id = game.last_instance;
+
+    game.last_instance += 1;
+    let second_id = game.last_instance;
+
+    game.rooms.push(project::Room {
+        name: b"first_rm",
+        code: b"",
+        instances: vec![
+            project::Instance { x: 0, y: 0, object_index: first_obj, id: first_id, code: b"" },
+            project::Instance { x: 0, y: 0, object_index: second_obj, id: second_id, code: b"" },
+        ],
+    });
+
     let (assets, debug) = engine::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let world = World::default();
+    let mut world = World::default();
+    world.instance.next_id = game.last_instance + 1;
 
     let mut thread = gml::vm::Thread::default();
     let mut cx = engine::Context { world, assets };
 
-    let id = engine::instance::State::instance_create(&mut cx, &mut thread, 0.0, 0.0, first_obj)
-        .unwrap_or_else(|_| panic!("object does not exist"));
+    fn try_execute(
+        cx: &mut engine::Context, thread: &mut gml::vm::Thread,
+        room: i32, instance: i32, script: Function
+    ) -> gml::vm::Result<()> {
+        engine::room::State::load_room(cx, thread, room)?;
 
-    engine::instance::State::instance_create(&mut cx, &mut thread, 0.0, 0.0, second_obj)
-        .unwrap_or_else(|_| panic!("object does not exist"));
+        let engine::Context { world, .. } = cx;
+        let entity = world.world.instances[instance];
 
-    let engine::Context { world, .. } = &mut cx;
-    let entity = world.world.instances[id];
+        thread.with(entity).execute(cx, script, vec![])?;
 
-    if let Err(error) = thread.with(entity).execute(&mut cx, main, vec![]) {
+        Ok(())
+    }
+
+    if let Err(error) = try_execute(&mut cx, &mut thread, first_rm, first_id, main) {
         let (mut errors, span, stack) = match error.frames[..] {
             [ref frame, ref stack @ ..] => {
                 let errors = ErrorPrinter::from_debug(&debug, frame.function, io::stderr());
@@ -111,7 +134,4 @@ fn main() {
         ErrorPrinter::error(&mut errors, span, format_args!("{}", error.kind));
         ErrorPrinter::stack_from_debug(&mut errors, &debug, stack);
     }
-
-    let engine::Context { world, .. } = &mut cx;
-    world.instance.free_destroyed(&mut world.world, &mut world.motion);
 }

@@ -28,6 +28,10 @@ pub mod vm;
 pub enum Function {
     Event { object_index: i32, event_type: u32, event_kind: i32 },
     Script { id: i32 },
+    /// Room creation code.
+    Room { id: i32 },
+    /// Instance creation code.
+    Instance { id: i32 },
 }
 
 /// An entity defined by the engine.
@@ -68,6 +72,10 @@ pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
         let name = Symbol::intern(name);
         debug.objects.push(name);
     }
+    for &project::Room { name, .. } in game.rooms.iter() {
+        let name = Symbol::intern(name);
+        debug.rooms.push(name);
+    }
 
     let mut total_errors = 0;
 
@@ -94,6 +102,35 @@ pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
             assets.code.insert(function, code);
             debug.locations.insert(function, locations);
             total_errors += errors;
+        }
+    }
+
+    // Compile room and instance creation code.
+    let resources = Iterator::zip(debug.rooms.iter(), game.rooms.iter());
+    for (id, (&room, &project::Room { code, ref instances, .. })) in resources.enumerate() {
+        let id = id as i32;
+
+        if code.len() > 0 {
+            let function = Function::Room { id };
+            let name = FunctionDisplay::Room { room };
+            let (code, locations, errors) = compile_program(&prototypes, name, code, errors());
+            assets.code.insert(function, code);
+            debug.locations.insert(function, locations);
+            total_errors += errors;
+        }
+
+        let room_id = id;
+        for &project::Instance { id, code, .. } in instances {
+            if code.len() > 0 {
+                let function = Function::Instance { id };
+                let name = FunctionDisplay::Instance { room, id };
+                let (code, locations, errors) = compile_program(&prototypes, name, code, errors());
+                assets.code.insert(function, code);
+                debug.locations.insert(function, locations);
+                total_errors += errors;
+            }
+
+            debug.instances.insert(id, room_id);
         }
     }
 
@@ -144,6 +181,8 @@ pub struct ErrorPrinter<'a, W: ?Sized = dyn io::Write> {
 pub enum FunctionDisplay {
     Event { object: Symbol, event_type: u32, event_kind: EventDisplay },
     Script { script: Symbol },
+    Room { room: Symbol },
+    Instance { room: Symbol, id: i32 }
 }
 
 #[derive(Copy, Clone)]
@@ -215,6 +254,14 @@ impl FunctionDisplay {
                 let script = debug.scripts[id as usize];
                 FunctionDisplay::Script { script }
             }
+            Function::Room { id } => {
+                let room = debug.rooms[id as usize];
+                FunctionDisplay::Room { room }
+            }
+            Function::Instance { id } => {
+                let room = debug.rooms[debug.instances[&id] as usize];
+                FunctionDisplay::Instance { room, id }
+            }
         }
     }
 }
@@ -241,6 +288,9 @@ impl fmt::Display for FunctionDisplay {
             FunctionDisplay::Event { object, event_type, event_kind } =>
                 display_event(object, event_type, event_kind, f),
             FunctionDisplay::Script { script } => write!(f, "script {}", script),
+            FunctionDisplay::Room { room } => write!(f, "creation code of room {}", room),
+            FunctionDisplay::Instance { room, id } =>
+                write!(f, "creation code for instance {} in room {}", id, room),
         }
     }
 }
@@ -250,6 +300,7 @@ fn display_event(
 ) -> fmt::Result {
     match (event_type, event_kind) {
         (project::event_type::CREATE, _) => write!(f, "create event")?,
+        (project::event_type::DESTROY, _) => write!(f, "destroy event")?,
         _ => write!(f, "unknown event")?,
     };
     write!(f, " for object {}", object)?;

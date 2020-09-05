@@ -11,6 +11,7 @@ pub struct World {
     pub string: string::State,
     pub motion: motion::State,
     pub instance: instance::State,
+    pub room: room::State,
     pub show: show::State,
     pub data: data::State,
 }
