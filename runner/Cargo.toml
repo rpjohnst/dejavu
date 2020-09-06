@@ -6,5 +6,5 @@ edition = "2018"
 
 [dependencies]
 gml = { path = "../gml" }
-engine = { path = "../engine" }
 project = { path = "../project" }
+bstr = { version = "0.2", default-features = false, features = ["std"] }

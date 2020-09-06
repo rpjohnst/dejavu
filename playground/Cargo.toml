@@ -12,6 +12,6 @@ crate-type = ["cdylib"]
 
 [target.wasm32-unknown-unknown.dependencies]
 gml = { path = "../gml" }
-engine = { path = "../engine" }
+runner = { path = "../runner" }
 project = { path = "../project" }
 wasm-bindgen = "0.2"

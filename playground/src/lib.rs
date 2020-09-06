@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 use gml::{Function, ErrorPrinter};
 use gml::front::Span;
-use engine::World;
+use runner::World;
 
 struct HostOut;
 struct HostErr();
@@ -27,7 +27,7 @@ pub fn run(source: &str) {
         events: vec![],
     });
 
-    let (assets, debug) = match engine::build(&game, &items, HostErr) {
+    let (assets, debug) = match runner::build(&game, &items, HostErr) {
         Ok(assets) => assets,
         Err(errors) => {
             if errors > 1 {
@@ -43,11 +43,11 @@ pub fn run(source: &str) {
     world.show.set_write(Box::new(HostOut));
 
     let mut thread = gml::vm::Thread::default();
-    let mut cx = engine::Context { world, assets };
-    let id = engine::instance::State::instance_create(&mut cx, &mut thread, 0.0, 0.0, object)
+    let mut cx = runner::Context { world, assets };
+    let id = runner::instance::State::instance_create(&mut cx, &mut thread, 0.0, 0.0, object)
         .unwrap_or_else(|_| { let _ = writeln!(HostErr(), "object does not exist"); panic!() });
 
-    let engine::Context { world, .. } = &mut cx;
+    let runner::Context { world, .. } = &mut cx;
     let entity = world.world.instances[id];
 
     if let Err(error) = thread.with(entity).execute(&mut cx, script, vec![]) {

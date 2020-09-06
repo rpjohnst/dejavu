@@ -34,7 +34,7 @@ pub enum Function {
     Instance { id: i32 },
 }
 
-/// An entity defined by the engine.
+/// An entity defined by the runner.
 pub enum Item<W> {
     Native(vm::ApiFunction<W>, usize, bool),
     Member(Option<vm::GetFunction<W>>, Option<vm::SetFunction<W>>),
@@ -42,14 +42,14 @@ pub enum Item<W> {
 
 /// Build the GML and D&D in a Game Maker project.
 pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
-    game: &project::Game, engine: &HashMap<Symbol, Item<W>>, mut errors: F
+    game: &project::Game, runner: &HashMap<Symbol, Item<W>>, mut errors: F
 ) -> Result<(vm::Assets<W>, vm::Debug), u32> {
     let mut assets = vm::Assets::default();
-    let mut prototypes = HashMap::with_capacity(game.scripts.len() + engine.len());
+    let mut prototypes = HashMap::with_capacity(game.scripts.len() + runner.len());
     let mut debug = vm::Debug::default();
 
     // Collect the prototypes of entities that may be referred to in code.
-    for (&name, item) in engine.iter() {
+    for (&name, item) in runner.iter() {
         match *item {
             Item::Native(api, arity, variadic) => {
                 assets.api.insert(name, api);

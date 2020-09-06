@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "runner",
+    "runner/loader",
     "playground",
 ]
 

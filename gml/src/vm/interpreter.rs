@@ -209,7 +209,7 @@ fn get_string(value: ValueRef<'_>) -> Symbol {
     }
 }
 
-// Opaque type to erase the engine-side container for `vm::World` and `vm::Assets`.
+// Opaque type to erase the runner-side container for `vm::World` and `vm::Assets`.
 extern { type W; }
 
 fn execute_internal(

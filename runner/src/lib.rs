@@ -43,7 +43,7 @@ pub struct Instance {
 
 /// Build a Game Maker project.
 pub fn build<'a, F: FnMut() -> E, E: io::Write + 'static>(
-    game: &'a project::Game, engine: &HashMap<Symbol, gml::Item<Context>>, errors: F
+    game: &'a project::Game, runner: &HashMap<Symbol, gml::Item<Context>>, errors: F
 ) -> Result<(Assets, vm::Debug), u32> {
     let mut assets = Assets::default();
     assets.objects = game.objects.iter()
@@ -58,7 +58,7 @@ pub fn build<'a, F: FnMut() -> E, E: io::Write + 'static>(
                 .collect()
         })
         .collect();
-    match gml::build(game, engine, errors) {
+    match gml::build(game, runner, errors) {
         Ok((code, debug)) => Ok((Assets { code, ..assets }, debug)),
         Err(count) => Err(count),
     }

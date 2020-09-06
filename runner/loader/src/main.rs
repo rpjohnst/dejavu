@@ -3,7 +3,7 @@ use std::io;
 
 use gml::{Function, ErrorPrinter};
 use gml::front::Span;
-use engine::World;
+use runner::World;
 
 fn main() {
     let mut game = project::Game::default();
@@ -100,20 +100,20 @@ fn main() {
         ],
     });
 
-    let (assets, debug) = engine::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (assets, debug) = runner::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
     let mut world = World::default();
     world.instance.next_id = game.last_instance + 1;
 
     let mut thread = gml::vm::Thread::default();
-    let mut cx = engine::Context { world, assets };
+    let mut cx = runner::Context { world, assets };
 
     fn try_execute(
-        cx: &mut engine::Context, thread: &mut gml::vm::Thread,
+        cx: &mut runner::Context, thread: &mut gml::vm::Thread,
         room: i32, instance: i32, script: Function
     ) -> gml::vm::Result<()> {
-        engine::room::State::load_room(cx, thread, room)?;
+        runner::room::State::load_room(cx, thread, room)?;
 
-        let engine::Context { world, .. } = cx;
+        let runner::Context { world, .. } = cx;
         let entity = world.world.instances[instance];
 
         thread.with(entity).execute(cx, script, vec![])?;
