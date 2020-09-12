@@ -171,7 +171,7 @@ fn compile_event<E: io::Write + 'static>(
     (code, vm::Locations { locations, lines }, count)
 }
 
-pub struct ErrorPrinter<'a, W: ?Sized = dyn io::Write> {
+pub struct ErrorPrinter<'a, W: ?Sized = dyn io::Write + 'a> {
     pub name: FunctionDisplay,
     pub lines: &'a Lines,
     pub count: u32,

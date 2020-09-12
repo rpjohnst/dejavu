@@ -1,16 +1,10 @@
-use std::collections::HashMap;
 use std::io;
-
-use gml::{Function, ErrorPrinter};
-use gml::front::Span;
-use runner::World;
 
 fn main() {
     let mut game = project::Game::default();
-    let mut items = HashMap::default();
-    World::register(&mut items);
 
-    let main = Function::Script { id: game.scripts.len() as i32 };
+    let main = game.scripts.len() as i32;
+    let main = format!("{}", main);
     game.scripts.push(project::Script { name: b"main", body: br#"{
         show_debug_message("hello world")
 
@@ -73,7 +67,37 @@ fn main() {
     game.objects.push(project::Object {
         name: b"first_obj",
         persistent: false,
-        events: vec![],
+        events: vec![
+            project::Event {
+                event_type: project::event_type::CREATE,
+                event_kind: 0,
+                actions: vec![
+                    project::Action {
+                        library: 1,
+                        action: 601,
+                        action_kind: project::action_kind::NORMAL,
+                        has_target: true,
+                        action_type: project::action_type::FUNCTION,
+                        name: b"action_execute_script",
+                        parameters_used: 6,
+                        parameters: vec![
+                            project::argument_type::SCRIPT,
+                            project::argument_type::EXPR,
+                            project::argument_type::EXPR,
+                            project::argument_type::EXPR,
+                            project::argument_type::EXPR,
+                            project::argument_type::EXPR,
+                        ],
+                        target: gml::vm::SELF,
+                        arguments: vec![
+                            main.as_bytes(),
+                            b"0", b"0", b"0", b"0", b"0",
+                        ],
+                        ..project::Action::default()
+                    },
+                ],
+            },
+        ],
     });
 
     let second_obj = game.objects.len() as i32;
@@ -83,7 +107,7 @@ fn main() {
         events: vec![],
     });
 
-    let first_rm = game.rooms.len() as i32;
+    let _first_rm = game.rooms.len() as i32;
 
     game.last_instance += 1;
     let first_id = game.last_instance;
@@ -100,38 +124,17 @@ fn main() {
         ],
     });
 
-    let (assets, debug) = runner::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
-    let mut world = World::default();
-    world.instance.next_id = game.last_instance + 1;
-
-    let mut thread = gml::vm::Thread::default();
-    let mut cx = runner::Context { world, assets };
-
-    fn try_execute(
-        cx: &mut runner::Context, thread: &mut gml::vm::Thread,
-        room: i32, instance: i32, script: Function
-    ) -> gml::vm::Result<()> {
-        runner::room::State::load_room(cx, thread, room)?;
-
-        let runner::Context { world, .. } = cx;
-        let entity = world.world.instances[instance];
-
-        thread.with(entity).execute(cx, script, vec![])?;
-
-        Ok(())
-    }
-
-    if let Err(error) = try_execute(&mut cx, &mut thread, first_rm, first_id, main) {
-        let (mut errors, span, stack) = match error.frames[..] {
-            [ref frame, ref stack @ ..] => {
-                let errors = ErrorPrinter::from_debug(&debug, frame.function, io::stderr());
-                let span = Span::from_debug(&debug, frame);
-                (errors, span, stack)
-            },
-            _ => return,
-        };
-
-        ErrorPrinter::error(&mut errors, span, format_args!("{}", error.kind));
-        ErrorPrinter::stack_from_debug(&mut errors, &debug, stack);
-    }
+    let (assets, debug) = match runner::build(&game, io::stderr) {
+        Ok(assets) => assets,
+        Err(errors) => {
+            if errors > 1 {
+                eprintln!("aborting due to {} previous errors", errors);
+            } else {
+                eprintln!("aborting due to previous error");
+            }
+            return;
+        }
+    };
+    let world = runner::World::from_assets(&assets, debug);
+    runner::run(&mut runner::Context { world, assets });
 }

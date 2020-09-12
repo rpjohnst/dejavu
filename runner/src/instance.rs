@@ -171,7 +171,7 @@ impl State {
     pub fn action_create_object(
         cx: &mut Context, thread: &mut vm::Thread,
         entity: vm::Entity, relative: bool, obj: i32, mut x: f32, mut y: f32
-    ) -> Result<i32, Box<vm::Error>> {
+    ) -> vm::Result<i32> {
         let Context { world, .. } = cx;
 
         if relative {

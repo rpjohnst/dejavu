@@ -13,6 +13,7 @@ pub struct World {
     pub instance: instance::State,
     pub room: room::State,
     pub show: show::State,
+    pub control: control::State,
     pub data: data::State,
 }
 
@@ -78,12 +79,20 @@ impl<'r> vm::Project<'r, (&'r mut data::State,)> for Context {
 }
 
 impl World {
+    pub fn from_assets(assets: &crate::Assets, debug: vm::Debug) -> Self {
+        let mut world = Self::default();
+        world.instance.next_id = assets.next_instance;
+        world.show.debug = debug;
+        world
+    }
+
     pub fn register(items: &mut HashMap<Symbol, gml::Item<Context>>) {
         real::State::register(items);
         string::State::register(items);
         motion::State::register(items);
         instance::State::register(items);
         show::State::register(items);
+        control::State::register(items);
         data::State::register(items);
     }
 }

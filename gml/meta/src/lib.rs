@@ -191,7 +191,7 @@ pub fn bind(_attr: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
 
-    // Generate the API glue trait.
+    // Generate the API glue.
 
     let self_ty = &input.self_ty;
 

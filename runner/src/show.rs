@@ -1,20 +1,32 @@
 use std::io::{self, Write};
-use gml::vm;
+use gml::{vm, front::Span, ErrorPrinter};
 
 pub struct State {
-    write: Box<dyn Write>,
+    pub debug: vm::Debug,
+    pub error: fn(&Self, &vm::Error),
+    pub write: Box<dyn Write>,
 }
 
 impl Default for State {
     fn default() -> State {
-        State { write: Box::new(io::stdout()) }
+        State {
+            debug: vm::Debug::default(),
+            error: |state, error| state.show_vm_error_write(error, io::stderr()),
+            write: Box::new(io::stdout()),
+        }
     }
 }
 
 #[gml::bind]
 impl State {
-    pub fn set_write(&mut self, write: Box<dyn Write>) {
-        self.write = write;
+    pub fn show_vm_error(&self, error: &vm::Error) { (self.error)(self, error); }
+    pub fn show_vm_error_write<W: Write>(&self, error: &vm::Error, write: W) {
+        if let [ref frame, ref stack @ ..] = error.frames[..] {
+            let mut errors = ErrorPrinter::from_debug(&self.debug, frame.function, write);
+            let span = Span::from_debug(&self.debug, frame);
+            ErrorPrinter::error(&mut errors, span, format_args!("{}", error.kind));
+            ErrorPrinter::stack_from_debug(&mut errors, &self.debug, stack);
+        }
     }
 
     #[gml::api]
