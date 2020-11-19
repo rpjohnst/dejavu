@@ -107,7 +107,7 @@ impl<T> RcVec<T> where T: Clone {
         // If this is the only reference to the array, move its elements. Otherwise, clone them.
         if Rc::strong_count(&self.buf) == 1 {
             // Safety: The moved from values are immediately freed without being dropped.
-            let iter = self.buf.iter().take(self.len).map(|value| unsafe { value.read() });
+            let iter = self.buf.iter().take(self.len).map(|value| unsafe { value.assume_init_read() });
             *self = Self::from_iter_with_capacity(iter, buf_len);
         } else {
             *self = Self::from_iter_with_capacity(self.iter().cloned(), buf_len);

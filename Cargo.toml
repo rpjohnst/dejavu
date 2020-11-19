@@ -10,6 +10,3 @@ panic = "abort"
 [profile.release]
 lto = "thin"
 panic = "abort"
-
-[profile.release.build-override]
-opt-level = 0
