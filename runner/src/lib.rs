@@ -3,17 +3,9 @@ use std::io;
 
 use gml::vm;
 
-pub use crate::world::World;
+pub use crate::world::*;
 
 mod world;
-pub mod real;
-pub mod string;
-pub mod motion;
-pub mod instance;
-pub mod room;
-pub mod show;
-pub mod control;
-pub mod data;
 
 pub struct Context {
     pub world: World,
