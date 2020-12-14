@@ -9,10 +9,20 @@ pub struct State {
     pub batch: Batch,
 }
 
-#[derive(Default)]
 pub struct Instance {
     pub sprite_index: i32,
     pub image_index: f32,
+    pub image_speed: f32,
+}
+
+impl Default for Instance {
+    fn default() -> Instance {
+        Instance {
+            sprite_index: 0,
+            image_index: 0.0,
+            image_speed: 1.0,
+        }
+    }
 }
 
 impl State {
@@ -60,5 +70,31 @@ impl State {
         let Context { world, .. } = cx;
         let crate::World { draw, .. } = world;
         draw.batch.reset(-1, (0, 0));
+    }
+}
+
+#[gml::bind]
+impl State {
+    #[gml::get(sprite_index)]
+    pub fn get_sprite_index(&self, entity: vm::Entity) -> i32 {
+        self.instances[entity].sprite_index
+    }
+    #[gml::set(sprite_index)]
+    pub fn set_sprite_index(&mut self, entity: vm::Entity, value: i32) {
+        self.instances[entity].sprite_index = value
+    }
+
+    #[gml::get(image_index)]
+    pub fn get_image_index(&self, entity: vm::Entity) -> f32 { self.instances[entity].image_index }
+    #[gml::set(image_index)]
+    pub fn set_image_index(&mut self, entity: vm::Entity, value: f32) {
+        self.instances[entity].image_index = value
+    }
+
+    #[gml::get(image_speed)]
+    pub fn get_image_speed(&self, entity: vm::Entity) -> f32 { self.instances[entity].image_speed }
+    #[gml::set(image_speed)]
+    pub fn set_image_speed(&mut self, entity: vm::Entity, value: f32) {
+        self.instances[entity].image_speed = value
     }
 }
