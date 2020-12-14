@@ -42,11 +42,11 @@ impl Batch {
         self.height = height as f32;
     }
 
-    pub fn quad(&mut self, world: Rect, texture: Rect) {
-        let x1 = world.x;
-        let y1 = world.y;
-        let x2 = world.x + world.w;
-        let y2 = world.y + world.h;
+    pub fn quad(&mut self, position: Rect, texture: Rect) {
+        let x1 = position.x;
+        let y1 = position.y;
+        let x2 = position.x + position.w;
+        let y2 = position.y + position.h;
 
         let u1 = texture.x / self.width;
         let v1 = texture.y / self.height;

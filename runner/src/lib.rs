@@ -48,6 +48,7 @@ pub struct Texture {
 }
 
 pub struct Sprite {
+    pub origin: (u32, u32),
     pub frames: Vec<Frame>,
 }
 
@@ -122,7 +123,7 @@ fn compile_textures(game: &project::Game) -> (Vec<Texture>, Vec<Sprite>) {
     let mut area = 0;
     let mut max_width = 0;
     let mut max_height = 0;
-    for (sprite, &project::Sprite { ref frames, .. }) in game.sprites.iter().enumerate() {
+    for (sprite, &project::Sprite { origin, ref frames, .. }) in game.sprites.iter().enumerate() {
         let mut assets = Vec::default();
         for (frame, &project::Frame { size, .. }) in frames.iter().enumerate() {
             let pos = (0, 0);
@@ -138,7 +139,7 @@ fn compile_textures(game: &project::Game) -> (Vec<Texture>, Vec<Sprite>) {
             max_width = cmp::max(max_width, width as u16);
             max_height = cmp::max(max_height, height as u16);
         }
-        sprites.push(Sprite { frames: assets });
+        sprites.push(Sprite { origin, frames: assets });
     }
 
     // As a heuristic, sort by height and assume the packer will achieve about 75% utilization.
