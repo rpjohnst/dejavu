@@ -200,8 +200,8 @@ pub enum Prototype {
     Native { arity: usize, variadic: bool },
     /// A built-in member accessed via getter and setter.
     Member,
-    /// A GML script.
-    Script { id: i32 },
+    /// A project resource id.
+    Resource { id: i32, script: bool, },
 }
 
 impl Function {

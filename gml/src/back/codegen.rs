@@ -95,7 +95,7 @@ impl<'p> Codegen<'p> {
 
                 let op = code::Op::from(op);
                 let a = match self.prototypes.get(&a) {
-                    Some(&ssa::Prototype::Script { id }) => id as usize,
+                    Some(&ssa::Prototype::Resource { id, script: true }) => id as usize,
                     _ => self.emit_string(a),
                 };
                 let b = self.registers[parameters[0]];

@@ -700,7 +700,7 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
             _ => {
                 if let ast::Expr::Value(ast::Value::Ident(resource)) = *expr {
                     match self.prototypes.get(&resource) {
-                        Some(&ssa::Prototype::Script { id }) => {
+                        Some(&ssa::Prototype::Resource { id, .. }) => {
                             return self.emit_real(id as f64, expr_loc)
                         }
                         _ => {}
@@ -718,10 +718,10 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
         let (symbol, symbol_span) = symbol;
 
         let (op, arity, variadic) = match self.prototypes.get(&symbol) {
-            Some(&ssa::Prototype::Script { .. }) =>
-                (ssa::Opcode::Call, 0, true),
             Some(&ssa::Prototype::Native { arity, variadic }) =>
                 (ssa::Opcode::CallApi, arity, variadic),
+            Some(&ssa::Prototype::Resource { script: true, .. }) =>
+                (ssa::Opcode::Call, 0, true),
             _ => {
                 self.errors.error(symbol_span,
                     format_args!("unknown function or script: {}", symbol));

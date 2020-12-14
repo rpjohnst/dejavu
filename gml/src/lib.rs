@@ -62,18 +62,27 @@ pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
             }
         }
     }
+    for (id, &project::Sprite { name, .. }) in game.sprites.iter().enumerate() {
+        let id = id as i32;
+        let name = Symbol::intern(name);
+        prototypes.insert(name, ssa::Prototype::Resource { id, script: false });
+    }
     for (id, &project::Script { name, .. }) in game.scripts.iter().enumerate() {
         let id = id as i32;
         let name = Symbol::intern(name);
-        prototypes.insert(name, ssa::Prototype::Script { id });
+        prototypes.insert(name, ssa::Prototype::Resource { id, script: true });
         debug.scripts.push(name);
     }
-    for &project::Object { name, .. } in game.objects.iter() {
+    for (id, &project::Object { name, .. }) in game.objects.iter().enumerate() {
+        let id = id as i32;
         let name = Symbol::intern(name);
+        prototypes.insert(name, ssa::Prototype::Resource { id, script: false });
         debug.objects.push(name);
     }
-    for &project::Room { name, .. } in game.rooms.iter() {
+    for (id, &project::Room { name, .. }) in game.rooms.iter().enumerate() {
+        let id = id as i32;
         let name = Symbol::intern(name);
+        prototypes.insert(name, ssa::Prototype::Resource { id, script: false });
         debug.rooms.push(name);
     }
 
