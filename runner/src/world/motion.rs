@@ -74,6 +74,7 @@ impl State {
     pub fn set_hspeed(&mut self, entity: vm::Entity, value: f32) {
         let instance = &mut self.instances[entity];
         instance.hspeed = value;
+        Self::update_speed_direction(instance);
     }
 
     #[gml::get(vspeed)]
@@ -82,6 +83,57 @@ impl State {
     pub fn set_vspeed(&mut self, entity: vm::Entity, value: f32) {
         let instance = &mut self.instances[entity];
         instance.vspeed = value;
+        Self::update_speed_direction(instance);
+    }
+
+    fn update_speed_direction(instance: &mut Instance) {
+        instance.direction = f32::atan2(-instance.vspeed, instance.hspeed).to_degrees();
+        instance.speed = f32::sqrt(
+            instance.hspeed * instance.hspeed + instance.vspeed * instance.vspeed
+        );
+    }
+
+    #[gml::get(direction)]
+    pub fn get_direction(&self, entity: vm::Entity) -> f32 { self.instances[entity].direction }
+    #[gml::set(direction)]
+    pub fn set_direction(&mut self, entity: vm::Entity, value: f32) {
+        let instance = &mut self.instances[entity];
+        instance.direction = value;
+        Self::update_hspeed_vspeed(instance);
+    }
+
+    #[gml::get(speed)]
+    pub fn get_speed(&self, entity: vm::Entity) -> f32 { self.instances[entity].speed }
+    #[gml::set(speed)]
+    pub fn set_speed(&mut self, entity: vm::Entity, value: f32) {
+        let instance = &mut self.instances[entity];
+        instance.speed = value;
+        Self::update_hspeed_vspeed(instance);
+    }
+
+    fn update_hspeed_vspeed(instance: &mut Instance) {
+        let direction = instance.direction.to_radians();
+        instance.hspeed = instance.speed * f32::cos(direction);
+        instance.vspeed = instance.speed * -f32::sin(direction);
+    }
+
+    #[gml::api]
+    pub fn move_towards_point(&mut self, entity: vm::Entity, x: f32, y: f32, sp: f32) {
+        let instance = &mut self.instances[entity];
+        instance.direction = f32::atan2(-(y - instance.y), x - instance.x);
+        instance.speed = sp;
+        Self::update_hspeed_vspeed(instance);
+    }
+
+    #[gml::api]
+    pub fn action_move_point(
+        &mut self, entity: vm::Entity, relative: bool, mut x: f32, mut y: f32, sp: f32
+    ) {
+        if relative {
+            x += self.instances[entity].x;
+            y += self.instances[entity].y;
+        }
+        self.move_towards_point(entity, x, y, sp);
     }
 
     #[gml::api]
