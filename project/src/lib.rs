@@ -1,9 +1,28 @@
 pub struct Game<'a> {
+    pub sprites: Vec<Sprite<'a>>,
     pub scripts: Vec<Script<'a>>,
     pub objects: Vec<Object<'a>>,
     pub rooms: Vec<Room<'a>>,
 
     pub last_instance: i32,
+}
+
+#[derive(Default)]
+pub struct Sprite<'a> {
+    pub name: &'a [u8],
+    pub origin: (u32, u32),
+    pub frames: Vec<Frame<'a>>,
+    pub masks: Vec<Mask>,
+}
+
+#[derive(Default)]
+pub struct Frame<'a> {
+    pub size: (u32, u32),
+    pub data: &'a [u8],
+}
+
+#[derive(Default, Debug)]
+pub struct Mask {
 }
 
 #[derive(Default)]
@@ -15,6 +34,7 @@ pub struct Script<'a> {
 #[derive(Default)]
 pub struct Object<'a> {
     pub name: &'a [u8],
+    pub sprite: i32,
     pub persistent: bool,
     pub events: Vec<Event<'a>>,
 }
@@ -110,6 +130,7 @@ pub struct Instance<'a> {
 impl<'a> Default for Game<'a> {
     fn default() -> Game<'a> {
         Game {
+            sprites: Vec::default(),
             scripts: Vec::default(),
             objects: Vec::default(),
             rooms: Vec::default(),

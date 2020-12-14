@@ -7,6 +7,7 @@ pub mod string;
 pub mod motion;
 pub mod instance;
 pub mod room;
+pub mod draw;
 pub mod show;
 pub mod control;
 pub mod data;
@@ -19,6 +20,7 @@ pub struct World {
     pub motion: motion::State,
     pub instance: instance::State,
     pub room: room::State,
+    pub draw: draw::State,
     pub show: show::State,
     pub control: control::State,
     pub data: data::State,

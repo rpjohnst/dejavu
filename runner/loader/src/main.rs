@@ -66,6 +66,7 @@ fn main() {
     let first_obj = game.objects.len() as i32;
     game.objects.push(project::Object {
         name: b"first_obj",
+        sprite: -1,
         persistent: false,
         events: vec![
             project::Event {
@@ -103,6 +104,7 @@ fn main() {
     let second_obj = game.objects.len() as i32;
     game.objects.push(project::Object {
         name: b"second_obj",
+        sprite: -1,
         persistent: false,
         events: vec![],
     });
@@ -136,5 +138,5 @@ fn main() {
         }
     };
     let world = runner::World::from_assets(&assets, debug);
-    runner::run(&mut runner::Context { world, assets });
+    runner::run(runner::Context { world, assets });
 }

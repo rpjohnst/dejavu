@@ -3,10 +3,8 @@ use crate::{Context, instance, Instance};
 use gml::vm;
 
 #[derive(Default)]
-pub struct State {
-}
+pub struct State;
 
-#[gml::bind]
 impl State {
     pub fn load_room(cx: &mut Context, thread: &mut vm::Thread, num: i32) ->
         vm::Result<()>
@@ -48,8 +46,7 @@ impl State {
             thread.execute(cx, create, vec![])?;
         }
 
-        let Context { world, .. } = cx;
-        world.instance.free_destroyed(&mut world.world, &mut world.motion);
+        crate::instance::State::free_destroyed(cx);
         Ok(())
     }
 }

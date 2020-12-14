@@ -20,15 +20,14 @@
       </nav>
     </div>
 
-    <div class="row">
-      <div class="playground">
-        <nav class="toolbar">
-          <ul class="nav left">
-            <li><a id="run">Run</a></li>
-          </ul>
-        </nav>
+    <div class="row playground">
+      <nav class="toolbar">
+        <ul class="nav left">
+          <li><a id="run">Run</a></li>
+        </ul>
+      </nav>
 
-        <pre id="editor" class="left">
+      <pre id="editor">
 // Click &ldquo;Run&rdquo;!
 // GML has very flexible syntax, and Dejavu supports it all!
 
@@ -48,8 +47,8 @@ begin
     show_debug_message("One flies down and circles around, " + string(i - 1) + " beautiful " + noun + ".")
 end
 </pre>
-        <pre id="output"></pre>
-      </div>
+      <div><canvas id="canvas"></canvas></div>
+      <pre id="output"></pre>
     </div>
 
     <div class="row">

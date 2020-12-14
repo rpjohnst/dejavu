@@ -108,6 +108,7 @@ dependencies = [
  "bstr",
  "gml",
  "project",
+ "wasm-bindgen",
 ]
 
 [[package]]

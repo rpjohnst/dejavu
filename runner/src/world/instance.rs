@@ -1,5 +1,5 @@
 use gml::{self, vm};
-use crate::{Context, motion};
+use crate::{Context, motion, draw};
 
 pub struct State {
     pub next_id: i32,
@@ -19,6 +19,42 @@ impl Default for State {
             next_id: 100001,
             instances: vm::EntityMap::default(),
             destroyed: Vec::default(),
+        }
+    }
+}
+
+impl State {
+    pub fn instance_create_id(cx: &mut Context, x: f32, y: f32, object_index: i32, id: i32) ->
+        vm::Entity
+    {
+        let Context { world, assets } = cx;
+
+        let &crate::Object {
+            sprite_index,
+            persistent,
+        } = &assets.objects[object_index as usize];
+
+        let crate::World { world, instance, motion, draw, .. } = world;
+        let entity = world.create_entity();
+        world.add_entity(entity, object_index, id);
+        let inst = Instance { object_index, id, persistent };
+        instance.instances.insert(entity, inst);
+        let instance = motion::Instance::from_pos(x, y);
+        motion.instances.insert(entity, instance);
+        let instance = draw::Instance { sprite_index, ..Default::default() };
+        draw.instances.insert(entity, instance);
+
+        entity
+    }
+
+    pub fn free_destroyed(cx: &mut Context) {
+        let Context { world, .. } = cx;
+        let crate::World { world, motion, instance, draw, .. } = world;
+        for entity in instance.destroyed.drain(..) {
+            draw.instances.remove(entity);
+            motion.instances.remove(entity);
+            instance.instances.remove(entity);
+            world.destroy_entity(entity);
         }
     }
 }
@@ -117,23 +153,6 @@ impl State {
         Ok(id)
     }
 
-    pub fn instance_create_id(cx: &mut Context, x: f32, y: f32, object_index: i32, id: i32) ->
-        vm::Entity
-    {
-        let Context { world, assets } = cx;
-
-        let persistent = assets.objects[object_index as usize].persistent;
-
-        let crate::World { world, instance, motion, .. } = world;
-        let entity = world.create_entity();
-        world.add_entity(entity, object_index, id);
-        let inst = Instance { object_index, id, persistent };
-        instance.instances.insert(entity, inst);
-        let instance = motion::Instance::from_pos(x, y);
-        motion.instances.insert(entity, instance);
-
-        entity
-    }
 
     #[gml::api]
     pub fn instance_destroy(cx: &mut Context, thread: &mut vm::Thread, entity: vm::Entity) ->
@@ -159,13 +178,6 @@ impl State {
         Ok(())
     }
 
-    pub fn free_destroyed(&mut self, world: &mut vm::World, motion: &mut motion::State) {
-        for entity in self.destroyed.drain(..) {
-            motion.instances.remove(entity);
-            self.instances.remove(entity);
-            world.destroy_entity(entity);
-        }
-    }
 
     #[gml::api]
     pub fn action_create_object(

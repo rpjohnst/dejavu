@@ -10,7 +10,7 @@ dwarf-debug-info = true
 [lib]
 crate-type = ["cdylib"]
 
-[target.wasm32-unknown-unknown.dependencies]
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 gml = { path = "../gml" }
 runner = { path = "../runner" }
 project = { path = "../project" }
