@@ -49,6 +49,12 @@ pub struct Event<'a> {
 pub mod event_type {
     pub const CREATE: u32 = 0;
     pub const DESTROY: u32 = 1;
+    pub const STEP: u32 = 3;
+}
+
+pub mod event_kind {
+    // Step events
+    pub const STEP: i32 = 0;
 }
 
 #[derive(Default)]

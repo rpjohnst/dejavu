@@ -24,29 +24,23 @@
       <nav class="toolbar">
         <ul class="nav left">
           <li><a id="run">Run</a></li>
+          <li><a id="stop">Stop</a></li>
         </ul>
       </nav>
 
-      <pre id="editor">
-// Click &ldquo;Run&rdquo;!
-// GML has very flexible syntax, and Dejavu supports it all!
+      <pre id="editor">// This script runs once per frame per object:
 
-var i;
-for (i := 10; i &lt;&gt; 0; i -= 1)
-begin
-    var noun;
-    if i = 1 then noun := 'birb' else noun := 'birbs'
-    show_debug_message(string(i) + " beautiful " + noun + " in a tree, " + string(i) + " beautiful " + noun + ".")
+if x < 0 {
+    hspeed = 3
+} else if x > 256 {
+    hspeed = -3
+}
 
-    if i == 1
-    {
-        show_debug_message("One flies down and circles around, no more birbs in a tree.")
-        break
-    }
-    if (i - 1 = 1) noun = 'birb' else noun = 'birbs'
-    show_debug_message("One flies down and circles around, " + string(i - 1) + " beautiful " + noun + ".")
-end
-</pre>
+if y < 0 {
+    vspeed = 3
+} else if y > 384 {
+    vspeed = -3
+}</pre>
       <div><canvas id="canvas"></canvas></div>
       <pre id="output"></pre>
     </div>

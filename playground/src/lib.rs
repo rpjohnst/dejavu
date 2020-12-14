@@ -44,8 +44,8 @@ pub fn run(source: &str) {
         sprite: circle_spr,
         events: vec![
             project::Event {
-                event_type: project::event_type::CREATE,
-                event_kind: 0,
+                event_type: project::event_type::STEP,
+                event_kind: project::event_kind::STEP,
                 actions: vec![
                     project::Action {
                         library: 1,
@@ -67,13 +67,22 @@ pub fn run(source: &str) {
     let _playground_rm = game.rooms.len() as i32;
 
     game.last_instance += 1;
-    let id = game.last_instance;
+    let id1 = game.last_instance;
+    game.last_instance += 1;
+    let id2 = game.last_instance;
 
     game.rooms.push(project::Room {
         name: b"playground_rm",
         code: b"",
         instances: vec![
-            project::Instance { x: 0, y: 0, object_index: playground_obj, id, code: b"" },
+            project::Instance {
+                x: 85, y: 128, object_index: playground_obj, id: id1,
+                code: b"hspeed = 3; vspeed = -3;"
+            },
+            project::Instance {
+                x: 171, y: 128, object_index: playground_obj, id: id2,
+                code: b"hspeed = -3; vspeed = 3;"
+            },
         ],
         ..project::Room::default()
     });

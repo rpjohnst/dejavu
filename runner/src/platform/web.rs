@@ -24,6 +24,11 @@ pub fn run(mut cx: crate::Context) -> State {
     let callback: Box<dyn FnMut()> = Box::new(move || {
         crate::graphics::frame(&mut cx);
         crate::draw::State::draw_world(&mut cx);
+        if let Err(error) = crate::instance::State::step(&mut cx, &mut thread) {
+            let crate::World { show, .. } = &cx.world;
+            show.show_vm_error(&*error);
+        }
+        crate::motion::State::simulate(&mut cx);
     });
     let closure = Closure::wrap(callback);
     start(&closure);
