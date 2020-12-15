@@ -16,14 +16,18 @@ mod atlas;
 mod batch;
 
 #[cfg_attr(target_arch = "wasm32", path = "platform/web.rs")]
+#[cfg_attr(windows, path = "platform/win32.rs")]
 #[cfg_attr(not(any(
     target_arch = "wasm32",
+    windows,
 )), path = "platform/unknown.rs")]
 mod platform;
 
 #[cfg_attr(target_arch = "wasm32", path = "graphics/webgl2.rs")]
+#[cfg_attr(windows, path = "graphics/d3d11.rs")]
 #[cfg_attr(not(any(
     target_arch = "wasm32",
+    windows,
 )), path = "graphics/unknown.rs")]
 mod graphics;
 
