@@ -4,7 +4,8 @@ export function renderer_new(canvas, atlas, width, height) {
   const program = buildProgram(gl, vs, fs);
   gl.useProgram(program);
   const viewLocation = 0;
-  gl.uniformBlockBinding(program, gl.getUniformBlockIndex(program, "View"), viewLocation);
+  const viewIndex = gl.getUniformBlockIndex(program, "View");
+  gl.uniformBlockBinding(program, viewIndex, viewLocation);
   const texLocation = 0;
   gl.uniform1i(gl.getUniformLocation(program, "tex"), texLocation);
   const posLocation = gl.getAttribLocation(program, "vertex_pos");
@@ -12,7 +13,14 @@ export function renderer_new(canvas, atlas, width, height) {
 
   const ubo = gl.createBuffer();
   gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
-  gl.bufferData(gl.UNIFORM_BUFFER, 8, gl.DYNAMIC_DRAW);
+  const uboSize = gl.getActiveUniformBlockParameter(program, viewIndex, gl.UNIFORM_BLOCK_DATA_SIZE);
+  if (uboSize == 0) {
+    console.error("Invalid UNIFORM_BLOCK_DATA_SIZE: ", uboSize);
+  }
+  if (uboSize < 8) {
+    uboSize = 8;
+  }
+  gl.bufferData(gl.UNIFORM_BUFFER, uboSize, gl.DYNAMIC_DRAW);
 
   const texture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, texture);
