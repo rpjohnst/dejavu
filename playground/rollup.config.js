@@ -1,9 +1,8 @@
-import resolve from "@rollup/plugin-node-resolve";
-import commonjs from "@rollup/plugin-commonjs";
+import { nodeResolve } from "@rollup/plugin-node-resolve";
+import url from "@rollup/plugin-url";
 import livereload from "rollup-plugin-livereload";
 import serve from "rollup-plugin-serve";
 import { terser } from "rollup-plugin-terser";
-import url from "@rollup/plugin-url";
 
 const release = !process.env.ROLLUP_WATCH;
 
@@ -13,12 +12,11 @@ export default {
   },
   output: {
     dir: "public/module",
-    format: "esm",
+    format: "es",
     sourcemap: !release,
   },
   plugins: [
-    resolve(),
-    commonjs(),
+    nodeResolve(),
     url({ limit: 0, include: "**/*.wasm", publicPath: "module/" }),
     release && terser(),
     !release && livereload("public"),

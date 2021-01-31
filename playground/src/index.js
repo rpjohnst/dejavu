@@ -1,25 +1,44 @@
 import init, { run, stop } from "playground";
 import wasm from "playground/playground_bg.wasm";
-import ace from "ace-builds";
+import { EditorState, basicSetup } from "@codemirror/basic-setup";
+import { EditorView, keymap } from "@codemirror/view";
+import { indentUnit } from "@codemirror/language";
+import { defaultTabBinding } from "@codemirror/commands";
+import { gml } from "codemirror-lang-gml";
 
 (async () => {
   await init(wasm);
-  run(editor.getValue());
+  run(view.state.sliceDoc());
 })();
 
-ace.config.set("basePath", "module");
-const editor = ace.edit("editor", {
-  useSoftTabs: true,
-  navigateWithinSoftTabs: true,
+const doc = `// This script runs once per frame per object:
 
-  scrollPastEnd: 1
-});
-editor.setShowPrintMargin(false);
+direction += 1
 
-document.getElementById("run").addEventListener("click", event => run(editor.getValue()));
-document.getElementById("stop").addEventListener("click", event => stop());
-editor.commands.addCommand({
-  name: "run",
-  bindKey: { win: "Ctrl-Enter", mac: "Command-Enter" },
-  exec: editor => run(editor.getValue()),
+if x < 0 {
+    hspeed = 3
+} else if x > 256 {
+    hspeed = -3
+}
+
+if y < 0 {
+    vspeed = 3
+} else if y > 384 {
+    vspeed = -3
+}`;
+
+const state = EditorState.create({
+  doc,
+  extensions: [
+    basicSetup,
+    indentUnit.of("    "),
+    keymap.of([
+      defaultTabBinding,
+      { key: "Mod-Enter", run(view) { run(view.state.sliceDoc()); return true; } },
+    ]),
+    gml(),
+  ],
 });
+const view = new EditorView({ state, parent: document.getElementById("editor") });
+document.getElementById("run").addEventListener("click", _ => run(view.state.sliceDoc()));
+document.getElementById("stop").addEventListener("click", _ => stop());
