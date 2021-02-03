@@ -22,7 +22,7 @@ npm install
 npm run build
 ```
 
-Instead of `npm run build`, this command launches a live-reloading development server on [http://localhost:10001/]():
+Instead of `npm run build`, this command launches a live-reloading development server on http://localhost:10001/:
 
 ```bash
 npm run start
