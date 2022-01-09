@@ -1,4 +1,4 @@
-export function renderer_new(canvas, atlas, width, height) {
+export function rendererNew(canvas, atlas, width, height) {
   const gl = canvas.getContext("webgl2");
 
   const program = buildProgram(gl, vs, fs);
@@ -61,7 +61,7 @@ function buildShader(gl, type, source) {
   return shader;
 }
 
-export function renderer_frame({ gl, program, viewLocation, ubo, vao }) {
+export function rendererFrame({ gl, program, viewLocation, ubo, vao }) {
   const width = window.devicePixelRatio * gl.canvas.clientWidth;
   const height = window.devicePixelRatio * gl.canvas.clientHeight;
   if (gl.canvas.width != width || gl.canvas.height != height) {
@@ -84,7 +84,7 @@ export function renderer_frame({ gl, program, viewLocation, ubo, vao }) {
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 }
 
-export function renderer_batch({ gl, texLocation, texture, vbo, ebo }, vertex, index) {
+export function rendererBatch({ gl, texLocation, texture, vbo, ebo }, vertex, index) {
   gl.activeTexture(gl.TEXTURE0 + texLocation);
   gl.bindTexture(gl.TEXTURE_2D, texture);
 

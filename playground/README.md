@@ -6,26 +6,28 @@ It is currently hosted here: https://dejavu.abubalay.com/
 
 # Building
 
-In addition to the Rust toolchain needed to build Dejavu itself, the playground relies on [wasm-pack] and [Node.js].
+In addition to the Rust toolchain needed to build Dejavu itself, the playground relies on [Binaryen] (optionally) and [Node.js].
 
-[wasm-pack]: https://rustwasm.github.io/wasm-pack/
+[binaryen]: https://github.com/WebAssembly/binaryen/
 [node.js]: https://nodejs.org/
 
 To build the playground locally, run these commands from this directory:
 
 ```bash
 # Build the playground crate to WebAssembly:
-wasm-pack build --target web
+# (The wasm-opt step can be replaced with a simple file copy.)
+cargo build --release
+wasm-opt -Os -o src/playground.wasm ../target/wasm32-unknown-unknown/release/playground.wasm
 
 # Build the user interface:
 npm install
 npm run build
 ```
 
-Instead of `npm run build`, this command launches a live-reloading development server on http://localhost:10001/:
+During development, launch a live-reloading server on http://localhost:10001/ with this command instead of `npm run build`:
 
 ```bash
 npm run start
 ```
 
-(Changes to the Rust code will only be picked up after re-running `wasm-pack`.)
+(Changes to the Rust code will only be picked up after re-running `cargo build` and `wasm-opt`.)

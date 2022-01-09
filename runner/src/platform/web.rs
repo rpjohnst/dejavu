@@ -1,17 +1,14 @@
 use gml::vm;
-use wasm_bindgen::prelude::*;
+use wasm::JsValue;
 
-pub type State = Closure<dyn FnMut()>;
+pub type State = impl FnMut();
 
+#[derive(Default)]
 pub struct Draw {
     pub canvas: JsValue,
 }
 
-impl Default for Draw {
-    fn default() -> Self { Self { canvas: JsValue::UNDEFINED } }
-}
-
-pub fn run(mut cx: crate::Context) -> State {
+pub fn run(mut cx: crate::Context) -> *mut State {
     let mut thread = vm::Thread::default();
 
     crate::graphics::load(&mut cx);
@@ -21,22 +18,29 @@ pub fn run(mut cx: crate::Context) -> State {
         show.show_vm_error(&*error);
     }
 
-    let callback: Box<dyn FnMut()> = Box::new(move || {
-        crate::graphics::frame(&mut cx);
-        crate::draw::State::draw_world(&mut cx);
+    crate::draw::State::screen_redraw(&mut cx);
+
+    let frame = Box::new(move || {
         if let Err(error) = crate::instance::State::step(&mut cx, &mut thread) {
             let crate::World { show, .. } = &cx.world;
             show.show_vm_error(&*error);
         }
         crate::motion::State::simulate(&mut cx);
+
+        crate::draw::State::screen_redraw(&mut cx);
     });
-    let closure = Closure::wrap(callback);
-    start(&closure);
-    closure
+    let frame_fn = invoke::<State>;
+    let frame_cx = Box::into_raw(frame);
+    unsafe { start(frame_fn, frame_cx as *mut _); }
+    frame_cx
 }
 
-#[wasm_bindgen(module = "/src/platform/web.js")]
-extern "C" {
-    fn start(frame: &Closure<dyn FnMut()>) -> JsValue;
+extern "system" fn invoke<F: FnMut()>(f: *mut u8) {
+    let f = unsafe { &mut *(f as *mut F) };
+    f()
+}
+
+extern "system" {
+    fn start(frame_fn: extern "system" fn(*mut u8), frame_cx: *mut u8);
     pub fn stop();
 }

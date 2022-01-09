@@ -7,8 +7,8 @@ pub struct Batch {
     height: f32,
 }
 
-#[repr(C)]
 #[derive(Copy, Clone)]
+#[repr(C)]
 pub struct Vertex {
     pub position: [f32; 3],
     pub texture: [f32; 2],

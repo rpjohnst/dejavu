@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     #[cfg(not(windows))]
     if target_family == "windows" {
-        use std::{fmt, error::Error};
+        use std::fmt;
 
         struct TargetError;
 

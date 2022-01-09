@@ -26,7 +26,9 @@ impl Default for Instance {
 }
 
 impl State {
-    pub fn draw_world(cx: &mut Context) {
+    pub fn screen_redraw(cx: &mut Context) {
+        crate::graphics::frame(cx);
+
         let Context { world, .. } = cx;
         let crate::World { world, draw, .. } = world;
         let entities = world.instances.values().clone();
@@ -70,6 +72,8 @@ impl State {
         let Context { world, .. } = cx;
         let crate::World { draw, .. } = world;
         draw.batch.reset(-1, (0, 0));
+
+        crate::graphics::present(cx);
     }
 }
 

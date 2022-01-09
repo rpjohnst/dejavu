@@ -1,3 +1,5 @@
+#![feature(type_alias_impl_trait)]
+
 use std::{cmp, io};
 use std::collections::HashMap;
 use gml::vm;
@@ -8,6 +10,7 @@ pub use crate::batch::Batch;
 
 #[cfg(target_arch = "wasm32")]
 pub use crate::platform::State;
+pub use crate::platform::run;
 #[cfg(target_arch = "wasm32")]
 pub use crate::platform::stop;
 
@@ -183,6 +186,3 @@ fn compile_textures(game: &project::Game) -> (Vec<Texture>, Vec<Sprite>) {
     let texture = Texture { size: (atlas_width, atlas_height), data: texture };
     (vec![texture], sprites)
 }
-
-// Run a Game Maker game.
-pub fn run(cx: Context) -> platform::State { platform::run(cx) }

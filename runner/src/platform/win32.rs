@@ -11,8 +11,6 @@ use winapi::um::winuser::*;
 use gml::vm;
 use crate::Context;
 
-pub type State = ();
-
 pub struct Draw {
     pub hwnd: HWND,
 }
@@ -93,20 +91,19 @@ pub fn run(mut cx: Context) { unsafe {
     }
 
     'main: loop {
-        crate::graphics::frame(&mut cx);
-        crate::draw::State::draw_world(&mut cx);
-        crate::graphics::present(&mut cx);
-        if let Err(error) = crate::instance::State::step(&mut cx, &mut thread) {
-            let crate::World { show, .. } = &cx.world;
-            show.show_vm_error(&*error);
-        }
-        crate::motion::State::simulate(&mut cx);
+        crate::draw::State::screen_redraw(&mut cx);
 
         let mut msg: MSG = mem::zeroed();
         while PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
             if msg.message == WM_QUIT { break 'main; }
             DispatchMessageW(&msg);
         }
+
+        if let Err(error) = crate::instance::State::step(&mut cx, &mut thread) {
+            let crate::World { show, .. } = &cx.world;
+            show.show_vm_error(&*error);
+        }
+        crate::motion::State::simulate(&mut cx);
     }
 } }
 

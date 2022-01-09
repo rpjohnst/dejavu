@@ -2,10 +2,10 @@ name: CI
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     branches:
-      - master
+      - main
 env:
   CARGO_TERM_COLOR: always
 
@@ -21,8 +21,8 @@ jobs:
       uses: actions-rs/toolchain@v1
       with:
         toolchain: ${{ matrix.rust }}
-        profile: minimal
         override: true
+        profile: minimal
     - name: Checkout
       uses: actions/checkout@v2
     - name: Build
@@ -38,17 +38,22 @@ jobs:
       uses: actions-rs/toolchain@v1
       with:
         toolchain: nightly
-        profile: minimal
+        target: wasm32-unknown-unknown
         override: true
-    - name: wasm-pack
-      run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        profile: minimal
+    - name: Binaryen
+      run: |
+        curl -s -L https://github.com/WebAssembly/binaryen/releases/download/version_104/binaryen-version_104-x86_64-linux.tar.gz | tar -xzf - -C ~
+        echo "$HOME/binaryen-version_104/bin" >> $GITHUB_PATH
     - name: Checkout
       uses: actions/checkout@v2
     - name: Build
+      working-directory: playground
       run: |
-        wasm-pack build --target web playground -- --locked
-        npm ci --prefix playground
-        npm run --prefix playground build
+        cargo build --release --locked
+        wasm-opt -Os -o src/playground.wasm ../target/wasm32-unknown-unknown/release/playground.wasm
+        npm ci
+        npm run build
     - name: Login
       uses: azure/login@v1
       with:

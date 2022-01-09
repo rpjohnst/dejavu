@@ -21,3 +21,6 @@ pub fn batch(cx: &mut crate::Context) {
     let crate::draw::State { graphics, .. } = draw;
     let Draw = graphics.as_mut().unwrap();
 }
+
+pub fn present(_cx: &mut crate::Context) {
+}

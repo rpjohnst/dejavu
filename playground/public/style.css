@@ -77,15 +77,23 @@ body.playground-page {
 }
 .playground {
   display: grid;
+  grid-template-areas:
+    'tool tool tool'
+    'tree edit game'
+    'tree edit logs';
   grid-template-rows: auto minmax(0, 4fr) minmax(0, 1fr);
-  grid-template-columns: 6fr 5fr;
+  grid-template-columns: 2fr 5fr 5fr;
+  gap: 3px;
+  background-color: #eee;
 }
 .playground > * {
   max-width: 100%;
   margin: 0;
+  background: #fff;
 }
+
 .playground > .toolbar {
-  grid-column: span 2;
+  grid-area: tool;
   line-height: 40px;
   background-color: #eee;
 }
@@ -93,25 +101,62 @@ body.playground-page {
   height: 40px;
   cursor: pointer;
 }
-#editor { border-right: 3px solid #eee; }
-#editor > * { height: 100%; }
-.cm-wrap { font-size: 14px; }
-.cm-wrap .cm-scroller { font-family: SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace; }
+
+#resources {
+  grid-area: tree;
+  padding-top: 4px;
+}
+#resources ul {
+  margin: 0;
+  padding-left: 20px;
+}
+#resources li {
+  list-style-type: none;
+  position: relative;
+}
+#resources li > a {
+  color: #333;
+  cursor: pointer;
+}
+#resources li > a:not(:last-child):before {
+  display: block;
+  position: absolute;
+  left: -12px;
+}
+#resources li > ul { display: none; }
+#resources li > a:not(:last-child):before { content: "+"; }
+#resources li.open > ul { display: block; }
+#resources li.open > a:not(:last-child):before { content: "-"; }
+#resources li.open > a:last-child { background-color: #eee; }
+
+#editor {
+  grid-area: edit;
+  overflow-y: auto;
+}
+#editor label { display: block; }
+#editor label, #editor .sheet, #editor .sprite { margin: 6px; }
+#editor .sheet { margin: 6px; }
+#editor .sprite canvas {
+  height: 1.42856em;
+  vertical-align: bottom;
+}
+#editor .cm-editor { font-size: 14px; }
+#editor .cm-editor .cm-scroller { font-family: SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace; }
+
+#game { grid-area: game; }
 #canvas {
   width: 100%;
   height: 100%;
 }
+
 #output {
-  grid-column: span 2;
+  grid-area: logs;
   margin: 0;
   padding: 0 6px;
-  border-top: 3px solid #eee;
   white-space: pre-wrap;
   overflow-y: auto;
 }
-#output > .error {
-  color: #e11;
-}
+#output > .error { color: #e11; }
 
 /* Footer */
 footer p {

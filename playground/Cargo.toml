@@ -4,9 +4,6 @@ version = "0.1.0"
 authors = ["Russell Johnston <rpjohnst@gmail.com>"]
 edition = "2018"
 
-[package.metadata.wasm-pack.profile.dev.wasm-bindgen]
-dwarf-debug-info = true
-
 [lib]
 crate-type = ["cdylib"]
 
@@ -14,4 +11,5 @@ crate-type = ["cdylib"]
 gml = { path = "../gml" }
 runner = { path = "../runner" }
 project = { path = "../project" }
-wasm-bindgen = "0.2"
+quickdry = "0.1"
+wasm = { path = "../runner/wasm" }

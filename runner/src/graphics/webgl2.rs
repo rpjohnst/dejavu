@@ -1,8 +1,15 @@
-use std::slice;
-use wasm_bindgen::prelude::*;
+use wasm::JsValue;
 
 pub struct Draw {
     renderer: JsValue,
+}
+
+impl Drop for Draw {
+    fn drop(&mut self) {
+        if self.renderer != JsValue::UNDEFINED {
+            unsafe { renderer_drop(self.renderer) };
+        }
+    }
 }
 
 pub fn load(cx: &mut crate::Context) {
@@ -12,7 +19,11 @@ pub fn load(cx: &mut crate::Context) {
 
     let texture = &assets.textures[0];
     let (width, height) = texture.size;
-    let renderer = renderer_new(&platform.canvas, &texture.data[..], width, height);
+    let renderer = unsafe {
+        let ptr = texture.data.as_ptr();
+        let len = texture.data.len();
+        renderer_new(platform.canvas, ptr, len, width, height)
+    };
 
     *graphics = Some(Draw { renderer });
 }
@@ -21,32 +32,42 @@ pub fn frame(cx: &mut crate::Context) {
     let crate::Context { world, .. } = cx;
     let crate::World { draw, .. } = world;
     let crate::draw::State { graphics, .. } = draw;
-    let Draw { renderer } = graphics.as_mut().unwrap();
-    renderer_frame(renderer);
+    let &mut Draw { renderer } = graphics.as_mut().unwrap();
+    unsafe { renderer_frame(renderer) };
 }
 
 pub fn batch(cx: &mut crate::Context) {
     let crate::Context { world, .. } = cx;
     let crate::World { draw, .. } = world;
     let crate::draw::State { graphics, batch, .. } = draw;
-    let Draw { renderer } = graphics.as_mut().unwrap();
+    let &mut Draw { renderer } = graphics.as_mut().unwrap();
     if batch.index.len() == 0 {
         return;
     }
 
     unsafe {
-        let ptr = batch.vertex.as_ptr() as *const f32;
-        let len = batch.vertex.len() * 5;
-        let vertex = slice::from_raw_parts(ptr, len);
-        let index = &batch.index[..];
+        let vertex_ptr = batch.vertex.as_ptr() as *const f32;
+        let vertex_len = batch.vertex.len() * 5;
+        let index_ptr = batch.index.as_ptr();
+        let index_len = batch.index.len();
 
-        renderer_batch(&renderer, vertex, index);
+        renderer_batch(renderer, vertex_ptr, vertex_len, index_ptr, index_len);
     }
 }
 
-#[wasm_bindgen(module = "/src/graphics/webgl2.js")]
-extern "C" {
-    fn renderer_new(canvas: &JsValue, atlas: &[u8], width: u16, height: u16) -> JsValue;
-    fn renderer_frame(renderer: &JsValue);
-    fn renderer_batch(renderer: &JsValue, vertex_data: &[f32], index_data: &[u16]);
+pub fn present(_cx: &mut crate::Context) {
+}
+
+extern "system" {
+    fn renderer_new(
+        canvas: JsValue,
+        atlas_ptr: *const u8, atlas_len: usize, width: u16, height: u16
+    ) -> JsValue;
+    fn renderer_drop(renderer: JsValue);
+    fn renderer_frame(renderer: JsValue);
+    fn renderer_batch(
+        renderer: JsValue,
+        vertex_ptr: *const f32, vertex_len: usize,
+        index_ptr: *const u16, index_len: usize
+    );
 }
