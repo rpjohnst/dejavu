@@ -91,7 +91,10 @@ pub fn run(mut cx: Context) { unsafe {
     }
 
     'main: loop {
-        crate::draw::State::screen_redraw(&mut cx);
+        if let Err(error) = crate::draw::State::draw(&mut cx, &mut thread) {
+            let crate::World { show, .. } = &cx.world;
+            show.show_vm_error(&*error);
+        }
 
         let mut msg: MSG = mem::zeroed();
         while PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {

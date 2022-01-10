@@ -67,6 +67,7 @@ pub struct Frame {
 
 pub struct Object {
     pub sprite_index: i32,
+    pub depth: f32,
     pub persistent: bool,
 }
 
@@ -90,9 +91,8 @@ pub fn build<'a, F: FnMut() -> E, E: io::Write + 'static>(game: &'a project::Gam
     assets.textures = textures;
     assets.sprites = sprites;
     assets.objects = game.objects.iter()
-        .map(|&project::Object { sprite, persistent, .. }| Object {
-            sprite_index: sprite,
-            persistent
+        .map(|&project::Object { sprite, depth, persistent, .. }| Object {
+            sprite_index: sprite, depth: depth as f32, persistent
         })
         .collect();
     assets.rooms = game.rooms.iter()

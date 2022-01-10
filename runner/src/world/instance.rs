@@ -31,6 +31,7 @@ impl State {
 
         let &crate::Object {
             sprite_index,
+            depth,
             persistent,
         } = &assets.objects[object_index as usize];
 
@@ -41,8 +42,8 @@ impl State {
         instance.instances.insert(entity, inst);
         let instance = motion::Instance::from_pos(x, y);
         motion.instances.insert(entity, instance);
-        let instance = draw::Instance { sprite_index, ..Default::default() };
-        draw.instances.insert(entity, instance);
+        let instance = draw::Instance { sprite_index, depth, ..Default::default() };
+        draw.add_entity(entity, instance);
 
         entity
     }
@@ -56,6 +57,7 @@ impl State {
             instance.instances.remove(entity);
             world.destroy_entity(entity);
         }
+        draw.free_destroyed();
     }
 
     pub fn step(cx: &mut Context, thread: &mut vm::Thread) -> vm::Result<()> {
@@ -76,6 +78,7 @@ impl State {
             }
         }
 
+        State::free_destroyed(cx);
         Ok(())
     }
 }

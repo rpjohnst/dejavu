@@ -69,6 +69,7 @@ fn main() {
     game.objects.push(project::Object {
         name: b"first_obj",
         sprite: -1,
+        depth: 0,
         persistent: false,
         events: vec![
             project::Event {
@@ -107,6 +108,7 @@ fn main() {
     game.objects.push(project::Object {
         name: b"second_obj",
         sprite: -1,
+        depth: 0,
         persistent: false,
         events: vec![],
     });

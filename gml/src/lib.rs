@@ -311,6 +311,7 @@ fn display_event(
         (project::event_type::CREATE, _) => write!(f, "create event")?,
         (project::event_type::DESTROY, _) => write!(f, "destroy event")?,
         (project::event_type::STEP, _) => write!(f, "step event")?,
+        (project::event_type::DRAW, _) => write!(f, "draw event")?,
         _ => write!(f, "unknown event")?,
     };
     write!(f, " for object {}", object)?;

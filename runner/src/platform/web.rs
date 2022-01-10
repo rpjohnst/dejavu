@@ -18,7 +18,10 @@ pub fn run(mut cx: crate::Context) -> *mut State {
         show.show_vm_error(&*error);
     }
 
-    crate::draw::State::screen_redraw(&mut cx);
+    if let Err(error) = crate::draw::State::draw(&mut cx, &mut thread) {
+        let crate::World { show, .. } = &cx.world;
+        show.show_vm_error(&*error);
+    }
 
     let frame = Box::new(move || {
         if let Err(error) = crate::instance::State::step(&mut cx, &mut thread) {
@@ -27,7 +30,10 @@ pub fn run(mut cx: crate::Context) -> *mut State {
         }
         crate::motion::State::simulate(&mut cx);
 
-        crate::draw::State::screen_redraw(&mut cx);
+        if let Err(error) = crate::draw::State::draw(&mut cx, &mut thread) {
+            let crate::World { show, .. } = &cx.world;
+            show.show_vm_error(&*error);
+        }
     });
     let frame_fn = invoke::<State>;
     let frame_cx = Box::into_raw(frame);
