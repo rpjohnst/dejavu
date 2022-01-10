@@ -2,7 +2,7 @@
 name = "d3dcompiler"
 version = "0.1.0"
 authors = ["Russell Johnston <rpjohnst@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [target.'cfg(windows)'.dependencies]
 win32 = { path = "../win32" }
