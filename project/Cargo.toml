@@ -5,3 +5,8 @@ authors = ["Russell Johnston <rpjohnst@gmail.com>"]
 edition = "2021"
 
 [dependencies]
+flate2 = { version = "1.0", optional = true }
+quickdry = { version = "0.1.2", optional = true }
+
+[features]
+read = ["flate2", "quickdry"]

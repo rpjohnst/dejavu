@@ -11,5 +11,5 @@ crate-type = ["cdylib"]
 gml = { path = "../gml" }
 runner = { path = "../runner" }
 project = { path = "../project" }
-quickdry = "0.1"
+quickdry = "0.1.2"
 wasm = { path = "../runner/wasm" }

@@ -7,4 +7,5 @@ edition = "2021"
 [dependencies]
 gml = { path = "../../gml" }
 runner = { path = "../../runner" }
-project = { path = "../../project" }
+project = { path = "../../project", features = ["read"] }
+quickdry = "0.1.2"
