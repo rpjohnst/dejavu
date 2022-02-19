@@ -276,9 +276,10 @@ impl FunctionDisplay {
 }
 
 impl EventDisplay {
-    fn from_debug(_: &vm::Debug, event_type: u32, event_kind: i32) -> EventDisplay {
+    fn from_debug(debug: &vm::Debug, event_type: u32, kind: i32) -> EventDisplay {
         match event_type {
-            _ => EventDisplay::Id(event_kind),
+            project::event_type::COLLISION => EventDisplay::Name(debug.objects[kind as usize]),
+            _ => EventDisplay::Id(kind),
         }
     }
 }
@@ -310,8 +311,18 @@ fn display_event(
     match (event_type, event_kind) {
         (project::event_type::CREATE, _) => write!(f, "create event")?,
         (project::event_type::DESTROY, _) => write!(f, "destroy event")?,
+        (project::event_type::ALARM, EventDisplay::Id(i)) => write!(f, "alarm {} event", i)?,
         (project::event_type::STEP, _) => write!(f, "step event")?,
+        (project::event_type::COLLISION, EventDisplay::Name(object)) =>
+            write!(f, "collision event with object {}", object)?,
+        (project::event_type::KEYBOARD, _) => write!(f, "keyboard event")?,
+        (project::event_type::MOUSE, _) => write!(f, "mouse event")?,
+        (project::event_type::OTHER, EventDisplay::Id(project::event_kind::NO_MORE_LIVES)) =>
+            write!(f, "no more lives event")?,
         (project::event_type::DRAW, _) => write!(f, "draw event")?,
+        (project::event_type::KEY_PRESS, _) => write!(f, "key press event")?,
+        (project::event_type::KEY_RELEASE, _) => write!(f, "key release event")?,
+        (project::event_type::TRIGGER, _) => write!(f, "trigger event")?,
         _ => write!(f, "unknown event")?,
     };
     write!(f, " for object {}", object)?;
