@@ -84,7 +84,10 @@ pub struct Sprite<'a> {
     pub name: &'a [u8],
     pub origin: (u32, u32),
     pub frames: Vec<Frame<'a>>,
-    pub masks: Vec<Mask>,
+    pub mask_shape: SpriteMaskShape, // precise, rectangle, disk, diamond
+    pub mask_alpha_tolerance: u32,
+    pub separate_masks: bool,
+    pub mask_bounds: (u32, u32, u32, u32), // left, right, top, bottom
 }
 
 #[derive(Default)]
@@ -94,13 +97,12 @@ pub struct Frame<'a> {
 }
 
 #[derive(Default)]
-pub struct Mask {
-    pub size: (u32, u32),
-    pub left: u32,
-    pub right: u32,
-    pub bottom: u32,
-    pub top: u32,
-    pub data: Vec<u32>,
+pub enum SpriteMaskShape {
+    #[default]
+    Precise,
+    Rectangle,
+    Disk,
+    Diamond,
 }
 
 #[derive(Default)]
