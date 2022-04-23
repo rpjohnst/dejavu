@@ -48,8 +48,17 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
     // constants
 
     let _version = read.next_u32()?;
-    let _len = read.next_u32()?;
-    assert_eq!(_len, 0);
+    let len = read.next_u32()? as usize;
+
+    game.constants.reserve(len);
+    for _id in 0..len {
+        let mut name: &[u8] = &[];
+        let mut value: &[u8] = &[];
+        read.read_blob(&mut name, arena)?;
+        read.read_blob(&mut value, arena)?;
+        game.constants.push((name, value));
+    }
+
     let _time = read.next_f64()?;
 
     // sounds

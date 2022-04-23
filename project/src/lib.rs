@@ -14,6 +14,8 @@ pub struct Game<'a> {
     pub id: u32,
     pub guid: [u32; 4],
 
+    pub constants: Vec<(&'a [u8], &'a [u8])>,
+
     pub sounds: Vec<Sound<'a>>,
     pub sprites: Vec<Sprite<'a>>,
     pub backgrounds: Vec<Background<'a>>,
@@ -21,7 +23,6 @@ pub struct Game<'a> {
     pub scripts: Vec<Script<'a>>,
     pub objects: Vec<Object<'a>>,
     pub rooms: Vec<Room<'a>>,
-
     pub last_instance: i32,
     pub last_tile: i32,
 }
@@ -364,6 +365,8 @@ impl<'a> Default for Game<'a> {
             pro: true,
             id: 0,
             guid: [0; 4],
+
+            constants: Vec::default(),
 
             sounds: Vec::default(),
             sprites: Vec::default(),
