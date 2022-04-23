@@ -15,6 +15,7 @@ pub struct Game<'a> {
     pub guid: [u32; 4],
 
     pub constants: Vec<(&'a [u8], &'a [u8])>,
+    pub extensions: Vec<&'a [u8]>,
 
     pub sounds: Vec<Sound<'a>>,
     pub sprites: Vec<Sprite<'a>>,
@@ -369,6 +370,7 @@ impl<'a> Default for Game<'a> {
             guid: [0; 4],
 
             constants: Vec::default(),
+            extensions: Vec::default(),
 
             sounds: Vec::default(),
             sprites: Vec::default(),

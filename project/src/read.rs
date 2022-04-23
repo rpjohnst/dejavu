@@ -516,8 +516,13 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
     // extensions
 
     let _version = read.next_u32()?;
-    let _len = read.next_u32()?;
-    assert_eq!(_len, 0);
+    let len = read.next_u32()? as usize;
+    game.extensions.reserve(len);
+    for _id in 0..len {
+        let mut name: &[u8] = &[];
+        read.read_blob(&mut name, arena)?;
+        game.extensions.push(name);
+    }
 
     // game info
 
