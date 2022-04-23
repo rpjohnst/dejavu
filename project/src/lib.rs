@@ -14,7 +14,7 @@ pub struct Game<'a> {
     pub id: u32,
     pub guid: [u32; 4],
 
-    pub constants: Vec<(&'a [u8], &'a [u8])>,
+    pub constants: Vec<Constant<'a>>,
     pub extensions: Vec<&'a [u8]>,
 
     pub sounds: Vec<Sound<'a>>,
@@ -24,6 +24,7 @@ pub struct Game<'a> {
     pub scripts: Vec<Script<'a>>,
     pub objects: Vec<Object<'a>>,
     pub rooms: Vec<Room<'a>>,
+
     pub last_instance: i32,
     pub last_tile: i32,
 }
@@ -65,6 +66,12 @@ pub struct Settings {
     pub error_log: bool,
     pub error_abort: bool,
     pub uninitialized: u32,
+}
+
+#[derive(Default)]
+pub struct Constant<'a> {
+    pub name: &'a [u8],
+    pub value: &'a [u8],
 }
 
 #[derive(Default)]

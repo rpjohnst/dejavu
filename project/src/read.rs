@@ -6,7 +6,7 @@ use flate2::bufread::ZlibDecoder;
 use quickdry::Arena;
 
 use crate::{
-    Game, Settings,
+    Game, Settings, Constant,
     Sound,
     Sprite, Frame, SpriteMaskShape,
     Background,
@@ -49,16 +49,14 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
     let _version = read.next_u32()?;
     let len = read.next_u32()? as usize;
-
     game.constants.reserve(len);
-    for _id in 0..len {
-        let mut name: &[u8] = &[];
-        let mut value: &[u8] = &[];
-        read.read_blob(&mut name, arena)?;
-        read.read_blob(&mut value, arena)?;
-        game.constants.push((name, value));
-    }
+    for id in 0..len {
+        game.constants.push(Constant::default());
 
+        let constant = &mut game.constants[id];
+        read.read_blob(&mut constant.name, arena)?;
+        read.read_blob(&mut constant.value, arena)?;
+    }
     let _time = read.next_f64()?;
 
     // sounds
