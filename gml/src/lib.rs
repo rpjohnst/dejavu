@@ -1,4 +1,3 @@
-#![feature(maybe_uninit_extra)]
 #![feature(box_patterns)]
 #![feature(box_syntax)]
 #![feature(extern_types)]

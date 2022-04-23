@@ -1,5 +1,5 @@
 #[cfg(feature = "read")]
-pub use read::read_gmk;
+pub use read::{read_gmk, read_exe};
 
 #[cfg(feature = "read")]
 mod read;
@@ -14,8 +14,8 @@ pub struct Game<'a> {
     pub id: u32,
     pub guid: [u32; 4],
 
-    pub constants: Vec<Constant<'a>>,
     pub extensions: Vec<&'a [u8]>,
+    pub constants: Vec<Constant<'a>>,
 
     pub sounds: Vec<Sound<'a>>,
     pub sprites: Vec<Sprite<'a>>,
@@ -99,6 +99,8 @@ pub struct Sprite<'a> {
     pub separate_collision: bool,
     pub bounds_kind: u32,
     pub bounds: Bounds,
+
+    pub masks: Vec<Mask>,
 }
 
 #[derive(Default)]
@@ -126,6 +128,13 @@ pub struct Bounds {
     pub right: u32,
     pub bottom: u32,
     pub top: u32,
+}
+
+#[derive(Default)]
+pub struct Mask {
+    pub size: (u32, u32),
+    pub bounds: Bounds,
+    pub data: Vec<u32>,
 }
 
 #[derive(Default)]
@@ -391,8 +400,8 @@ impl<'a> Default for Game<'a> {
             id: 0,
             guid: [0; 4],
 
-            constants: Vec::default(),
             extensions: Vec::default(),
+            constants: Vec::default(),
 
             sounds: Vec::default(),
             sprites: Vec::default(),

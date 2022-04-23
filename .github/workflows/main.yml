@@ -31,7 +31,6 @@ jobs:
       run: cargo test --locked
 
   playground:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
     - name: Rust
@@ -55,10 +54,12 @@ jobs:
         npm ci
         npm run build
     - name: Login
+      if: github.event_name == 'push'
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
     - name: Deploy
+      if: github.event_name == 'push'
       run: |
         az storage blob sync --account-name dejavu --container \$web --source playground/public
         az cdn endpoint purge --resource-group dejavu --profile-name dejavu --name dejavu --content-paths "/*"

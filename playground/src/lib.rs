@@ -83,6 +83,7 @@ pub extern "system" fn game_sprite<'a>(
             project::Frame { size, data },
         ],
         masks: vec![],
+        ..project::Sprite::default()
     });
 }
 

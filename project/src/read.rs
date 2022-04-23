@@ -8,7 +8,7 @@ use quickdry::Arena;
 use crate::{
     Game, Settings, Constant,
     Sound,
-    Sprite, Frame,
+    Sprite, Frame, Mask,
     Background,
     Path, Point,
     Script,
@@ -16,6 +16,7 @@ use crate::{
     Room, RoomBackground, View, Instance, Tile
 };
 
+const GM_OFFSET_800: u64 = 2_000_000;
 const GMK_MAGIC: u32 = 1234321;
 
 pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena) ->
@@ -23,12 +24,84 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 {
     let mut buf = Vec::default();
     read.read_to_end(&mut buf)?;
-    let read = &mut Cursor::new(buf);
 
+    let read = &mut &buf[..];
+    read_header(read, false, game, arena)?;
+    read_rest(*read, false, game, arena)?;
+
+    Ok(())
+}
+
+pub fn read_exe<'a, R: BufRead + Seek>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena) ->
+    io::Result<()>
+{
+    let mut buf = [0; 2];
+    read.read_exact(&mut buf[..])?;
+    if &buf != b"MZ" {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+    read.seek(SeekFrom::Start(GM_OFFSET_800))?;
+
+    read_header(read, true, game, arena)?;
+
+    read.skip_blob()?;
+    read.skip_blob()?;
+
+    // swap tables
+
+    let mut forward = [0u8; 256];
+    let skip_1 = read.next_u32()?;
+    let skip_2 = read.next_u32()?;
+    read.seek(SeekFrom::Current(skip_1 as i64 * 4))?;
+    read.read_exact(&mut forward)?;
+    read.seek(SeekFrom::Current(skip_2 as i64 * 4))?;
+
+    let mut reverse = [0u8; 256];
+    for z in 0..256 { reverse[forward[z] as usize] = z as u8; }
+
+    // decrypt
+
+    let mut data = &mut [][..];
+    let decrypt = &Arena::default();
+    read.read_blob_mut(&mut data, decrypt)?;
+    for i in (1..data.len()).rev() {
+        data[i] = (reverse[data[i] as usize] as i32 - data[i - 1] as i32 - i as i32) as u8;
+    }
+    for i in (0..data.len()).rev() {
+        let j = usize::saturating_sub(i, forward[i & 0xff] as usize);
+        data.swap(i, j);
+    }
+
+    let read = &mut &*data;
+
+    let skip = read.next_u32()?;
+    *read = &read[skip as usize * 4..];
+
+    read.read_bool(&mut game.pro)?;
+
+    read_rest(*read, true, game, arena)?;
+
+    Ok(())
+}
+
+fn read_header<'a, R: BufRead>(read: &mut R, exe: bool, game: &mut Game<'a>, arena: &'a Arena) ->
+    io::Result<()>
+{
     if read.next_u32()? != GMK_MAGIC {
         return Err(io::Error::from(io::ErrorKind::InvalidData));
     }
     read.read_u32(&mut game.version)?;
+
+    if exe {
+        read.read_u32(&mut game.debug)?;
+        read_settings(read, exe, &mut game.settings, arena)?;
+    }
+
+    Ok(())
+}
+
+fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) -> io::Result<()> {
+    let read = &mut Cursor::new(read);
 
     read.read_u32(&mut game.id)?;
     read.read_u32(&mut game.guid[0])?;
@@ -36,14 +109,75 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
     read.read_u32(&mut game.guid[2])?;
     read.read_u32(&mut game.guid[3])?;
 
-    read_settings(read, &mut game.settings, arena)?;
+    if !exe {
+        read_settings(read, exe, &mut game.settings, arena)?;
+    }
+
+    // extensions
+
+    if exe {
+        let _version = read.next_u32()?;
+        let len = read.next_u32()? as usize;
+        game.extensions.reserve(len);
+        for id in 0..len {
+            game.extensions.push(&[][..]);
+
+            let extension = &mut game.extensions[id];
+            let _version = read.next_u32()?;
+            read.read_blob(extension, arena)?;
+            let mut folder = &[][..];
+            read.read_blob(&mut folder, arena)?;
+
+            let len = read.next_u32()? as usize;
+            for _id in 0..len {
+                let _version = read.next_u32()?;
+                let mut file = &[][..];
+                read.read_blob(&mut file, arena)?;
+                let _kind = read.next_u32()?;
+                let mut initialization = &[][..];
+                read.read_blob(&mut initialization, arena)?;
+                let mut finalization = &[][..];
+                read.read_blob(&mut finalization, arena)?;
+
+                let len = read.next_u32()? as usize;
+                for _id in 0..len {
+                    let _version = read.next_u32()?;
+                    let mut name = &[][..];
+                    read.read_blob(&mut name, arena)?;
+                    let mut external_name = &[][..];
+                    read.read_blob(&mut external_name, arena)?;
+                    let _ = read.next_u32()?;
+                    let _ = read.next_u32()?;
+                    let _parameters = read.next_u32()?;
+
+                    for _ in 0..16 {
+                        let _type = read.next_u32()?;
+                    }
+                    let _type = read.next_u32()?;
+
+                    let _ = read.next_u32()?;
+                }
+
+                let len = read.next_u32()? as usize;
+                for _id in 0..len {
+                    let _hidden = read.next_u32()?;
+                    let mut name = &[][..];
+                    read.read_blob(&mut name, arena)?;
+                    let mut value = &[][..];
+                    read.read_blob(&mut value, arena)?;
+                }
+            }
+
+            read.skip_blob()?;
+        }
+    }
 
     // triggers
 
     let _version = read.next_u32()?;
     let _len = read.next_u32()?;
     assert_eq!(_len, 0);
-    let _time = read.next_f64()?;
+    if !exe { let _time = read.next_f64()?; }
 
     // constants
 
@@ -57,7 +191,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
         read.read_blob(&mut constant.name, arena)?;
         read.read_blob(&mut constant.value, arena)?;
     }
-    let _time = read.next_f64()?;
+    if !exe { let _time = read.next_f64()?; }
 
     // sounds
 
@@ -75,7 +209,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
         let sound = &mut game.sounds[id];
         read.read_blob(&mut sound.name, arena)?;
-        let _time = read.next_f64()?;
+        if !exe { let _time = read.next_f64()?; }
         let _version = read.next_u32()?;
         read.read_u32(&mut sound.kind)?;
         read.read_blob(&mut sound.file_type, arena)?;
@@ -107,7 +241,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
         let sprite = &mut game.sprites[id];
         read.read_blob(&mut sprite.name, arena)?;
-        let _time = read.next_f64()?;
+        if !exe { let _time = read.next_f64()?; }
         let _version = read.next_u32()?;
         read.read_u32(&mut sprite.origin.0)?;
         read.read_u32(&mut sprite.origin.1)?;
@@ -124,14 +258,41 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
             read.read_blob(&mut frame.data, arena)?;
         }
 
-        read.read_u32(&mut sprite.shape)?;
-        read.read_u32(&mut sprite.alpha_tolerance)?;
+        if !exe {
+            read.read_u32(&mut sprite.shape)?;
+            read.read_u32(&mut sprite.alpha_tolerance)?;
+        }
         read.read_bool(&mut sprite.separate_collision)?;
-        read.read_u32(&mut sprite.bounds_kind)?;
-        read.read_u32(&mut sprite.bounds.left)?;
-        read.read_u32(&mut sprite.bounds.right)?;
-        read.read_u32(&mut sprite.bounds.bottom)?;
-        read.read_u32(&mut sprite.bounds.top)?;
+        if !exe {
+            read.read_u32(&mut sprite.bounds_kind)?;
+            read.read_u32(&mut sprite.bounds.left)?;
+            read.read_u32(&mut sprite.bounds.right)?;
+            read.read_u32(&mut sprite.bounds.bottom)?;
+            read.read_u32(&mut sprite.bounds.top)?;
+        }
+
+        if exe && len > 0 {
+            let len = if sprite.separate_collision { len } else { 1 };
+            sprite.masks.reserve(len);
+            for i in 0..len {
+                sprite.masks.push(Mask::default());
+
+                let mask = &mut sprite.masks[i];
+                let _version = read.next_u32()?;
+                read.read_u32(&mut mask.size.0)?;
+                read.read_u32(&mut mask.size.1)?;
+                read.read_u32(&mut mask.bounds.left)?;
+                read.read_u32(&mut mask.bounds.right)?;
+                read.read_u32(&mut mask.bounds.bottom)?;
+                read.read_u32(&mut mask.bounds.top)?;
+
+                let size = mask.size.0 as usize * mask.size.1 as usize;
+                mask.data.reserve(size);
+                for _ in 0..size {
+                    mask.data.push(read.next_u32()?);
+                }
+            }
+        }
 
         assert!(read.fill_buf()?.is_empty());
     }
@@ -152,15 +313,17 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
         let background = &mut game.backgrounds[id];
         read.read_blob(&mut background.name, arena)?;
-        let _time = read.next_f64()?;
+        if !exe { let _time = read.next_f64()?; }
         let _version = read.next_u32()?;
-        let _tileset = read.next_bool()?;
-        let _tile_width = read.next_u32()?;
-        let _tile_height = read.next_u32()?;
-        let _tile_off_x = read.next_u32()?;
-        let _tile_off_y = read.next_u32()?;
-        let _tile_sep_x = read.next_u32()?;
-        let _tile_sep_y = read.next_u32()?;
+        if !exe {
+            let _tileset = read.next_bool()?;
+            let _tile_width = read.next_u32()?;
+            let _tile_height = read.next_u32()?;
+            let _tile_off_x = read.next_u32()?;
+            let _tile_off_y = read.next_u32()?;
+            let _tile_sep_x = read.next_u32()?;
+            let _tile_sep_y = read.next_u32()?;
+        }
         let _version = read.next_u32()?;
         read.read_u32(&mut background.size.0)?;
         read.read_u32(&mut background.size.1)?;
@@ -187,7 +350,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
         let path = &mut game.paths[id];
         read.read_blob(&mut path.name, arena)?;
-        let _time = read.next_f64()?;
+        if !exe { let _time = read.next_f64()?; }
         let _version = read.next_u32()?;
         read.read_u32(&mut path.kind)?;
         read.read_bool(&mut path.closed)?;
@@ -223,7 +386,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
         let script = &mut game.scripts[id];
         read.read_blob(&mut script.name, arena)?;
-        let _time = read.next_f64()?;
+        if !exe { let _time = read.next_f64()?; }
         let _version = read.next_u32()?;
         read.read_blob(&mut script.body, arena)?;
 
@@ -243,7 +406,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
         let mut name = &[][..];
         read.read_blob(&mut name, arena)?;
 
-        let _time = read.next_f64()?;
+        if !exe { let _time = read.next_f64()?; }
         let _version = read.next_u32()?;
 
         let mut font = &[][..];
@@ -271,7 +434,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
         let mut name = &[][..];
         read.read_blob(&mut name, arena)?;
 
-        let _time = read.next_f64()?;
+        if !exe { let _time = read.next_f64()?; }
         let _version = read.next_u32()?;
 
         for _ in 0..read.next_u32()? {
@@ -303,7 +466,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
         let object = &mut game.objects[id];
         read.read_blob(&mut object.name, arena)?;
 
-        let _time = read.next_f64()?;
+        if !exe { let _time = read.next_f64()?; }
         let _version = read.next_u32()?;
         read.read_i32(&mut object.sprite)?;
         read.read_bool(&mut object.solid)?;
@@ -359,15 +522,17 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
         let room = &mut game.rooms[id];
         read.read_blob(&mut room.name, arena)?;
-        let _time = read.next_f64()?;
+        if !exe { let _time = read.next_f64()?; }
         let _version = read.next_u32()?;
         read.read_blob(&mut room.caption, arena)?;
 
         read.read_u32(&mut room.width)?;
         read.read_u32(&mut room.height)?;
-        let _snap_x = read.next_u32()?;
-        let _snap_y = read.next_u32()?;
-        let _isometric = read.next_bool()?;
+        if !exe {
+            let _snap_x = read.next_u32()?;
+            let _snap_y = read.next_u32()?;
+            let _isometric = read.next_bool()?;
+        }
         read.read_u32(&mut room.speed)?;
         read.read_bool(&mut room.persistent)?;
         read.read_u32(&mut room.clear_color)?;
@@ -427,7 +592,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
             read.read_i32(&mut instance.object_index)?;
             read.read_i32(&mut instance.id)?;
             read.read_blob(&mut instance.code, arena)?;
-            let _locked = read.next_bool()?;
+            if !exe { let _locked = read.next_bool()?; }
         }
 
         let len = read.next_u32()? as usize;
@@ -445,23 +610,25 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
             read.read_u32(&mut tile.height)?;
             read.read_i32(&mut tile.depth)?;
             read.read_i32(&mut tile.id)?;
-            let _locked = read.next_bool()?;
+            if !exe { let _locked = read.next_bool()?; }
         }
 
-        let _configured = read.next_bool()?;
-        let _editor_width = read.next_u32()?;
-        let _editor_height = read.next_u32()?;
-        let _editor_grid = read.next_bool()?;
-        let _editor_objects = read.next_bool()?;
-        let _editor_tiles = read.next_bool()?;
-        let _editor_backgrounds = read.next_bool()?;
-        let _editor_foregrounds = read.next_bool()?;
-        let _editor_views = read.next_bool()?;
-        let _editor_delete_objects = read.next_bool()?;
-        let _editor_delete_tiles = read.next_bool()?;
-        let _editor_tab = read.next_u32()?;
-        let _editor_x = read.next_u32()?;
-        let _editor_y = read.next_u32()?;
+        if !exe {
+            let _configured = read.next_bool()?;
+            let _editor_width = read.next_u32()?;
+            let _editor_height = read.next_u32()?;
+            let _editor_grid = read.next_bool()?;
+            let _editor_objects = read.next_bool()?;
+            let _editor_tiles = read.next_bool()?;
+            let _editor_backgrounds = read.next_bool()?;
+            let _editor_foregrounds = read.next_bool()?;
+            let _editor_views = read.next_bool()?;
+            let _editor_delete_objects = read.next_bool()?;
+            let _editor_delete_tiles = read.next_bool()?;
+            let _editor_tab = read.next_u32()?;
+            let _editor_x = read.next_u32()?;
+            let _editor_y = read.next_u32()?;
+        }
 
         assert!(read.fill_buf()?.is_empty());
     }
@@ -475,7 +642,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
     for _id in 0..read.next_u32()? {
         let read = &mut read.next_zlib()?;
 
-        let _time = read.next_f64()?;
+        if !exe { let _time = read.next_f64()?; }
         let _version = read.next_u32()?;
 
         let mut name = &[][..];
@@ -506,13 +673,16 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
     // extensions
 
-    let _version = read.next_u32()?;
-    let len = read.next_u32()? as usize;
-    game.extensions.reserve(len);
-    for _id in 0..len {
-        let mut name: &[u8] = &[];
-        read.read_blob(&mut name, arena)?;
-        game.extensions.push(name);
+    if !exe {
+        let _version = read.next_u32()?;
+        let len = read.next_u32()? as usize;
+        game.extensions.reserve(len);
+        for id in 0..len {
+            game.extensions.push(&[][..]);
+
+            let extension = &mut game.extensions[id];
+            read.read_blob(extension, arena)?;
+        }
     }
 
     // game info
@@ -536,7 +706,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
         let _topmost = read.next_bool()?;
         let _freeze = read.next_bool()?;
 
-        let _time = read.next_f64()?;
+        if !exe { let _time = read.next_f64()?; }
 
         let mut info = &[][..];
         read.read_blob(&mut info, arena)?;
@@ -563,9 +733,9 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
     Ok(())
 }
 
-fn read_settings<'a, R: BufRead>(read: &mut R, settings: &mut Settings, arena: &'a Arena) ->
-    io::Result<()>
-{
+fn read_settings<'a, R: BufRead>(
+    read: &mut R, exe: bool, settings: &mut Settings, arena: &'a Arena
+) -> io::Result<()> {
     let _version = read.next_u32()?;
     {
         let read = &mut read.next_zlib()?;
@@ -598,7 +768,7 @@ fn read_settings<'a, R: BufRead>(read: &mut R, settings: &mut Settings, arena: &
         // 1 => default loading bar
         // 2 => own loading bar
         read.read_u32(&mut settings.load_bar)?;
-        if settings.load_bar == 2 {
+        if (exe && settings.load_bar == 1) || settings.load_bar == 2 {
             if read.next_bool()? {
                 let mut back = vec![];
                 read.read_blob_zlib(&mut back)?;
@@ -612,7 +782,10 @@ fn read_settings<'a, R: BufRead>(read: &mut R, settings: &mut Settings, arena: &
 
         read.read_bool(&mut settings.load_image)?;
         if settings.load_image {
-            let exists = read.next_bool()?;
+            let exists = match exe {
+                false => { read.next_bool()? }
+                true => { true }
+            };
             if exists {
                 let mut image = vec![];
                 read.read_blob_zlib(&mut image)?;
@@ -623,35 +796,39 @@ fn read_settings<'a, R: BufRead>(read: &mut R, settings: &mut Settings, arena: &
         read.read_u32(&mut settings.load_alpha)?;
         read.read_bool(&mut settings.load_scale)?;
 
-        let mut icon = &[][..];
-        read.read_blob(&mut icon, arena)?;
+        if !exe {
+            let mut icon = &[][..];
+            read.read_blob(&mut icon, arena)?;
+        }
 
         read.read_bool(&mut settings.error_display)?;
         read.read_bool(&mut settings.error_log)?;
         read.read_bool(&mut settings.error_abort)?;
         read.read_bool(&mut settings.uninitialized_zero)?;
 
-        let mut author = &[][..];
-        read.read_blob(&mut author, arena)?;
-        let mut version = &[][..];
-        read.read_blob(&mut version, arena)?;
-        let _time = read.next_f64()?;
-        let mut information = &[][..];
-        read.read_blob(&mut information, arena)?;
+        if !exe {
+            let mut author = &[][..];
+            read.read_blob(&mut author, arena)?;
+            let mut version = &[][..];
+            read.read_blob(&mut version, arena)?;
+            let _time = read.next_f64()?;
+            let mut information = &[][..];
+            read.read_blob(&mut information, arena)?;
 
-        let _major = read.next_u32()?;
-        let _minor = read.next_u32()?;
-        let _release = read.next_u32()?;
-        let _build = read.next_u32()?;
-        let mut company = &[][..];
-        read.read_blob(&mut company, arena)?;
-        let mut product = &[][..];
-        read.read_blob(&mut product, arena)?;
-        let mut copyright = &[][..];
-        read.read_blob(&mut copyright, arena)?;
-        let mut description = &[][..];
-        read.read_blob(&mut description, arena)?;
-        let _time = read.next_f64()?;
+            let _major = read.next_u32()?;
+            let _minor = read.next_u32()?;
+            let _release = read.next_u32()?;
+            let _build = read.next_u32()?;
+            let mut company = &[][..];
+            read.read_blob(&mut company, arena)?;
+            let mut product = &[][..];
+            read.read_blob(&mut product, arena)?;
+            let mut copyright = &[][..];
+            read.read_blob(&mut copyright, arena)?;
+            let mut description = &[][..];
+            read.read_blob(&mut description, arena)?;
+            let _time = read.next_f64()?;
+        }
 
         assert!(read.fill_buf()?.is_empty());
     }
