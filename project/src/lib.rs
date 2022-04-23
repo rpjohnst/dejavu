@@ -65,7 +65,7 @@ pub struct Settings {
     pub error_display: bool,
     pub error_log: bool,
     pub error_abort: bool,
-    pub uninitialized: u32,
+    pub uninitialized_zero: bool,
 }
 
 #[derive(Default)]
@@ -431,7 +431,7 @@ impl Default for Settings {
             error_display: true,
             error_log: false,
             error_abort: false,
-            uninitialized: 0,
+            uninitialized_zero: false,
         }
     }
 }

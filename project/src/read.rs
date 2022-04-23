@@ -69,7 +69,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
         let read = &mut read.next_zlib()?;
         if !read.next_bool()? {
-            assert_eq!(read.get_mut().get_mut().limit(), 0);
+            assert!(read.fill_buf()?.is_empty());
             continue;
         }
 
@@ -88,7 +88,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
         read.read_f64(&mut sound.pan)?;
         read.read_bool(&mut sound.preload)?;
 
-        assert_eq!(read.get_mut().get_mut().limit(), 0);
+        assert!(read.fill_buf()?.is_empty());
     }
 
     // sprites
@@ -101,7 +101,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
         let read = &mut read.next_zlib()?;
         if !read.next_bool()? {
-            assert_eq!(read.get_mut().get_mut().limit(), 0);
+            assert!(read.fill_buf()?.is_empty());
             continue;
         }
 
@@ -140,7 +140,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
             read.read_u32(&mut sprite.mask_bounds.3)?;
         }
 
-        assert_eq!(read.get_mut().get_mut().limit(), 0);
+        assert!(read.fill_buf()?.is_empty());
     }
 
     // backgrounds
@@ -153,7 +153,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
         let read = &mut read.next_zlib()?;
         if !read.next_bool()? {
-            assert_eq!(read.get_mut().get_mut().limit(), 0);
+            assert!(read.fill_buf()?.is_empty());
             continue;
         }
 
@@ -175,7 +175,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
             read.read_blob(&mut background.data, arena)?;
         }
 
-        assert_eq!(read.get_mut().get_mut().limit(), 0);
+        assert!(read.fill_buf()?.is_empty());
     }
 
     // paths
@@ -188,7 +188,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
         let read = &mut read.next_zlib()?;
         if !read.next_bool()? {
-            assert_eq!(read.get_mut().get_mut().limit(), 0);
+            assert!(read.fill_buf()?.is_empty());
             continue;
         }
 
@@ -211,7 +211,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
             read.read_f64(&mut point.speed)?;
         }
 
-        assert_eq!(read.get_mut().get_mut().limit(), 0);
+        assert!(read.fill_buf()?.is_empty());
     }
 
     // scripts
@@ -224,7 +224,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
         let read = &mut read.next_zlib()?;
         if !read.next_bool()? {
-            assert_eq!(read.get_mut().get_mut().limit(), 0);
+            assert!(read.fill_buf()?.is_empty());
             continue;
         }
 
@@ -234,7 +234,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
         let _version = read.next_u32()?;
         read.read_blob(&mut script.body, arena)?;
 
-        assert_eq!(read.get_mut().get_mut().limit(), 0);
+        assert!(read.fill_buf()?.is_empty());
     }
 
     // fonts
@@ -243,7 +243,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
     for _id in 0..read.next_u32()? {
         let read = &mut read.next_zlib()?;
         if !read.next_bool()? {
-            assert_eq!(read.get_mut().get_mut().limit(), 0);
+            assert!(read.fill_buf()?.is_empty());
             continue;
         }
 
@@ -262,7 +262,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
         let _start = read.next_u32()?;
         let _end = read.next_u32()?;
 
-        assert_eq!(read.get_mut().get_mut().limit(), 0);
+        assert!(read.fill_buf()?.is_empty());
     }
 
     // timelines
@@ -271,7 +271,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
     for _id in 0..read.next_u32()? {
         let read = &mut read.next_zlib()?;
         if !read.next_bool()? {
-            assert_eq!(read.get_mut().get_mut().limit(), 0);
+            assert!(read.fill_buf()?.is_empty());
             continue;
         }
 
@@ -290,7 +290,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
             }
         }
 
-        assert_eq!(read.get_mut().get_mut().limit(), 0);
+        assert!(read.fill_buf()?.is_empty());
     }
 
     // objects
@@ -303,7 +303,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
         let read = &mut read.next_zlib()?;
         if !read.next_bool()? {
-            assert_eq!(read.get_mut().get_mut().limit(), 0);
+            assert!(read.fill_buf()?.is_empty());
             continue;
         }
 
@@ -347,7 +347,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
             }
         }
 
-        assert_eq!(read.get_mut().get_mut().limit(), 0);
+        assert!(read.fill_buf()?.is_empty());
     }
 
     // rooms
@@ -360,7 +360,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
 
         let read = &mut read.next_zlib()?;
         if !read.next_bool()? {
-            assert_eq!(read.get_mut().get_mut().limit(), 0);
+            assert!(read.fill_buf()?.is_empty());
             continue;
         }
 
@@ -470,7 +470,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
         let _editor_x = read.next_u32()?;
         let _editor_y = read.next_u32()?;
 
-        assert_eq!(read.get_mut().get_mut().limit(), 0);
+        assert!(read.fill_buf()?.is_empty());
     }
 
     read.read_i32(&mut game.last_instance)?;
@@ -508,7 +508,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
         let _free = read.next_bool()?;
         let _remove = read.next_bool()?;
 
-        assert_eq!(read.get_mut().get_mut().limit(), 0);
+        assert!(read.fill_buf()?.is_empty());
     }
 
     // extensions
@@ -548,7 +548,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
         let mut info = &[][..];
         read.read_blob(&mut info, arena)?;
 
-        assert_eq!(read.get_mut().get_mut().limit(), 0);
+        assert!(read.fill_buf()?.is_empty());
     }
 
     // library initialization
@@ -605,7 +605,6 @@ fn read_settings<'a, R: BufRead>(read: &mut R, settings: &mut Settings, arena: &
         // 1 => default loading bar
         // 2 => own loading bar
         read.read_u32(&mut settings.load_bar)?;
-
         if settings.load_bar == 2 {
             if read.next_bool()? {
                 let mut back = vec![];
@@ -629,20 +628,39 @@ fn read_settings<'a, R: BufRead>(read: &mut R, settings: &mut Settings, arena: &
 
         read.read_bool(&mut settings.load_transparent)?;
         read.read_u32(&mut settings.load_alpha)?;
-
-        let icon_exists = read.next_bool()?;
-        if icon_exists {
-            let mut icon: &[u8] = &[];
-            read.read_blob(&mut icon, arena)?;
-        }
-
         read.read_bool(&mut settings.load_scale)?;
+
+        let mut icon = &[][..];
+        read.read_blob(&mut icon, arena)?;
+
         read.read_bool(&mut settings.error_display)?;
         read.read_bool(&mut settings.error_log)?;
         read.read_bool(&mut settings.error_abort)?;
-        read.read_u32(&mut settings.uninitialized)?;
+        read.read_bool(&mut settings.uninitialized_zero)?;
 
-        assert_eq!(read.get_mut().get_mut().limit(), 0);
+        let mut author = &[][..];
+        read.read_blob(&mut author, arena)?;
+        let mut version = &[][..];
+        read.read_blob(&mut version, arena)?;
+        let _time = read.next_f64()?;
+        let mut information = &[][..];
+        read.read_blob(&mut information, arena)?;
+
+        let _major = read.next_u32()?;
+        let _minor = read.next_u32()?;
+        let _release = read.next_u32()?;
+        let _build = read.next_u32()?;
+        let mut company = &[][..];
+        read.read_blob(&mut company, arena)?;
+        let mut product = &[][..];
+        read.read_blob(&mut product, arena)?;
+        let mut copyright = &[][..];
+        read.read_blob(&mut copyright, arena)?;
+        let mut description = &[][..];
+        read.read_blob(&mut description, arena)?;
+        let _time = read.next_f64()?;
+
+        assert!(read.fill_buf()?.is_empty());
     }
 
     Ok(())
@@ -769,7 +787,6 @@ impl<R: BufRead> GmkRead for R {
     fn read_bool(&mut self, buf: &mut bool) -> io::Result<usize> {
         let mut value = 0;
         let nread = self.read_u32(&mut value)?;
-        assert!(value == 0 || value == 1, "\"boolean\": {}", value);
         *buf = value != 0;
         Ok(nread)
     }
