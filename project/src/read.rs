@@ -36,7 +36,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
     read.read_u32(&mut game.guid[2])?;
     read.read_u32(&mut game.guid[3])?;
 
-    read_settings(read, &mut game.settings)?;
+    read_settings(read, &mut game.settings, arena)?;
 
     // triggers
 
@@ -574,7 +574,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
     Ok(())
 }
 
-fn read_settings<'a, R: BufRead>(read: &mut R, settings: &mut Settings) ->
+fn read_settings<'a, R: BufRead>(read: &mut R, settings: &mut Settings, arena: &'a Arena) ->
     io::Result<()>
 {
     let _version = read.next_u32()?;
@@ -605,8 +605,12 @@ fn read_settings<'a, R: BufRead>(read: &mut R, settings: &mut Settings) ->
         read.read_u32(&mut settings.priority)?;
         read.read_bool(&mut settings.freeze)?;
 
+        // 0 => no loading bar
+        // 1 => default loading bar
+        // 2 => own loading bar
         read.read_u32(&mut settings.load_bar)?;
-        if settings.load_bar > 0 {
+
+        if settings.load_bar == 2 {
             if read.next_bool()? {
                 let mut back = vec![];
                 read.read_blob_zlib(&mut back)?;
@@ -629,6 +633,13 @@ fn read_settings<'a, R: BufRead>(read: &mut R, settings: &mut Settings) ->
 
         read.read_bool(&mut settings.load_transparent)?;
         read.read_u32(&mut settings.load_alpha)?;
+
+        let icon_exists = read.next_bool()?;
+        if icon_exists {
+            let mut icon: &[u8] = &[];
+            read.read_blob(&mut icon, arena)?;
+        }
+
         read.read_bool(&mut settings.load_scale)?;
         read.read_bool(&mut settings.error_display)?;
         read.read_bool(&mut settings.error_log)?;
