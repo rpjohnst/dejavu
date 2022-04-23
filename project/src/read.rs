@@ -140,6 +140,7 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
                 read.read_u32(&mut mask.right)?;
                 read.read_u32(&mut mask.bottom)?;
                 read.read_u32(&mut mask.top)?;
+
                 let size = mask.size.0 as usize * mask.size.1 as usize;
                 mask.data.reserve(size);
                 for _ in 0..size {
@@ -632,7 +633,7 @@ fn read_settings<'a, R: BufRead>(read: &mut R, settings: &mut Settings) ->
         read.read_bool(&mut settings.error_display)?;
         read.read_bool(&mut settings.error_log)?;
         read.read_bool(&mut settings.error_abort)?;
-        read.read_bool(&mut settings.uninitialized_zero)?;
+        read.read_u32(&mut settings.uninitialized)?;
 
         assert_eq!(read.get_mut().get_mut().limit(), 0);
     }
@@ -761,6 +762,7 @@ impl<R: BufRead> GmkRead for R {
     fn read_bool(&mut self, buf: &mut bool) -> io::Result<usize> {
         let mut value = 0;
         let nread = self.read_u32(&mut value)?;
+        assert!(value == 0 || value == 1, "\"boolean\": {}", value);
         *buf = value != 0;
         Ok(nread)
     }
