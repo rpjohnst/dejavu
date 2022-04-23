@@ -8,7 +8,7 @@ use quickdry::Arena;
 use crate::{
     Game, Settings, Constant,
     Sound,
-    Sprite, Frame, SpriteMaskShape,
+    Sprite, Frame,
     Background,
     Path, Point,
     Script,
@@ -124,21 +124,14 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
             read.read_blob(&mut frame.data, arena)?;
         }
 
-        if len > 0 {
-            sprite.mask_shape = match read.next_u32()? {
-                0 => SpriteMaskShape::Precise,
-                1 => SpriteMaskShape::Rectangle,
-                2 => SpriteMaskShape::Disk,
-                3 => SpriteMaskShape::Diamond,
-                _ => panic!(),
-            };
-            read.read_u32(&mut sprite.mask_alpha_tolerance)?;
-            read.read_bool(&mut sprite.separate_masks)?;
-            read.read_u32(&mut sprite.mask_bounds.0)?;
-            read.read_u32(&mut sprite.mask_bounds.1)?;
-            read.read_u32(&mut sprite.mask_bounds.2)?;
-            read.read_u32(&mut sprite.mask_bounds.3)?;
-        }
+        read.read_u32(&mut sprite.shape)?;
+        read.read_u32(&mut sprite.alpha_tolerance)?;
+        read.read_bool(&mut sprite.separate_collision)?;
+        read.read_u32(&mut sprite.bounds_kind)?;
+        read.read_u32(&mut sprite.bounds.left)?;
+        read.read_u32(&mut sprite.bounds.right)?;
+        read.read_u32(&mut sprite.bounds.bottom)?;
+        read.read_u32(&mut sprite.bounds.top)?;
 
         assert!(read.fill_buf()?.is_empty());
     }

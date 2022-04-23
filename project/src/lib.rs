@@ -91,11 +91,14 @@ pub struct Sound<'a> {
 pub struct Sprite<'a> {
     pub name: &'a [u8],
     pub origin: (u32, u32),
+
     pub frames: Vec<Frame<'a>>,
-    pub mask_shape: SpriteMaskShape, // precise, rectangle, disk, diamond
-    pub mask_alpha_tolerance: u32,
-    pub separate_masks: bool,
-    pub mask_bounds: (u32, u32, u32, u32), // left, right, top, bottom
+
+    pub shape: u32,
+    pub alpha_tolerance: u32,
+    pub separate_collision: bool,
+    pub bounds_kind: u32,
+    pub bounds: Bounds,
 }
 
 #[derive(Default)]
@@ -104,13 +107,25 @@ pub struct Frame<'a> {
     pub data: &'a [u8],
 }
 
+pub mod shape {
+    pub const PRECISE: u32 = 0;
+    pub const RECTANGLE: u32 = 1;
+    pub const DISK: u32 = 2;
+    pub const DIAMOND: u32 = 3;
+}
+
+pub mod bounds_kind {
+    pub const AUTOMATIC: u32 = 0;
+    pub const FULL: u32 = 1;
+    pub const MANUAL: u32 = 2;
+}
+
 #[derive(Default)]
-pub enum SpriteMaskShape {
-    #[default]
-    Precise,
-    Rectangle,
-    Disk,
-    Diamond,
+pub struct Bounds {
+    pub left: u32,
+    pub right: u32,
+    pub bottom: u32,
+    pub top: u32,
 }
 
 #[derive(Default)]
