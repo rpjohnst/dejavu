@@ -8,7 +8,7 @@ use quickdry::Arena;
 use crate::{
     Game, Settings,
     Sound,
-    Sprite, Frame, Mask,
+    Sprite, Frame, SpriteMaskShape,
     Background,
     Path, Point,
     Script,
@@ -127,26 +127,19 @@ pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena
         }
 
         if len > 0 {
-            let len = if read.next_bool()? { len } else { 1 };
-            sprite.masks.reserve(len);
-            for i in 0..len {
-                sprite.masks.push(Mask::default());
-
-                let mask = &mut sprite.masks[i];
-                let _version = read.next_u32()?;
-                read.read_u32(&mut mask.size.0)?;
-                read.read_u32(&mut mask.size.1)?;
-                read.read_u32(&mut mask.left)?;
-                read.read_u32(&mut mask.right)?;
-                read.read_u32(&mut mask.bottom)?;
-                read.read_u32(&mut mask.top)?;
-
-                let size = mask.size.0 as usize * mask.size.1 as usize;
-                mask.data.reserve(size);
-                for _ in 0..size {
-                    mask.data.push(read.next_u32()?);
-                }
-            }
+            sprite.mask_shape = match read.next_u32()? {
+                0 => SpriteMaskShape::Precise,
+                1 => SpriteMaskShape::Rectangle,
+                2 => SpriteMaskShape::Disk,
+                3 => SpriteMaskShape::Diamond,
+                _ => panic!(),
+            };
+            read.read_u32(&mut sprite.mask_alpha_tolerance)?;
+            read.read_bool(&mut sprite.separate_masks)?;
+            read.read_u32(&mut sprite.mask_bounds.0)?;
+            read.read_u32(&mut sprite.mask_bounds.1)?;
+            read.read_u32(&mut sprite.mask_bounds.2)?;
+            read.read_u32(&mut sprite.mask_bounds.3)?;
         }
 
         assert_eq!(read.get_mut().get_mut().limit(), 0);
