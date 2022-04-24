@@ -7,13 +7,22 @@ use std::fs::File;
 fn main() -> Result<(), Box<dyn Error>> {
     let path = match env::args_os().nth(1) {
         Some(path) => { path }
-        None => { return Err("expected project")?; }
+        None => { return Err("expected project file or GML script (.gml)")?; }
     };
 
     let arena = quickdry::Arena::default();
     let mut game = project::Game::default();
-    let mut read = File::open(path)?;
-    project::read_gmk(&mut read, &mut game, &arena)?;
+    let gml;
+
+    if path.to_string_lossy().ends_with(".gml") {
+        gml = std::fs::read(path)?;
+        let mut room = project::Room::default();
+        room.code = &gml;
+        game.rooms.push(room);
+    } else {
+        let mut read = File::open(path)?;
+        project::read_gmk(&mut read, &mut game, &arena)?;
+    }
 
     let (assets, debug) = match runner::build(&game, io::stderr) {
         Ok(assets) => assets,
