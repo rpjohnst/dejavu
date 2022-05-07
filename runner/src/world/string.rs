@@ -59,7 +59,7 @@ impl State {
 
     #[gml::api]
     pub fn string_pos(substr: Symbol, str: Symbol) -> u32 {
-        str.split_str(&substr[..]).next().map(|head| head.chars().count() + 1).unwrap_or(0) as u32
+        str.find(&substr[..]).map_or(0, |i| str[..i].chars().count() + 1) as u32
     }
 
     #[gml::api]
@@ -67,9 +67,8 @@ impl State {
         let index = cmp::max(index as usize, 1) - 1;
         let count = count as usize;
 
-        let mut indices = str.char_indices().map(|(index, _, _)| index);
-        let start = indices.nth(index).unwrap_or(0);
-        let end = indices.take(count).last().unwrap_or(start);
+        let start = str.char_indices().nth(index).map_or(str.len(), |(i, _, _)| i);
+        let end = str[start..].char_indices().nth(count).map_or(str.len(), |(i, _, _)| start + i);
 
         Symbol::intern(&str[start..end])
     }
@@ -77,10 +76,8 @@ impl State {
     #[gml::api]
     pub fn string_char_at(str: Symbol, index: u32) -> Symbol {
         let index = cmp::max(index as usize, 1) - 1;
-        let str = str.char_indices()
-            .nth(index)
-            .map(|(start, end, _)| &str[start..end])
-            .unwrap_or(b"");
+        let str = str.char_indices().nth(index)
+            .map_or(&b""[..], |(start, end, _)| &str[start..end]);
         Symbol::intern(str)
     }
 
@@ -95,9 +92,8 @@ impl State {
         let index = cmp::max(index as usize, 1) - 1;
         let count = count as usize;
 
-        let mut indices = str.char_indices().map(|(index, _, _)| index);
-        let start = indices.nth(index).unwrap_or(0);
-        let end = indices.take(count).last().unwrap_or(start);
+        let start = str.char_indices().nth(index).map_or(str.len(), |(i, _, _)| i);
+        let end = str[start..].char_indices().nth(count).map_or(str.len(), |(i, _, _)| start + i);
 
         let mut string = Vec::new();
         string.push_str(&str[..start]);
@@ -108,15 +104,13 @@ impl State {
     #[gml::api]
     pub fn string_insert(substr: Symbol, str: Symbol, index: u32) -> Symbol {
         let index = cmp::max(index as usize, 1) - 1;
-        let index = str.char_indices().map(|(index, _, _)| index)
-            .skip(index)
-            .next()
-            .unwrap_or(str.len());
+
+        let start = str.char_indices().nth(index).map_or(str.len(), |(i, _, _)| i);
 
         let mut string = Vec::new();
-        string.push_str(&str[..index]);
+        string.push_str(&str[..start]);
         string.push_str(&substr[..]);
-        string.push_str(&str[index..]);
+        string.push_str(&str[start..]);
         Symbol::intern(&string)
     }
 
