@@ -86,6 +86,7 @@ pub enum Opcode {
 
     /// Materialize a constant. Can be UnaryReal or UnarySymbol.
     Constant,
+    GlobalConstant,
 
     Negate,
     Invert,
@@ -201,7 +202,8 @@ pub enum Prototype {
     /// A built-in member accessed via getter and setter.
     Member,
     /// A project resource id.
-    Resource { id: i32, script: bool, },
+    Resource { id: i32, script: bool },
+    Constant { id: i32 },
 }
 
 impl Function {

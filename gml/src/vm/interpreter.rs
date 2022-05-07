@@ -193,8 +193,8 @@ impl Thread {
         mem::transmute(&self.stack[arguments])
     }
 
-    pub fn execute<'r, W: vm::Project<'r, (&'r mut World, &'r mut Assets<W>)>>(
-        &mut self, cx: &'r mut W, f: Function, args: Vec<Value>
+    pub fn execute<W: for<'r> vm::Project<'r, (&'r mut World, &'r mut Assets<W>)>>(
+        &mut self, cx: &mut W, f: Function, args: Vec<Value>
     ) -> Result<Value> {
         let cx: &mut dyn vm::Project<(&mut World, &mut Assets<W>)> = cx;
         let cx = unsafe { &mut *(cx as *mut _ as *mut _) };
@@ -250,9 +250,15 @@ fn execute_internal(
         let registers = &mut thread.stack[reg_base..];
 
         match code.instructions[instruction].decode() {
-            (code::Op::Imm, t, constant, _) => {
+            (code::Op::Const, t, constant, _) => {
                 // Safety: Immediates must be reals or strings, which are never freed.
                 registers[t].value = unsafe { erase_ref(code.constants[constant].borrow()) };
+            }
+
+            (code::Op::GlobalConst, t, constant, _) => {
+                // TODO: do GMS arrays co-exist with non-macro constants in any version?
+                // Safety: Constants must be reals or strings, which are never freed.
+                registers[t].value = unsafe { erase_ref(world.constants[constant].borrow()) };
             }
 
             (code::Op::Move, t, s, _) => {

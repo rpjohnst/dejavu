@@ -116,6 +116,19 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
         }
     }
 
+    pub fn compile_constant(self, constant: &(ast::Expr, Span)) -> ssa::Function {
+        let (_, constant_span) = *constant;
+        self.with_program(constant_span.high, move |self_| {
+            let dead_block = self_.make_block();
+
+            let value = self_.emit_value(constant);
+            self_.emit_unary(ssa::Opcode::Return, value, constant_span.low);
+
+            self_.current_block = dead_block;
+            self_.seal_block(dead_block);
+        })
+    }
+
     pub fn compile_event(self, event: &(ast::Action, Span)) -> ssa::Function {
         let (_, event_span) = *event;
         self.with_program(event_span.high, move |self_| {
@@ -698,10 +711,13 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
             }
 
             _ => {
-                if let ast::Expr::Value(ast::Value::Ident(resource)) = *expr {
-                    match self.prototypes.get(&resource) {
+                if let ast::Expr::Value(ast::Value::Ident(name)) = *expr {
+                    match self.prototypes.get(&name) {
                         Some(&ssa::Prototype::Resource { id, .. }) => {
                             return self.emit_real(id as f64, expr_loc)
+                        }
+                        Some(&ssa::Prototype::Constant { id }) => {
+                            return self.emit_unary_int(ssa::Opcode::GlobalConstant, id, expr_loc)
                         }
                         _ => {}
                     }

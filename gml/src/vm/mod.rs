@@ -29,6 +29,7 @@ pub struct Assets<W: ?Sized> {
     pub api: HashMap<Symbol, ApiFunction<W>>,
     pub get: HashMap<Symbol, GetFunction<W>>,
     pub set: HashMap<Symbol, SetFunction<W>>,
+    pub constants: i32,
 }
 
 #[derive(Default)]
@@ -38,6 +39,7 @@ pub struct Debug {
     pub objects: Vec<Symbol>,
     pub rooms: Vec<Symbol>,
     pub instances: HashMap<i32, i32>,
+    pub constants: Vec<Symbol>,
 }
 
 pub struct Locations {
@@ -56,6 +58,7 @@ impl<W: ?Sized> Default for Assets<W> {
             api: HashMap::default(),
             get: HashMap::default(),
             set: HashMap::default(),
+            constants: 0,
         }
     }
 }

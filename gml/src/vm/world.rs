@@ -12,6 +12,7 @@ pub struct World {
     pub instances: vm::InstanceMap<i32, vm::Entity>,
 
     pub globals: HashSet<Symbol>,
+    pub constants: Vec<vm::Value>,
 }
 
 pub const GLOBAL: vm::Entity = vm::Entity::NULL;
@@ -26,6 +27,7 @@ impl Default for World {
             instances: vm::InstanceMap::default(),
 
             globals: HashSet::default(),
+            constants: Vec::default(),
         };
 
         let global = world.entities.create();
@@ -36,6 +38,19 @@ impl Default for World {
 }
 
 impl World {
+    pub fn load<W: for<'r> vm::Project<'r, (&'r mut World, &'r mut vm::Assets<W>)>>(
+        cx: &mut W, thread: &mut vm::Thread
+    ) -> vm::Result<()> {
+        let (_, assets) = cx.fields();
+        for id in 0..assets.constants {
+            let value = thread.execute(cx, crate::Function::Constant { id }, vec![])?;
+
+            let (world, _) = cx.fields();
+            world.constants.push(value);
+        }
+        Ok(())
+    }
+
     /// Create an entity with a scope, but do not add it to the instance lists.
     pub fn create_entity(&mut self) -> vm::Entity {
         let entity = self.entities.create();

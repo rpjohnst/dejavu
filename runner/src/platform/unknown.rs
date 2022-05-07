@@ -6,6 +6,11 @@ pub struct Draw;
 pub fn run(mut cx: crate::Context) {
     let mut thread = vm::Thread::default();
 
+    if let Err(error) = gml::vm::World::load(&mut cx, &mut thread) {
+        let crate::World { show, .. } = &cx.world;
+        show.show_vm_error(&*error);
+    }
+
     crate::graphics::load(&mut cx);
 
     if let Err(error) = crate::room::State::load_room(&mut cx, &mut thread, 0) {

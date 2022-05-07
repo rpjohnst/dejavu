@@ -75,6 +75,13 @@ pub fn run(mut cx: Context) { unsafe {
         panic!("failed to create window");
     }
 
+    let mut thread = vm::Thread::default();
+
+    if let Err(error) = gml::vm::World::load(&mut cx, &mut thread) {
+        let crate::World { show, .. } = &cx.world;
+        show.show_vm_error(&*error);
+    }
+
     let Context { world, .. } = &mut cx;
     let crate::World { draw, .. } = world;
     let crate::draw::State { platform, .. } = draw;
@@ -84,7 +91,6 @@ pub fn run(mut cx: Context) { unsafe {
 
     ShowWindow(hwnd, nCmdShow);
 
-    let mut thread = vm::Thread::default();
     if let Err(error) = crate::room::State::load_room(&mut cx, &mut thread, 0) {
         let crate::World { show, .. } = &cx.world;
         show.show_vm_error(&*error);

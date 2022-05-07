@@ -62,7 +62,8 @@ impl Inst {
 #[repr(u8)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Op {
-    Imm,
+    Const,
+    GlobalConst,
     Move,
 
     Neg,
@@ -143,14 +144,15 @@ impl fmt::Debug for Function {
         for &inst in &self.instructions {
             let (op, a, b, c) = inst.decode();
             match op {
-                Op::Imm | Op::Lookup =>
-                    writeln!(f, "  %{:?} = {:?} {:?}", a, op, self.constants[b])?,
+                Op::Const => writeln!(f, "  %{:?} = {:?} {:?}", a, op, self.constants[b])?,
+                Op::GlobalConst => writeln!(f, "  %{:?} = {:?} {:?}", a, op, b)?,
                 Op::Move => writeln!(f, "  %{:?} = %{:?}", a, b)?,
                 Op::Neg | Op::Not | Op::BitNot | Op::ToArray | Op::ToScalar |
                 Op::LoadPointer | Op::NextPointer | Op::ExistsEntity |
                 Op::ScopeError =>
                     writeln!(f, "  %{:?} = {:?} %{:?}", a, op, b)?,
                 Op::DeclareGlobal => writeln!(f, "  {:?} {:?}", op, self.constants[a])?,
+                Op::Lookup => writeln!(f, "  %{:?} = {:?} {:?}", a, op, self.constants[b])?,
                 Op::LoadScope => writeln!(f, "  %{:?} = {:?} {:?}", a, op, b as i32)?,
                 Op::StoreScope => writeln!(f, "  {:?} %{:?}, {:?}", op, a, b as i32)?,
                 Op::With => writeln!(f, "  %{:?}, %{:?} = {:?} %{:?}", a, b, op, c)?,

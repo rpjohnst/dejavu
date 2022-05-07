@@ -31,6 +31,7 @@ pub enum Function {
     Room { id: i32 },
     /// Instance creation code.
     Instance { id: i32 },
+    Constant { id: i32 },
 }
 
 /// An entity defined by the runner.
@@ -61,6 +62,12 @@ pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
             }
         }
     }
+    for (id, &project::Constant { name, .. }) in game.constants.iter().enumerate() {
+        let id = id as i32;
+        let name = Symbol::intern(name);
+        prototypes.insert(name, ssa::Prototype::Constant { id });
+        debug.constants.push(name);
+    }
     for (id, &project::Sprite { name, .. }) in game.sprites.iter().enumerate() {
         let id = id as i32;
         let name = Symbol::intern(name);
@@ -86,6 +93,18 @@ pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
     }
 
     let mut total_errors = 0;
+
+    // Compile constants.
+    let resources = Iterator::zip(debug.constants.iter(), game.constants.iter());
+    for (id, (&constant, &project::Constant { value, .. })) in resources.enumerate() {
+        let function = Function::Constant { id: id as i32 };
+        let name = FunctionDisplay::Constant { constant };
+        let (code, locations, errors) = compile_constant(&prototypes, name, value, errors());
+        assets.code.insert(function, code);
+        debug.locations.insert(function, locations);
+        total_errors += errors;
+    }
+    assets.constants = game.constants.len() as i32;
 
     // Compile scripts.
     let resources = Iterator::zip(debug.scripts.iter(), game.scripts.iter());
@@ -149,6 +168,21 @@ pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
     Ok((assets, debug))
 }
 
+fn compile_constant<E: io::Write + 'static>(
+    prototypes: &HashMap<Symbol, ssa::Prototype>,
+    name: FunctionDisplay,
+    code: &[u8],
+    errors: E,
+) -> (code::Function, vm::Locations, u32) {
+    let lines = Lines::from_code(code);
+    let mut errors = ErrorPrinter::new(name, &lines, errors);
+    let program = Parser::new(Lexer::new(code, 0), &mut errors).parse_expression(0);
+    let program = front::Codegen::new(&prototypes, &mut errors).compile_constant(&program);
+    let (code, locations) = back::Codegen::new(prototypes).compile(&program);
+    let count = errors.count;
+    (code, vm::Locations { locations, lines }, count)
+}
+
 fn compile_program<E: io::Write + 'static>(
     prototypes: &HashMap<Symbol, ssa::Prototype>,
     name: FunctionDisplay,
@@ -190,7 +224,8 @@ pub enum FunctionDisplay {
     Event { object: Symbol, event_type: u32, event_kind: EventDisplay },
     Script { script: Symbol },
     Room { room: Symbol },
-    Instance { room: Symbol, id: i32 }
+    Instance { room: Symbol, id: i32 },
+    Constant { constant: Symbol },
 }
 
 #[derive(Copy, Clone)]
@@ -270,6 +305,10 @@ impl FunctionDisplay {
                 let room = debug.rooms[debug.instances[&id] as usize];
                 FunctionDisplay::Instance { room, id }
             }
+            Function::Constant { id } => {
+                let constant = debug.constants[id as usize];
+                FunctionDisplay::Constant { constant }
+            }
         }
     }
 }
@@ -300,6 +339,7 @@ impl fmt::Display for FunctionDisplay {
             FunctionDisplay::Room { room } => write!(f, "creation code of room {}", room),
             FunctionDisplay::Instance { room, id } =>
                 write!(f, "creation code for instance {} in room {}", id, room),
+            FunctionDisplay::Constant { constant } => write!(f, "constant {}", constant),
         }
     }
 }

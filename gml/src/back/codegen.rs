@@ -374,7 +374,8 @@ impl InstBuilder {
 impl From<ssa::Opcode> for code::Op {
     fn from(op: ssa::Opcode) -> code::Op {
         match op {
-            ssa::Opcode::Constant => code::Op::Imm,
+            ssa::Opcode::Constant => code::Op::Const,
+            ssa::Opcode::GlobalConstant => code::Op::GlobalConst,
 
             ssa::Opcode::Negate => code::Op::Neg,
             ssa::Opcode::Invert => code::Op::Not,
