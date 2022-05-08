@@ -1,4 +1,4 @@
-use std::{i8, u8, u16, u32, slice};
+use std::{i8, u8, u16, u32, cmp, slice};
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
 
 use crate::bit_vec::BitVec;
@@ -15,6 +15,7 @@ pub struct Codegen<'p> {
 
     registers: HandleMap<ssa::Value, usize>,
     register_count: usize,
+    scratch_registers: usize,
 
     visited: BitVec,
     block_offsets: HashMap<ssa::Label, usize>,
@@ -35,6 +36,7 @@ impl<'p> Codegen<'p> {
 
             registers: HandleMap::new(),
             register_count: 0,
+            scratch_registers: 0,
 
             visited: BitVec::new(),
             block_offsets: HashMap::new(),
@@ -61,7 +63,7 @@ impl<'p> Codegen<'p> {
         self.fixup_jumps();
 
         self.function.params = param_count as u32;
-        self.function.locals = self.register_count as u32;
+        self.function.locals = self.register_count as u32 + self.scratch_registers as u32;
 
         (self.function, self.locations)
     }
@@ -213,13 +215,11 @@ impl<'p> Codegen<'p> {
     ///     block0():
     ///         ...
     ///         jump block1(r0, r1, r2)
-    ///     block1(r1, r2, r3):
+    ///     block1(r1, r2, r0):
     ///
-    /// In the general case, this can be represented as a graph. Every phi, or move operation, is
-    /// a vertex. Phis are uniquely identified by their target registers, but not their source
-    /// registers. There is an edge from each phi that *reads* a register to the phi that *writes*
-    /// it, forming a dependency graph. This means each vertex has at most one outgoing edge, but
-    /// can have many incoming edges.
+    /// This can be represented as a dependency graph between parameter registers. Each register
+    /// holding a parameter has an outgoing edge to the register holding its argument: it must be
+    /// initialized *using* that argument before the argument register can be overwritten.
     ///
     /// A topological sort of this graph produces an ordering that preserves the correct values.
     /// Cycles are broken by introducing an extra register and moving an arbitrary source value
@@ -228,23 +228,22 @@ impl<'p> Codegen<'p> {
     fn emit_phis(&mut self, parameters: &[ssa::Value], arguments: &[ssa::Value]) {
         // the graph representation
         // - `phis` stores the vertices, which are uniquely identified by their targets
-        // - `uses` stores only in-degrees; edges are not kept explicitly
+        // - `uses` stores only in-degrees; reverse edges are not stored explicitly
 
-        let mut phis: HashMap<_, _> = {
-            let targets = parameters.iter().map(|&a| self.registers[a]);
-            let sources = arguments.iter().map(|&a| self.registers[a]);
-
-            // Single-vertex cycles are a success by the register allocator (in particular, copy
-            // coalescing), so leave them out rather than spilling them later.
-            Iterator::zip(targets, sources)
-                .filter(|&(target, source)| target != source)
-                .collect()
-        };
+        // Single-vertex cycles are a success by the register allocator (in particular, copy
+        // coalescing), so leave them out rather than spilling them later.
+        let targets = parameters.iter().map(|&a| self.registers[a]);
+        let sources = arguments.iter().map(|&a| self.registers[a]);
+        let mut phis: HashMap<_, _> = Iterator::zip(targets, sources)
+            .filter(|&(target, source)| target != source)
+            .collect();
 
         let mut uses = HashMap::new();
         for (_, &source) in phis.iter().filter(|&(_, source)| phis.contains_key(&source)) {
             *uses.entry(source).or_insert(0) += 1;
         }
+
+        let mut scratch_count = 0;
 
         let mut work: VecDeque<_> = phis.iter()
             .map(|(&target, &source)| (target, source))
@@ -269,25 +268,27 @@ impl<'p> Codegen<'p> {
             }
 
             // TODO: move this logic to live range splitting
-            let temp = self.register_count;
-            self.register_count += 1;
+            let scratch = self.register_count + scratch_count;
+            scratch_count += 1;
 
             // pick an arbitrary phi to break the cycle
             // there should only be one use left - a phi can't be in more than one cycle
             let (&used, &count) = uses.iter().nth(0).unwrap();
             assert_eq!(count, 1);
 
-            let inst = inst(code::Op::Move).index(temp).index(used).encode();
+            let inst = inst(code::Op::Move).index(scratch).index(used).encode();
             self.function.instructions.push(inst);
 
             // TODO: track edges to make this quicker? there can only be one use by this point
             uses.remove(&used);
             for (_, source) in phis.iter_mut().filter(|&(_, &mut source)| source == used) {
-                *source = temp;
+                *source = scratch;
             }
 
             work.push_back((used, phis[&used]));
         }
+
+        self.scratch_registers = cmp::max(self.scratch_registers, scratch_count);
     }
 
     fn emit_symbol(&mut self, symbol: Symbol) -> usize {
