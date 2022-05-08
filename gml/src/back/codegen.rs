@@ -22,6 +22,7 @@ pub struct Codegen<'p> {
     edge_block: usize,
 
     constants: HashMap<vm::Value, usize>,
+    symbols: HashMap<Symbol, usize>,
 }
 
 impl<'p> Codegen<'p> {
@@ -41,6 +42,7 @@ impl<'p> Codegen<'p> {
             edge_block: 0,
 
             constants: HashMap::new(),
+            symbols: HashMap::new(),
         }
     }
 
@@ -95,8 +97,10 @@ impl<'p> Codegen<'p> {
 
                 let op = code::Op::from(op);
                 let a = match self.prototypes.get(&a) {
-                    Some(&ssa::Prototype::Resource { id, script: true }) => id as usize,
-                    _ => self.emit_string(a),
+                    Some(&ssa::Prototype::Resource { id, script: true }) => {
+                        self.emit_real(id as f64)
+                    }
+                    _ => self.emit_symbol(a),
                 };
                 let b = self.registers[parameters[0]];
                 let c = args.len();
@@ -163,12 +167,16 @@ impl<'p> Codegen<'p> {
             match program.values[value] {
                 Alias { .. } | Project { .. } | Parameter => panic!("compiling non-instruction"),
 
+                UnarySymbol { op: ssa::Opcode::Constant, symbol } => {
+                    inst.index(self.emit_string(symbol));
+                }
+
                 UnaryInt { int, .. } => { inst.int(int); }
                 UnaryReal { real, .. } => { inst.index(self.emit_real(real)); }
-                UnarySymbol { symbol, .. } => { inst.index(self.emit_string(symbol)); }
+                UnarySymbol { symbol, .. } => { inst.index(self.emit_symbol(symbol)); }
                 BinaryInt { int, .. } => { inst.int(int); }
-                BinarySymbol { symbol, .. } => { inst.index(self.emit_string(symbol)); }
-                TernarySymbol { symbol, .. } => { inst.index(self.emit_string(symbol)); }
+                BinarySymbol { symbol, .. } => { inst.index(self.emit_symbol(symbol)); }
+                TernarySymbol { symbol, .. } => { inst.index(self.emit_symbol(symbol)); }
 
                 _ => {}
             }
@@ -280,6 +288,15 @@ impl<'p> Codegen<'p> {
 
             work.push_back((used, phis[&used]));
         }
+    }
+
+    fn emit_symbol(&mut self, symbol: Symbol) -> usize {
+        let Self { ref mut symbols, ref mut function, .. } = *self;
+        *symbols.entry(symbol).or_insert_with(|| {
+            let index = function.symbols.len();
+            function.symbols.push(symbol);
+            index
+        })
     }
 
     fn emit_real(&mut self, real: f64) -> usize {

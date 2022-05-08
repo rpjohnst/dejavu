@@ -202,13 +202,6 @@ impl Thread {
     }
 }
 
-fn get_string(value: ValueRef<'_>) -> Symbol {
-    match value.decode() {
-        Data::String(value) => value,
-        _ => unreachable!("expected a string"),
-    }
-}
-
 // Opaque type to erase the runner-side container for `vm::World` and `vm::Assets`.
 extern { type W; }
 
@@ -476,7 +469,7 @@ fn execute_internal(
             }
 
             (code::Op::DeclareGlobal, name, _, _) => {
-                let name = get_string(code.constants[name].borrow());
+                let name = code.symbols[name];
                 world.globals.insert(name);
 
                 let instance = &mut world.members[world::GLOBAL];
@@ -484,8 +477,7 @@ fn execute_internal(
             }
 
             (code::Op::Lookup, t, name, _) => {
-                let name = get_string(code.constants[name].borrow());
-                registers[t].entity = if world.globals.contains(&name) {
+                registers[t].entity = if world.globals.contains(&code.symbols[name]) {
                     world::GLOBAL
                 } else {
                     thread.self_entity
@@ -589,8 +581,7 @@ fn execute_internal(
                 let a = unsafe { registers[a].value };
                 match a.decode() {
                     Data::Real(a) => if !to_bool(a) {
-                        let local = get_string(code.constants[local].borrow());
-                        break Error::name(local);
+                        break Error::name(code.symbols[local]);
                     }
                     _ => break Error::type_unary(op, a.clone()),
                 }
@@ -660,7 +651,7 @@ fn execute_internal(
 
             (code::Op::LoadField, t, entity, field) => {
                 let entity = unsafe { registers[entity].entity };
-                let field = get_string(code.constants[field].borrow());
+                let field = code.symbols[field];
                 let instance = &world.members[entity];
                 registers[t].value = match instance.get(&field) {
                     Some(value) => unsafe { erase_ref(value.borrow()) },
@@ -670,7 +661,7 @@ fn execute_internal(
 
             (code::Op::LoadFieldDefault, t, entity, field) => {
                 let entity = unsafe { registers[entity].entity };
-                let field = get_string(code.constants[field].borrow());
+                let field = code.symbols[field];
                 let instance = &world.members[entity];
                 registers[t].value = match instance.get(&field) {
                     Some(value) => unsafe { erase_ref(value.borrow()) },
@@ -710,7 +701,7 @@ fn execute_internal(
             (code::Op::StoreField, s, entity, field) => {
                 let s = unsafe { registers[s].value };
                 let entity = unsafe { registers[entity].entity };
-                let field = get_string(code.constants[field].borrow());
+                let field = code.symbols[field];
                 let instance = &mut world.members[entity];
                 instance.insert(field, s.clone());
             }
@@ -747,7 +738,10 @@ fn execute_internal(
             (code::Op::Call, callee, base, len) => {
                 thread.calls.push((function, instruction + 1, reg_base, thread.owned.len()));
 
-                let id = callee as i32;
+                let id = match i32::try_from(code.constants[callee].borrow()) {
+                    Ok(id) => id,
+                    _ => unreachable!("expected a script"),
+                };
                 function = Function::Script { id };
                 code = &assets.code[&function];
                 instruction = 0;
@@ -790,7 +784,7 @@ fn execute_internal(
             }
 
             (code::Op::CallApi, callee, base, len) => {
-                let symbol = get_string(code.constants[callee].borrow());
+                let symbol = code.symbols[callee];
                 let api = assets.api[&symbol];
                 let reg_base = reg_base + base;
 
@@ -817,7 +811,7 @@ fn execute_internal(
             }
 
             (code::Op::CallGet, get, base, _) => {
-                let symbol = get_string(code.constants[get].borrow());
+                let symbol = code.symbols[get];
                 let get = match assets.get.get(&symbol) {
                     Some(&get) => get,
                     None => break Error::name(symbol),
@@ -846,7 +840,7 @@ fn execute_internal(
             }
 
             (code::Op::CallSet, set, base, _) => {
-                let symbol = get_string(code.constants[set].borrow());
+                let symbol = code.symbols[set];
                 let set = match assets.set.get(&symbol) {
                     Some(&set) => set,
                     None => break Error::write(symbol),

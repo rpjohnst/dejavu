@@ -1,10 +1,12 @@
 use std::{u8, mem, fmt};
 
+use crate::symbol::Symbol;
 use crate::vm;
 
 pub struct Function {
     pub params: u32,
     pub locals: u32,
+    pub symbols: Vec<Symbol>,
     pub constants: Vec<vm::Value>,
     pub instructions: Vec<Inst>,
 }
@@ -14,6 +16,7 @@ impl Function {
         Function {
             params: 0,
             locals: 0,
+            symbols: vec![],
             constants: vec![],
             instructions: vec![],
         }
@@ -151,27 +154,27 @@ impl fmt::Debug for Function {
                 Op::LoadPointer | Op::NextPointer | Op::ExistsEntity |
                 Op::ScopeError =>
                     writeln!(f, "  %{:?} = {:?} %{:?}", a, op, b)?,
-                Op::DeclareGlobal => writeln!(f, "  {:?} {:?}", op, self.constants[a])?,
-                Op::Lookup => writeln!(f, "  %{:?} = {:?} {:?}", a, op, self.constants[b])?,
+                Op::DeclareGlobal => writeln!(f, "  {:?} {:?}", op, self.symbols[a])?,
+                Op::Lookup => writeln!(f, "  %{:?} = {:?} {:?}", a, op, self.symbols[b])?,
                 Op::LoadScope => writeln!(f, "  %{:?} = {:?} {:?}", a, op, b as i32)?,
                 Op::StoreScope => writeln!(f, "  {:?} %{:?}, {:?}", op, a, b as i32)?,
                 Op::With => writeln!(f, "  %{:?}, %{:?} = {:?} %{:?}", a, b, op, c)?,
                 Op::ReleaseWith | Op::ReleaseOwned | Op::Ret =>
                     writeln!(f, "  {:?}", op)?,
-                Op::Read => writeln!(f, "  {:?} %{:?}, {:?}", op, a, self.constants[b])?,
+                Op::Read => writeln!(f, "  {:?} %{:?}, {:?}", op, a, self.symbols[b])?,
                 Op::LoadField | Op::LoadFieldDefault =>
-                    writeln!(f, "  %{:?} = {:?} %{:?}.{:?}", a, op, b, self.constants[c])?,
+                    writeln!(f, "  %{:?} = {:?} %{:?}.{:?}", a, op, b, self.symbols[c])?,
                 Op::LoadRow | Op::LoadIndex | Op::StoreRow =>
                     writeln!(f, "  %{:?} = {:?} %{:?}[%{:?}]", a, op, b, c)?,
                 Op::StoreField =>
-                    writeln!(f, "  {:?} %{:?}, %{:?}.{:?}", op, a, b, self.constants[c])?,
+                    writeln!(f, "  {:?} %{:?}, %{:?}.{:?}", op, a, b, self.symbols[c])?,
                 Op::StoreIndex => writeln!(f, "  {:?} %{:?}, %{:?}[%{:?}]", op, a, b, c)?,
                 Op::Call =>
                     writeln!(f, "  %{:?} = {:?} {:?}(%{:?} +{:?})", b, op, a, b, c)?,
                 Op::CallApi | Op::CallGet =>
-                    writeln!(f, "  %{:?} = {:?} {:?}(%{:?} +{:?})", b, op, self.constants[a], b, c)?,
+                    writeln!(f, "  %{:?} = {:?} {:?}(%{:?} +{:?})", b, op, self.symbols[a], b, c)?,
                 Op::CallSet =>
-                    writeln!(f, "  {:?} {:?}(%{:?} +{:?})", op, self.constants[a], b, c)?,
+                    writeln!(f, "  {:?} {:?}(%{:?} +{:?})", op, self.symbols[a], b, c)?,
                 Op::Jump => writeln!(f, "  {:?} {:?}", op, a | (b << 8))?,
                 Op::BranchFalse => writeln!(f, "  {:?} %{:?}, {:?}", op, a, b | (c << 8))?,
                 _ => writeln!(f, "  %{:?} = {:?} %{:?}, %{:?}", a, op, b, c)?,
