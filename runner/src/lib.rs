@@ -47,6 +47,7 @@ pub struct Assets {
     pub objects: Vec<Object>,
     pub rooms: Vec<Room>,
     pub next_instance: i32,
+    pub room_order: Vec<u32>,
 }
 
 pub struct Texture {
@@ -105,6 +106,7 @@ pub fn build<'a, F: FnMut() -> E, E: io::Write + 'static>(game: &'a project::Gam
         })
         .collect();
     assets.next_instance = game.last_instance + 1;
+    assets.room_order = game.room_order.clone();
 
     let mut items = HashMap::default();
     World::register(&mut items);

@@ -143,6 +143,7 @@ pub extern "system" fn game_room<'a>(
     game.last_instance += 1;
     let id2 = game.last_instance;
 
+    game.room_order.push(game.rooms.len() as u32);
     game.rooms.push(project::Room {
         name,
         code: b"",

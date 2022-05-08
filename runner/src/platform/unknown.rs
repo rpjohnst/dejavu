@@ -13,7 +13,8 @@ pub fn run(mut cx: crate::Context) {
 
     crate::graphics::load(&mut cx);
 
-    if let Err(error) = crate::room::State::load_room(&mut cx, &mut thread, 0) {
+    let room = cx.assets.room_order[0] as i32;
+    if let Err(error) = crate::room::State::load_room(&mut cx, &mut thread, room) {
         let crate::World { show, .. } = &cx.world;
         show.show_vm_error(&*error);
     }

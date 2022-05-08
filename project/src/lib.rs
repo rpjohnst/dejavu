@@ -27,6 +27,8 @@ pub struct Game<'a> {
 
     pub last_instance: i32,
     pub last_tile: i32,
+
+    pub room_order: Vec<u32>,
 }
 
 pub struct Settings {
@@ -413,6 +415,8 @@ impl<'a> Default for Game<'a> {
 
             last_instance: 100000,
             last_tile: 10000000,
+
+            room_order: Vec::default(),
         }
     }
 }

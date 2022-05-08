@@ -725,7 +725,7 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
 
     let _version = read.next_u32()?;
     for _ in 0..read.next_u32()? {
-        let _room = read.next_u32()?;
+        game.room_order.push(read.next_u32()?);
     }
 
     // resource tree

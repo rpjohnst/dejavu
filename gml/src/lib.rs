@@ -192,7 +192,7 @@ fn compile_program<E: io::Write + 'static>(
     let lines = Lines::from_code(code);
     let mut errors = ErrorPrinter::new(name, &lines, errors);
     let program = Parser::new(Lexer::new(code, 0), &mut errors).parse_program();
-    let program = { front::Codegen::new(&prototypes, &mut errors).compile_program(&program) };
+    let program = front::Codegen::new(&prototypes, &mut errors).compile_program(&program);
     let (code, locations) = back::Codegen::new(prototypes).compile(&program);
     let count = errors.count;
     (code, vm::Locations { locations, lines }, count)
