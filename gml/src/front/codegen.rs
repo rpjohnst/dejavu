@@ -438,13 +438,13 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
             }
 
             ast::Stmt::Switch(box ref expr, box ref body) => {
+                let value = self.emit_value(expr);
+
                 let expr_block = self.current_block;
                 let dead_block = self.make_block();
                 let exit_block = self.make_block();
 
                 self.seal_block(dead_block);
-
-                let value = self.emit_value(expr);
 
                 self.current_block = dead_block;
                 self.with_switch(value, expr_block, exit_block, |self_| {
