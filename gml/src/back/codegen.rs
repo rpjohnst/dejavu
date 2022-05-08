@@ -170,7 +170,13 @@ impl<'p> Codegen<'p> {
                 Alias { .. } | Project { .. } | Parameter => panic!("compiling non-instruction"),
 
                 UnarySymbol { op: ssa::Opcode::Constant, symbol } => {
-                    inst.index(self.emit_string(symbol));
+                    inst.wide_index(self.emit_string(symbol));
+                }
+                UnaryReal { op: ssa::Opcode::Constant, real } => {
+                    inst.wide_index(self.emit_real(real));
+                }
+                UnaryInt { op: ssa::Opcode::GlobalConstant, int } => {
+                    inst.wide_index(int as usize);
                 }
 
                 UnaryInt { int, .. } => { inst.int(int); }

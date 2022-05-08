@@ -243,12 +243,14 @@ fn execute_internal(
         let registers = &mut thread.stack[reg_base..];
 
         match code.instructions[instruction].decode() {
-            (code::Op::Const, t, constant, _) => {
+            (code::Op::Const, t, c_low, c_high) => {
+                let constant = c_low | (c_high << 8);
                 // Safety: Immediates must be reals or strings, which are never freed.
                 registers[t].value = unsafe { erase_ref(code.constants[constant].borrow()) };
             }
 
-            (code::Op::GlobalConst, t, constant, _) => {
+            (code::Op::GlobalConst, t, c_low, c_high) => {
+                let constant = c_low | (c_high << 8);
                 // TODO: do GMS arrays co-exist with non-macro constants in any version?
                 // Safety: Constants must be reals or strings, which are never freed.
                 registers[t].value = unsafe { erase_ref(world.constants[constant].borrow()) };
