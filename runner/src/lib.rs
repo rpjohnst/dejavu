@@ -84,7 +84,7 @@ pub struct Instance {
 }
 
 /// Build a Game Maker project.
-pub fn build<'a, F: FnMut() -> E, E: io::Write + 'static>(game: &'a project::Game, errors: F) ->
+pub fn build<'a, F: FnMut() -> E, E: io::Write>(game: &'a project::Game, errors: F) ->
     Result<(Assets, vm::Debug), u32>
 {
     let mut assets = Assets::default();

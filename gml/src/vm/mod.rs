@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 use crate::symbol::Symbol;
+use crate::back::ssa;
 use crate::{Function, front::Lines};
 
 pub use crate::vm::interpreter::{Thread, Result, Error, ErrorFrame};
@@ -30,6 +31,8 @@ pub struct Assets<W: ?Sized> {
     pub get: HashMap<Symbol, GetFunction<W>>,
     pub set: HashMap<Symbol, SetFunction<W>>,
     pub constants: i32,
+
+    pub prototypes: HashMap<Symbol, ssa::Prototype>,
 }
 
 #[derive(Default)]
@@ -59,6 +62,8 @@ impl<W: ?Sized> Default for Assets<W> {
             get: HashMap::default(),
             set: HashMap::default(),
             constants: 0,
+
+            prototypes: HashMap::default(),
         }
     }
 }

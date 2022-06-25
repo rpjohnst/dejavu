@@ -32,6 +32,7 @@ pub enum Function {
     /// Instance creation code.
     Instance { id: i32 },
     Constant { id: i32 },
+    String { id: i32 },
 }
 
 /// An entity defined by the runner.
@@ -41,14 +42,19 @@ pub enum Item<W> {
 }
 
 /// Build the GML and D&D in a Game Maker project.
-pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
+pub fn build<W, F: FnMut() -> E, E: io::Write>(
     game: &project::Game, runner: &HashMap<Symbol, Item<W>>, mut errors: F
 ) -> Result<(vm::Assets<W>, vm::Debug), u32> {
     let mut assets = vm::Assets::default();
-    let mut prototypes = HashMap::with_capacity(game.scripts.len() + runner.len());
     let mut debug = vm::Debug::default();
 
     // Collect the prototypes of entities that may be referred to in code.
+    let prototypes = &mut assets.prototypes;
+    prototypes.reserve(
+        runner.len() +
+        game.constants.len() +
+        game.sprites.len() + game.scripts.len() + game.objects.len() + game.rooms.len()
+    );
     for (&name, item) in runner.iter() {
         match *item {
             Item::Native(api, arity, variadic) => {
@@ -99,7 +105,7 @@ pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
     for (id, (&constant, &project::Constant { value, .. })) in resources.enumerate() {
         let function = Function::Constant { id: id as i32 };
         let name = FunctionDisplay::Constant { constant };
-        let (code, locations, errors) = compile_constant(&prototypes, name, value, errors());
+        let (code, locations, errors) = compile_constant(prototypes, name, value, errors());
         assets.code.insert(function, code);
         debug.locations.insert(function, locations);
         total_errors += errors;
@@ -111,7 +117,7 @@ pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
     for (id, (&script, &project::Script { body, .. })) in resources.enumerate() {
         let function = Function::Script { id: id as i32 };
         let name = FunctionDisplay::Script { script };
-        let (code, locations, errors) = compile_program(&prototypes, name, body, errors());
+        let (code, locations, errors) = compile_program(prototypes, name, body, errors());
         assets.code.insert(function, code);
         debug.locations.insert(function, locations);
         total_errors += errors;
@@ -125,7 +131,7 @@ pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
             let function = Function::Event { object_index, event_type, event_kind };
             let event_kind = EventDisplay::from_debug(&debug, event_type, event_kind);
             let name = FunctionDisplay::Event { object, event_type, event_kind };
-            let (code, locations, errors) = compile_event(&prototypes, name, actions, errors());
+            let (code, locations, errors) = compile_event(prototypes, name, actions, errors());
             assets.code.insert(function, code);
             debug.locations.insert(function, locations);
             total_errors += errors;
@@ -140,7 +146,7 @@ pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
         if code.len() > 0 {
             let function = Function::Room { id };
             let name = FunctionDisplay::Room { room };
-            let (code, locations, errors) = compile_program(&prototypes, name, code, errors());
+            let (code, locations, errors) = compile_program(prototypes, name, code, errors());
             assets.code.insert(function, code);
             debug.locations.insert(function, locations);
             total_errors += errors;
@@ -151,7 +157,7 @@ pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
             if code.len() > 0 {
                 let function = Function::Instance { id };
                 let name = FunctionDisplay::Instance { room, id };
-                let (code, locations, errors) = compile_program(&prototypes, name, code, errors());
+                let (code, locations, errors) = compile_program(prototypes, name, code, errors());
                 assets.code.insert(function, code);
                 debug.locations.insert(function, locations);
                 total_errors += errors;
@@ -168,7 +174,7 @@ pub fn build<W, F: FnMut() -> E, E: io::Write + 'static>(
     Ok((assets, debug))
 }
 
-fn compile_constant<E: io::Write + 'static>(
+fn compile_constant<E: io::Write>(
     prototypes: &HashMap<Symbol, ssa::Prototype>,
     name: FunctionDisplay,
     code: &[u8],
@@ -183,7 +189,7 @@ fn compile_constant<E: io::Write + 'static>(
     (code, vm::Locations { locations, lines }, count)
 }
 
-fn compile_program<E: io::Write + 'static>(
+pub fn compile_program<E: io::Write>(
     prototypes: &HashMap<Symbol, ssa::Prototype>,
     name: FunctionDisplay,
     code: &[u8],
@@ -198,7 +204,7 @@ fn compile_program<E: io::Write + 'static>(
     (code, vm::Locations { locations, lines }, count)
 }
 
-fn compile_event<E: io::Write + 'static>(
+fn compile_event<E: io::Write>(
     prototypes: &HashMap<Symbol, ssa::Prototype>,
     name: FunctionDisplay,
     actions: &[project::Action<'_>],
@@ -226,6 +232,7 @@ pub enum FunctionDisplay {
     Room { room: Symbol },
     Instance { room: Symbol, id: i32 },
     Constant { constant: Symbol },
+    String,
 }
 
 #[derive(Copy, Clone)]
@@ -309,6 +316,7 @@ impl FunctionDisplay {
                 let constant = debug.constants[id as usize];
                 FunctionDisplay::Constant { constant }
             }
+            Function::String { .. } => { FunctionDisplay::String }
         }
     }
 }
@@ -340,6 +348,7 @@ impl fmt::Display for FunctionDisplay {
             FunctionDisplay::Instance { room, id } =>
                 write!(f, "creation code for instance {} in room {}", id, room),
             FunctionDisplay::Constant { constant } => write!(f, "constant {}", constant),
+            FunctionDisplay::String => write!(f, "string to be executed"),
         }
     }
 }
