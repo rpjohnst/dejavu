@@ -927,8 +927,8 @@ trait GmkRead: Sized {
     }
 
     fn next_zlib(&mut self) -> io::Result<BufReader<ZlibDecoder<io::Take<&mut Self>>>> {
+        let mut buf = MaybeUninit::uninit();
         unsafe {
-            let mut buf = MaybeUninit::uninit();
             self.read_zlib(buf.as_mut_ptr())?;
             Ok(buf.assume_init())
         }

@@ -25,18 +25,18 @@ impl fmt::Debug for HResult {
 
 impl fmt::Display for HResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        unsafe {
+        
             let HResult(hr) = *self;
 
             let mut ptr = ptr::null_mut();
-            let len = FormatMessageW(
+            let len = unsafe {FormatMessageW(
                 FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
                 ptr::null_mut(), hr as DWORD, 0, &mut ptr as *mut _ as *mut _, 0, ptr::null_mut()
-            );
-            let slice = LocalBox::from_raw(slice::from_raw_parts_mut(ptr, len as usize));
+            )};
+            let slice = unsafe {LocalBox::from_raw(slice::from_raw_parts_mut(ptr, len as usize))};
 
-            write!(f, "{}", OsString::from_wide(&slice).to_string_lossy())
-        }
+         write!(f, "{}", OsString::from_wide(&slice).to_string_lossy())
+        
     }
 }
 

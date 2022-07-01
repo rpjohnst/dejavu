@@ -28,13 +28,13 @@ impl<T> Com<T> {
     }
 
     pub fn query_interface<U>(&self) -> Result<Com<U>, HRESULT> where U: winapi::Interface {
-        unsafe {
+        
             let mut ptr = ptr::null_mut();
-            match (*self.ptr.as_ptr()).QueryInterface(&U::uuidof(), &mut ptr) {
+            match unsafe {(*self.ptr.as_ptr()).QueryInterface(&U::uuidof(), &mut ptr)} {
                 hr if FAILED(hr) => Err(hr),
-                _ => Ok(Com::from_raw(ptr as *mut U))
+                _ => Ok(unsafe {Com::from_raw(ptr as *mut U)})
             }
-        }
+        
     }
 }
 
@@ -50,11 +50,11 @@ impl<T> Clone for Com<T> where T: winapi::Interface {
     fn clone(&self) -> Self {
         unsafe {
             (*self.ptr.as_ptr()).AddRef();
+        }
             Com {
                 ptr: self.ptr,
                 _marker: PhantomData,
             }
-        }
     }
 }
 

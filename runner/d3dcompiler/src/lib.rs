@@ -54,9 +54,9 @@ fn compile_from_file(
 ) -> Result<Com<ID3DBlob>, (HResult, Com<ID3DBlob>)> {
     let source = Vec::from_iter(Iterator::chain(source.as_os_str().encode_wide(), iter::once(0)));
 
+    let mut shader = ptr::null_mut();
+    let mut errors = ptr::null_mut();
     unsafe {
-        let mut shader = ptr::null_mut();
-        let mut errors = ptr::null_mut();
         match D3DCompileFromFile(
             source.as_ptr(), ptr::null_mut(), ptr::null_mut(), entry.as_ptr(),
             model.as_ptr(), flags, 0,
@@ -71,12 +71,12 @@ fn compile_from_file(
 fn write_blob_to_file(blob: &ID3DBlob, target: &Path, overwrite: bool) -> Result<(), HResult> {
     let target = Vec::from_iter(Iterator::chain(target.as_os_str().encode_wide(), iter::once(0)));
 
-    unsafe {
-        match D3DWriteBlobToFile(blob as *const _ as *mut _, target.as_ptr(), overwrite as BOOL) {
+   
+        match unsafe {D3DWriteBlobToFile(blob as *const _ as *mut _, target.as_ptr(), overwrite as BOOL)} {
             hr if FAILED(hr) => Err(HResult(hr)),
             _ => Ok(()),
         }
-    }
+    
 }
 
 #[derive(Debug)]
