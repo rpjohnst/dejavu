@@ -7,13 +7,25 @@ You can [**try it out**][playground] in your web browser right now!
 [game maker]: https://en.wikipedia.org/wiki/GameMaker_Studio
 [playground]: https://dejavu.abubalay.com/
 
+# Building
+
+Dejavu currently requires a nightly Rust toolchain, though mostly out of convenience. It should move to stable Rust in the future. When Rust is installed using `rustup`, the `rust-toolchain.toml` file will select the appropriate toolchain automatically.
+
+With Rust installed, build and run using `cargo`:
+
+```bash
+cargo run -- project.gmk
+```
+
+This command accepts Game Maker 8.0 project files (`project.gmk`), executables (`game.exe`), and stand-alone scripts (`script.gml`).
+
+See also the build instructions for the [playground](playground).
+
 # Contributing
 
 Dejavu is still in an early stage, but contributions are welcome in the form of bug reports, pull requests, suggestions, and other feedback.
 
-In its current state, it can compile and run Game Maker Language (GML) and drag-and-drop code, with some support for binding to APIs implemented in Rust.
-
-Dejavu currently requires a nightly Rust toolchain to build, though mostly out of convenience. It should move to stable Rust in the future.
+In its current state, it can compile and run Game Maker Language (GML) and drag-and-drop code, with some support for binding to APIs implemented in Rust. Pick a game and try running it to see what we need to implement next!
 
 There is a [Discord server] for contributors and users to coordinate and discuss. Stop by and chat!
 
