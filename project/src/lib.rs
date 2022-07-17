@@ -1,5 +1,5 @@
 #[cfg(feature = "read")]
-pub use read::{read_gmk, read_exe};
+pub use read::{read_project, read_exe};
 
 #[cfg(feature = "read")]
 mod read;

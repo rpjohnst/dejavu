@@ -57,7 +57,7 @@ macro_rules! impl_fn_bind { (
         const ARITY: usize = count!($($p)*);
         const VARIADIC: bool = count!($($v)?) == 1;
 
-        #[allow(nonstandard_style, unused, unreachable)]
+        #[allow(nonstandard_style, unused)]
         unsafe fn call(self, cx: &mut W, $thread: &'t mut Thread, range: Range<usize>) ->
             Result<Value>
         {
@@ -81,7 +81,7 @@ macro_rules! impl_get_bind { (($($r:ident)*) ($($e:ident)?) ($($i:ident)?)) => {
         W: for<'r> Project<'r, ($(&'r mut $r,)*)>,
         B: Into<Value>,
     {
-        #[allow(nonstandard_style, unused, unreachable)]
+        #[allow(nonstandard_style, unused)]
         fn call(self, cx: &mut W, entity: Entity, index: usize) -> Value {
             let ($($r,)*) = cx.fields();
             $(let $e = entity;)?
@@ -98,7 +98,7 @@ macro_rules! impl_set_bind { (($($r:ident)*) ($($e:ident)?) ($($i:ident)?)) => {
         W: for<'r> Project<'r, ($(&'r mut $r,)*)>,
         P: TryFrom<ValueRef<'t>> + Default,
     {
-        #[allow(nonstandard_style, unused, unreachable)]
+        #[allow(nonstandard_style, unused)]
         fn call(self, cx: &mut W, entity: Entity, index: usize, value: ValueRef<'t>) {
             let ($($r,)*) = cx.fields();
             $(let $e = entity;)?

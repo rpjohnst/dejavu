@@ -1,33 +1,37 @@
-use std::{ptr, slice};
-use std::mem::MaybeUninit;
+use std::{iter, ptr, slice};
 use std::alloc::{Layout, handle_alloc_error};
-use std::io::{self, Read, Seek, SeekFrom, BufRead, BufReader, Cursor};
+use std::io::{self, Read, BufRead, Seek, SeekFrom};
 use flate2::bufread::ZlibDecoder;
 use quickdry::Arena;
 
 use crate::{
-    Game, Settings, Constant,
+    Game, Constant,
     Sound,
     Sprite, Frame, Mask,
     Background,
     Path, Point,
     Script,
     Object, Action, Event,
-    Room, RoomBackground, View, Instance, Tile
+    Room, RoomBackground, View, Instance, Tile,
 };
 
 const GM_OFFSET_800: u64 = 2_000_000;
-const GMK_MAGIC: u32 = 1234321;
+const GM_MAGIC: u32 = 1234321;
 
-pub fn read_gmk<'a, R: Read>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena) ->
-    io::Result<()>
-{
-    let mut buf = Vec::default();
-    read.read_to_end(&mut buf)?;
+pub fn read_project<'a>(read: &[u8], game: &mut Game<'a>, arena: &'a Arena) -> io::Result<()> {
+    let read = &mut { read };
+    let buf = &mut Vec::default();
 
-    let read = &mut &buf[..];
-    read_header(read, false, game, arena)?;
-    read_rest(*read, false, game, arena)?;
+    if read.next_u32()? != GM_MAGIC {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
+    read.read_u32(&mut game.version)?;
+    if game.version != 800 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
+    read_body(read, buf, false, game, arena)?;
 
     Ok(())
 }
@@ -40,69 +44,79 @@ pub fn read_exe<'a, R: BufRead + Seek>(read: &mut R, game: &mut Game<'a>, arena:
     if &buf != b"MZ" {
         return Err(io::Error::from(io::ErrorKind::InvalidData));
     }
-    read.seek(SeekFrom::Start(GM_OFFSET_800))?;
 
-    read_header(read, true, game, arena)?;
+    if {
+        read.seek(SeekFrom::Start(GM_OFFSET_800))?;
+        read.next_u32()? == GM_MAGIC
+    } {
+        let buf = &mut Vec::default();
 
-    read.skip_blob()?;
-    read.skip_blob()?;
+        read.read_u32(&mut game.version)?;
+        if game.version != 800 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
 
-    // swap tables
+        read.read_u32(&mut game.debug)?;
 
-    let mut forward = [0u8; 256];
-    let skip_1 = read.next_u32()?;
-    let skip_2 = read.next_u32()?;
-    read.seek(SeekFrom::Current(skip_1 as i64 * 4))?;
-    read.read_exact(&mut forward)?;
-    read.seek(SeekFrom::Current(skip_2 as i64 * 4))?;
+        {
+            let version = read.next_u32()?;
+            if version != 800 {
+                return Err(io::Error::from(io::ErrorKind::InvalidData));
+            }
 
-    let mut reverse = [0u8; 256];
-    for z in 0..256 { reverse[forward[z] as usize] = z as u8; }
+            let read = &mut read.read_blob_zlib(buf)?;
+            read_settings(read, true, version, game, arena)?;
+            assert!(read.is_empty());
+        }
 
-    // decrypt
+        read.skip_blob()?;
+        read.skip_blob()?;
 
-    let mut data = &mut [][..];
-    let decrypt = &Arena::default();
-    read.read_blob_mut(&mut data, decrypt)?;
-    for i in (1..data.len()).rev() {
-        data[i] = (reverse[data[i] as usize] as i32 - data[i - 1] as i32 - i as i32) as u8;
-    }
-    for i in (0..data.len()).rev() {
-        let j = usize::saturating_sub(i, forward[i & 0xff] as usize);
-        data.swap(i, j);
-    }
+        // swap tables
 
-    let read = &mut &*data;
+        let mut forward = [0u8; 256];
+        let skip_1 = read.next_u32()? as i64;
+        let skip_2 = read.next_u32()? as i64;
+        read.seek(SeekFrom::Current(skip_1 * 4))?;
+        read.read_exact(&mut forward)?;
+        read.seek(SeekFrom::Current(skip_2 * 4))?;
 
-    let skip = read.next_u32()?;
-    *read = &read[skip as usize * 4..];
+        let mut reverse = [0u8; 256];
+        for i in 0..256 { reverse[forward[i] as usize] = i as u8; }
 
-    read.read_bool(&mut game.pro)?;
+        // decrypt
 
-    read_rest(*read, true, game, arena)?;
+        let len = read.next_u32()? as usize;
+        let mut data = Vec::from_iter(iter::repeat(0).take(len));
+        read.read_exact(&mut data[..])?;
 
-    Ok(())
-}
+        for i in (1..data.len()).rev() {
+            data[i] = (reverse[data[i] as usize] as i32 - data[i - 1] as i32 - i as i32) as u8;
+        }
+        for i in (0..data.len()).rev() {
+            let j = usize::saturating_sub(i, forward[i & 0xff] as usize);
+            data.swap(i, j);
+        }
 
-fn read_header<'a, R: BufRead>(read: &mut R, exe: bool, game: &mut Game<'a>, arena: &'a Arena) ->
-    io::Result<()>
-{
-    if read.next_u32()? != GMK_MAGIC {
+        // game data
+
+        let read = &mut &data[..];
+
+        let skip = read.next_u32()? as usize;
+        *read = &read[skip * 4..];
+
+        read.read_bool(&mut game.pro)?;
+        read_body(read, buf, true, game, arena)?;
+    } else {
         return Err(io::Error::from(io::ErrorKind::InvalidData));
     }
-    read.read_u32(&mut game.version)?;
-
-    if exe {
-        read.read_u32(&mut game.debug)?;
-        read_settings(read, exe, &mut game.settings, arena)?;
-    }
 
     Ok(())
 }
 
-fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) -> io::Result<()> {
-    let read = &mut Cursor::new(read);
-
+fn read_body<'a>(
+    read: &mut &[u8], buf: &mut Vec<u8>, exe: bool, game: &mut Game<'a>, arena: &'a Arena
+) -> io::Result<()> {
     read.read_u32(&mut game.id)?;
     read.read_u32(&mut game.guid[0])?;
     read.read_u32(&mut game.guid[1])?;
@@ -110,7 +124,14 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
     read.read_u32(&mut game.guid[3])?;
 
     if !exe {
-        read_settings(read, exe, &mut game.settings, arena)?;
+        let version = read.next_u32()?;
+        if version != 800 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
+
+        let read = &mut read.read_blob_zlib(buf)?;
+        read_settings(read, exe, version, game, arena)?;
+        assert!(read.is_empty());
     }
 
     // extensions
@@ -195,22 +216,35 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
 
     // sounds
 
-    let _version = read.next_u32()?;
+    let version = read.next_u32()?;
+    if version != 800 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
     let len = read.next_u32()? as usize;
     game.sounds.reserve(len);
     for id in 0..len {
         game.sounds.push(Sound::default());
 
-        let read = &mut read.next_zlib()?;
-        if !read.next_bool()? {
-            assert!(read.fill_buf()?.is_empty());
-            continue;
-        }
-
         let sound = &mut game.sounds[id];
+        let read = &mut read.read_blob_zlib(buf)?;
+        read_sound(read, exe, version, sound, arena)?;
+        assert!(read.is_empty());
+    }
+
+    fn read_sound<'a>(
+        read: &mut &[u8], exe: bool, _version: u32, sound: &mut Sound<'a>, arena: &'a Arena
+    ) -> io::Result<()> {
+        if !read.next_bool()? { return Ok(()); }
+
         read.read_blob(&mut sound.name, arena)?;
         if !exe { let _time = read.next_f64()?; }
-        let _version = read.next_u32()?;
+
+        let version = read.next_u32()?;
+        if version != 800 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
+
         read.read_u32(&mut sound.kind)?;
         read.read_blob(&mut sound.file_type, arena)?;
         read.read_blob(&mut sound.file_name, arena)?;
@@ -222,27 +256,40 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
         read.read_f64(&mut sound.pan)?;
         read.read_bool(&mut sound.preload)?;
 
-        assert!(read.fill_buf()?.is_empty());
+        Ok(())
     }
 
     // sprites
 
-    let _version = read.next_u32()?;
+    let version = read.next_u32()?;
+    if version != 800 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
     let len = read.next_u32()? as usize;
     game.sprites.reserve(len);
     for id in 0..len {
         game.sprites.push(Sprite::default());
 
-        let read = &mut read.next_zlib()?;
-        if !read.next_bool()? {
-            assert!(read.fill_buf()?.is_empty());
-            continue;
-        }
-
         let sprite = &mut game.sprites[id];
+        let read = &mut read.read_blob_zlib(buf)?;
+        read_sprite(read, exe, version, sprite, arena)?;
+        assert!(read.is_empty());
+    }
+
+    fn read_sprite<'a>(
+        read: &mut &[u8], exe: bool, _version: u32, sprite: &mut Sprite<'a>, arena: &'a Arena
+    ) -> io::Result<()> {
+        if !read.next_bool()? { return Ok(()); }
+
         read.read_blob(&mut sprite.name, arena)?;
         if !exe { let _time = read.next_f64()?; }
-        let _version = read.next_u32()?;
+
+        let version = read.next_u32()?;
+        if version != 800 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
+
         read.read_u32(&mut sprite.origin.0)?;
         read.read_u32(&mut sprite.origin.1)?;
 
@@ -294,27 +341,40 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
             }
         }
 
-        assert!(read.fill_buf()?.is_empty());
+        Ok(())
     }
 
     // backgrounds
 
-    let _version = read.next_u32()?;
+    let version = read.next_u32()?;
+    if version != 800 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
     let len = read.next_u32()? as usize;
     game.backgrounds.reserve(len);
     for id in 0..len {
         game.backgrounds.push(Background::default());
 
-        let read = &mut read.next_zlib()?;
-        if !read.next_bool()? {
-            assert!(read.fill_buf()?.is_empty());
-            continue;
-        }
-
         let background = &mut game.backgrounds[id];
+        let read = &mut read.read_blob_zlib(buf)?;
+        read_background(read, exe, version, background, arena)?;
+        assert!(read.is_empty());
+    }
+
+    fn read_background<'a>(
+        read: &mut &[u8], exe: bool, _version: u32, background: &mut Background<'a>, arena: &'a Arena
+    ) -> io::Result<()> {
+        if !read.next_bool()? { return Ok(()); }
+
         read.read_blob(&mut background.name, arena)?;
         if !exe { let _time = read.next_f64()?; }
-        let _version = read.next_u32()?;
+
+        let version = read.next_u32()?;
+        if version != 710 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
+
         if !exe {
             let _tileset = read.next_bool()?;
             let _tile_width = read.next_u32()?;
@@ -331,27 +391,40 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
             read.read_blob(&mut background.data, arena)?;
         }
 
-        assert!(read.fill_buf()?.is_empty());
+        Ok(())
     }
 
     // paths
 
-    let _version = read.next_u32()?;
+    let version = read.next_u32()?;
+    if version != 800 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
     let len = read.next_u32()? as usize;
     game.paths.reserve(len);
     for id in 0..len {
         game.paths.push(Path::default());
 
-        let read = &mut read.next_zlib()?;
-        if !read.next_bool()? {
-            assert!(read.fill_buf()?.is_empty());
-            continue;
-        }
-
         let path = &mut game.paths[id];
+        let read = &mut read.read_blob_zlib(buf)?;
+        read_path(read, exe, version, path, arena)?;
+        assert!(read.is_empty());
+    }
+
+    fn read_path<'a>(
+        read: &mut &[u8], exe: bool, _version: u32, path: &mut Path<'a>, arena: &'a Arena
+    ) -> io::Result<()> {
+        if !read.next_bool()? { return Ok(()); }
+
         read.read_blob(&mut path.name, arena)?;
         if !exe { let _time = read.next_f64()?; }
-        let _version = read.next_u32()?;
+
+        let version = read.next_u32()?;
+        if version != 530 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
+
         read.read_u32(&mut path.kind)?;
         read.read_bool(&mut path.closed)?;
         read.read_u32(&mut path.precision)?;
@@ -367,47 +440,72 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
             read.read_f64(&mut point.speed)?;
         }
 
-        assert!(read.fill_buf()?.is_empty());
+        Ok(())
     }
 
     // scripts
 
-    let _version = read.next_u32()?;
+    let version = read.next_u32()?;
+    if version != 800 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
     let len = read.next_u32()? as usize;
     game.scripts.reserve(len);
     for id in 0..len {
         game.scripts.push(Script::default());
 
-        let read = &mut read.next_zlib()?;
-        if !read.next_bool()? {
-            assert!(read.fill_buf()?.is_empty());
-            continue;
-        }
-
         let script = &mut game.scripts[id];
+        let read = &mut read.read_blob_zlib(buf)?;
+        read_script(read, exe, version, script, arena)?;
+        assert!(read.is_empty());
+    }
+
+    fn read_script<'a>(
+        read: &mut &[u8], exe: bool, _version: u32, script: &mut Script<'a>, arena: &'a Arena
+    ) -> io::Result<()> {
+        if !read.next_bool()? { return Ok(()); }
+
         read.read_blob(&mut script.name, arena)?;
         if !exe { let _time = read.next_f64()?; }
-        let _version = read.next_u32()?;
+
+        let version = read.next_u32()?;
+        if version != 800 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
+
         read.read_blob(&mut script.body, arena)?;
 
-        assert!(read.fill_buf()?.is_empty());
+        Ok(())
     }
 
     // fonts
 
-    let _version = read.next_u32()?;
-    for _id in 0..read.next_u32()? {
-        let read = &mut read.next_zlib()?;
-        if !read.next_bool()? {
-            assert!(read.fill_buf()?.is_empty());
-            continue;
-        }
+    let version = read.next_u32()?;
+    if version != 800 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
+    let len = read.next_u32()? as usize;
+    for _ in 0..len {
+        let read = &mut read.read_blob_zlib(buf)?;
+        read_font(read, exe, version, arena)?;
+        assert!(read.is_empty());
+    }
+
+    fn read_font<'a>(
+        read: &mut &[u8], exe: bool, _version: u32, arena: &'a Arena
+    ) -> io::Result<()> {
+        if !read.next_bool()? { return Ok(()); }
 
         let mut name = &[][..];
         read.read_blob(&mut name, arena)?;
-
         if !exe { let _time = read.next_f64()?; }
-        let _version = read.next_u32()?;
+
+        let version = read.next_u32()?;
+        if version != 800 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
 
         let mut font = &[][..];
         read.read_blob(&mut font, arena)?;
@@ -418,24 +516,36 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
         let _start = read.next_u32()?;
         let _end = read.next_u32()?;
 
-        assert!(read.fill_buf()?.is_empty());
+        Ok(())
     }
 
     // timelines
 
-    let _version = read.next_u32()?;
-    for _id in 0..read.next_u32()? {
-        let read = &mut read.next_zlib()?;
-        if !read.next_bool()? {
-            assert!(read.fill_buf()?.is_empty());
-            continue;
-        }
+    let version = read.next_u32()?;
+    if version != 800 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
+    let len = read.next_u32()? as usize;
+    for _ in 0..len {
+        let read = &mut read.read_blob_zlib(buf)?;
+        read_timeline(read, exe, version, arena)?;
+        assert!(read.is_empty());
+    }
+
+    fn read_timeline<'a>(
+        read: &mut &[u8], exe: bool, _version: u32, arena: &'a Arena
+    ) -> io::Result<()> {
+        if !read.next_bool()? { return Ok(()); }
 
         let mut name = &[][..];
         read.read_blob(&mut name, arena)?;
-
         if !exe { let _time = read.next_f64()?; }
-        let _version = read.next_u32()?;
+
+        let version = read.next_u32()?;
+        if version != 500 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
 
         for _ in 0..read.next_u32()? {
             let _time = read.next_u32()?;
@@ -446,28 +556,40 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
             }
         }
 
-        assert!(read.fill_buf()?.is_empty());
+        Ok(())
     }
 
     // objects
 
-    let _version = read.next_u32()?;
+    let version = read.next_u32()?;
+    if version != 800 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
     let len = read.next_u32()? as usize;
     game.objects.reserve(len);
     for id in 0..len {
         game.objects.push(Object::default());
 
-        let read = &mut read.next_zlib()?;
-        if !read.next_bool()? {
-            assert!(read.fill_buf()?.is_empty());
-            continue;
+        let object = &mut game.objects[id];
+        let read = &mut read.read_blob_zlib(buf)?;
+        read_object(read, exe, version, object, arena)?;
+        assert!(read.is_empty());
+    }
+
+    fn read_object<'a>(
+        read: &mut &[u8], exe: bool, _version: u32, object: &mut Object<'a>, arena: &'a Arena
+    ) -> io::Result<()> {
+        if !read.next_bool()? { return Ok(()); }
+
+        read.read_blob(&mut object.name, arena)?;
+        if !exe { let _time = read.next_f64()?; }
+
+        let version = read.next_u32()?;
+        if version != 430 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
         }
 
-        let object = &mut game.objects[id];
-        read.read_blob(&mut object.name, arena)?;
-
-        if !exe { let _time = read.next_f64()?; }
-        let _version = read.next_u32()?;
         read.read_i32(&mut object.sprite)?;
         read.read_bool(&mut object.solid)?;
         read.read_bool(&mut object.visible)?;
@@ -503,27 +625,40 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
             }
         }
 
-        assert!(read.fill_buf()?.is_empty());
+        Ok(())
     }
 
     // rooms
 
-    let _version = read.next_u32()?;
+    let version = read.next_u32()?;
+    if version != 800 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
     let len = read.next_u32()? as usize;
     game.rooms.reserve(len);
     for id in 0..len {
         game.rooms.push(Room::default());
 
-        let read = &mut read.next_zlib()?;
-        if !read.next_bool()? {
-            assert!(read.fill_buf()?.is_empty());
-            continue;
-        }
-
         let room = &mut game.rooms[id];
+        let read = &mut read.read_blob_zlib(buf)?;
+        read_room(read, exe, version, room, arena)?;
+        assert!(read.is_empty());
+    }
+
+    fn read_room<'a>(
+        read: &mut &[u8], exe: bool, _version: u32, room: &mut Room<'a>, arena: &'a Arena
+    ) -> io::Result<()> {
+        if !read.next_bool()? { return Ok(()); }
+
         read.read_blob(&mut room.name, arena)?;
         if !exe { let _time = read.next_f64()?; }
-        let _version = read.next_u32()?;
+
+        let version = read.next_u32()?;
+        if version != 541 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
+
         read.read_blob(&mut room.caption, arena)?;
 
         read.read_u32(&mut room.width)?;
@@ -630,7 +765,7 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
             let _editor_y = read.next_u32()?;
         }
 
-        assert!(read.fill_buf()?.is_empty());
+        Ok(())
     }
 
     read.read_i32(&mut game.last_instance)?;
@@ -638,12 +773,27 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
 
     // includes
 
-    let _version = read.next_u32()?;
-    for _id in 0..read.next_u32()? {
-        let read = &mut read.next_zlib()?;
+    let version = read.next_u32()?;
+    if version != 800 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
 
+    let len = read.next_u32()? as usize;
+    for _ in 0..len {
+        let read = &mut read.read_blob_zlib(buf)?;
+        read_include(read, exe, version, arena)?;
+        assert!(read.is_empty());
+    }
+
+    fn read_include<'a>(
+        read: &mut &[u8], exe: bool, _version: u32, arena: &'a Arena
+    ) -> io::Result<()> {
         if !exe { let _time = read.next_f64()?; }
-        let _version = read.next_u32()?;
+
+        let version = read.next_u32()?;
+        if version != 800 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
 
         let mut name = &[][..];
         read.read_blob(&mut name, arena)?;
@@ -668,7 +818,7 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
         let _free = read.next_bool()?;
         let _remove = read.next_bool()?;
 
-        assert!(read.fill_buf()?.is_empty());
+        Ok(())
     }
 
     // extensions
@@ -687,10 +837,20 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
 
     // game info
 
-    let _version = read.next_u32()?;
-    {
-        let read = &mut read.next_zlib()?;
+    let version = read.next_u32()?;
+    if version != 800 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
 
+    {
+        let read = &mut read.read_blob_zlib(buf)?;
+        read_info(read, exe, version, arena)?;
+        assert!(read.is_empty());
+    }
+
+    fn read_info<'a>(
+        read: &mut &[u8], exe: bool, _version: u32, arena: &'a Arena
+    ) -> io::Result<()> {
         let _background = read.next_u32()?;
         let _window = read.next_bool()?;
 
@@ -711,7 +871,7 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
         let mut info = &[][..];
         read.read_blob(&mut info, arena)?;
 
-        assert!(read.fill_buf()?.is_empty());
+        Ok(())
     }
 
     // library initialization
@@ -733,104 +893,99 @@ fn read_rest<'a>(read: &[u8], exe: bool, game: &mut Game<'a>, arena: &'a Arena) 
     Ok(())
 }
 
-fn read_settings<'a, R: BufRead>(
-    read: &mut R, exe: bool, settings: &mut Settings, arena: &'a Arena
+fn read_settings<'a>(
+    read: &mut &[u8], exe: bool, _version: u32, game: &mut Game<'a>, arena: &'a Arena
 ) -> io::Result<()> {
-    let _version = read.next_u32()?;
-    {
-        let read = &mut read.next_zlib()?;
+    let settings = &mut game.settings;
 
-        read.read_bool(&mut settings.fullscreen)?;
-        read.read_bool(&mut settings.interpolation)?;
-        read.read_bool(&mut settings.hide_border)?;
-        read.read_bool(&mut settings.show_cursor)?;
-        read.read_i32(&mut settings.scaling)?;
-        read.read_bool(&mut settings.allow_resize)?;
-        read.read_bool(&mut settings.topmost)?;
-        read.read_u32(&mut settings.background_color)?;
-        read.read_bool(&mut settings.set_resolution)?;
-        read.read_u32(&mut settings.color_depth)?;
-        read.read_u32(&mut settings.resolution)?;
-        read.read_u32(&mut settings.frequency)?;
-        read.read_bool(&mut settings.hide_buttons)?;
-        read.read_bool(&mut settings.vsync)?;
-        read.read_bool(&mut settings.disable_screensaver)?;
-        read.read_bool(&mut settings.default_f4)?;
-        read.read_bool(&mut settings.default_f1)?;
-        read.read_bool(&mut settings.default_esc)?;
-        read.read_bool(&mut settings.default_f5)?;
-        read.read_bool(&mut settings.default_f9)?;
-        read.read_bool(&mut settings.close_as_esc)?;
-        read.read_u32(&mut settings.priority)?;
-        read.read_bool(&mut settings.freeze)?;
+    read.read_bool(&mut settings.fullscreen)?;
+    read.read_bool(&mut settings.interpolation)?;
+    read.read_bool(&mut settings.hide_border)?;
+    read.read_bool(&mut settings.show_cursor)?;
+    read.read_i32(&mut settings.scaling)?;
+    read.read_bool(&mut settings.allow_resize)?;
+    read.read_bool(&mut settings.topmost)?;
+    read.read_u32(&mut settings.background_color)?;
+    read.read_bool(&mut settings.set_resolution)?;
+    read.read_u32(&mut settings.color_depth)?;
+    read.read_u32(&mut settings.resolution)?;
+    read.read_u32(&mut settings.frequency)?;
+    read.read_bool(&mut settings.hide_buttons)?;
+    read.read_bool(&mut settings.vsync)?;
+    read.read_bool(&mut settings.disable_screensaver)?;
+    read.read_bool(&mut settings.default_f4)?;
+    read.read_bool(&mut settings.default_f1)?;
+    read.read_bool(&mut settings.default_esc)?;
+    read.read_bool(&mut settings.default_f5)?;
+    read.read_bool(&mut settings.default_f9)?;
+    read.read_bool(&mut settings.close_as_esc)?;
+    read.read_u32(&mut settings.priority)?;
+    read.read_bool(&mut settings.freeze)?;
 
-        // 0 => no loading bar
-        // 1 => default loading bar
-        // 2 => own loading bar
-        read.read_u32(&mut settings.load_bar)?;
-        if (exe && settings.load_bar == 1) || settings.load_bar == 2 {
-            if read.next_bool()? {
-                let mut back = vec![];
-                read.read_blob_zlib(&mut back)?;
-            }
-
-            if read.next_bool()? {
-                let mut front = vec![];
-                read.read_blob_zlib(&mut front)?;
-            }
+    // 0 => no loading bar
+    // 1 => default loading bar
+    // 2 => own loading bar
+    read.read_u32(&mut settings.load_bar)?;
+    if (exe && settings.load_bar == 1) || settings.load_bar == 2 {
+        if read.next_bool()? {
+            let mut back = vec![];
+            read.read_blob_zlib(&mut back)?;
         }
 
-        read.read_bool(&mut settings.load_image)?;
-        if settings.load_image {
-            let exists = match exe {
-                false => { read.next_bool()? }
-                true => { true }
-            };
-            if exists {
-                let mut image = vec![];
-                read.read_blob_zlib(&mut image)?;
-            }
+        if read.next_bool()? {
+            let mut front = vec![];
+            read.read_blob_zlib(&mut front)?;
         }
+    }
 
-        read.read_bool(&mut settings.load_transparent)?;
-        read.read_u32(&mut settings.load_alpha)?;
-        read.read_bool(&mut settings.load_scale)?;
-
-        if !exe {
-            let mut icon = &[][..];
-            read.read_blob(&mut icon, arena)?;
+    read.read_bool(&mut settings.load_image)?;
+    if settings.load_image {
+        let exists = match exe {
+            false => { read.next_bool()? }
+            true => { true }
+        };
+        if exists {
+            let mut image = vec![];
+            read.read_blob_zlib(&mut image)?;
         }
+    }
 
-        read.read_bool(&mut settings.error_display)?;
-        read.read_bool(&mut settings.error_log)?;
-        read.read_bool(&mut settings.error_abort)?;
-        read.read_bool(&mut settings.uninitialized_zero)?;
+    read.read_bool(&mut settings.load_transparent)?;
+    read.read_u32(&mut settings.load_alpha)?;
+    read.read_bool(&mut settings.load_scale)?;
 
-        if !exe {
-            let mut author = &[][..];
-            read.read_blob(&mut author, arena)?;
-            let mut version = &[][..];
-            read.read_blob(&mut version, arena)?;
-            let _time = read.next_f64()?;
-            let mut information = &[][..];
-            read.read_blob(&mut information, arena)?;
+    if !exe {
+        let mut icon = &[][..];
+        read.read_blob(&mut icon, arena)?;
+    }
 
-            let _major = read.next_u32()?;
-            let _minor = read.next_u32()?;
-            let _release = read.next_u32()?;
-            let _build = read.next_u32()?;
-            let mut company = &[][..];
-            read.read_blob(&mut company, arena)?;
-            let mut product = &[][..];
-            read.read_blob(&mut product, arena)?;
-            let mut copyright = &[][..];
-            read.read_blob(&mut copyright, arena)?;
-            let mut description = &[][..];
-            read.read_blob(&mut description, arena)?;
-            let _time = read.next_f64()?;
-        }
+    read.read_bool(&mut settings.error_display)?;
+    read.read_bool(&mut settings.error_log)?;
+    read.read_bool(&mut settings.error_abort)?;
+    read.read_bool(&mut settings.uninitialized_zero)?;
 
-        assert!(read.fill_buf()?.is_empty());
+    if !exe {
+        let mut author = &[][..];
+        read.read_blob(&mut author, arena)?;
+        let mut version = &[][..];
+        read.read_blob(&mut version, arena)?;
+        let _time = read.next_f64()?;
+        let mut information = &[][..];
+        read.read_blob(&mut information, arena)?;
+
+        let _major = read.next_u32()?;
+        let _minor = read.next_u32()?;
+        let _release = read.next_u32()?;
+        let _build = read.next_u32()?;
+        let mut company = &[][..];
+        read.read_blob(&mut company, arena)?;
+        let mut product = &[][..];
+        read.read_blob(&mut product, arena)?;
+        let mut copyright = &[][..];
+        read.read_blob(&mut copyright, arena)?;
+        let mut description = &[][..];
+        read.read_blob(&mut description, arena)?;
+        let _time = read.next_f64()?;
     }
 
     Ok(())
@@ -883,7 +1038,7 @@ fn read_action<'a, R: BufRead>(read: &mut R, action: &mut Action<'a>, arena: &'a
     Ok(nread)
 }
 
-trait GmkRead: Sized {
+trait GmRead {
     fn read_u32(&mut self, buf: &mut u32) -> io::Result<usize>;
     fn read_i32(&mut self, buf: &mut i32) -> io::Result<usize>;
     fn read_bool(&mut self, buf: &mut bool) -> io::Result<usize>;
@@ -896,11 +1051,6 @@ trait GmkRead: Sized {
         *buf = &*blob;
         Ok(nread)
     }
-
-    unsafe fn read_zlib<'a, 'b>(
-        &'a mut self, buf: *mut BufReader<ZlibDecoder<io::Take<&'b mut Self>>>
-    ) -> io::Result<usize> where 'a: 'b;
-    fn read_blob_zlib(&mut self, buf: &mut Vec<u8>) -> io::Result<usize>;
 
     fn next_u32(&mut self) -> io::Result<u32> {
         let mut buf = 0;
@@ -925,21 +1075,9 @@ trait GmkRead: Sized {
         self.read_f64(&mut buf)?;
         Ok(buf)
     }
-
-    fn next_zlib(&mut self) -> io::Result<BufReader<ZlibDecoder<io::Take<&mut Self>>>> {
-        unsafe {
-            let mut buf = MaybeUninit::uninit();
-            self.read_zlib(buf.as_mut_ptr())?;
-            Ok(buf.assume_init())
-        }
-    }
 }
 
-trait GmkSeek: Sized {
-    fn skip_blob(&mut self) -> io::Result<usize>;
-}
-
-impl<R: BufRead> GmkRead for R {
+impl<R: Read> GmRead for R {
     fn read_u32(&mut self, buf: &mut u32) -> io::Result<usize> {
         let mut bytes = [0u8; 4];
         self.read_exact(&mut bytes)?;
@@ -988,36 +1126,52 @@ impl<R: BufRead> GmkRead for R {
         nread += len as usize;
         Ok(nread)
     }
+}
 
-    unsafe fn read_zlib<'a, 'b>(
-        &'a mut self, buf: *mut BufReader<ZlibDecoder<io::Take<&'b mut Self>>>
-    ) -> io::Result<usize> where 'a: 'b {
-        let mut nread = 0;
-        let mut len = 0;
-        nread += self.read_u32(&mut len)?;
-        buf.write(BufReader::new(ZlibDecoder::new(self.take(len as u64))));
-        Ok(nread)
-    }
+trait GmBufRead {
+    fn read_blob_zlib<'a>(&mut self, buf: &'a mut Vec<u8>) -> io::Result<&'a [u8]>;
+}
 
-    fn read_blob_zlib(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
-        let mut nread = 0;
-        let mut len = 0;
-        nread += self.read_u32(&mut len)?;
-        let read = &mut ZlibDecoder::new(self.take(len as u64));
-        nread += read.read_to_end(buf)?;
-        if read.get_mut().limit() > 0 {
+impl<R: BufRead> GmBufRead for R {
+    fn read_blob_zlib<'a>(&mut self, buf: &'a mut Vec<u8>) -> io::Result<&'a [u8]> {
+        let len = self.next_u32()?;
+        let mut read = ZlibDecoder::new(self.take(len as u64));
+
+        buf.clear();
+        let len = read.read_to_end(buf)?;
+
+        if !read.into_inner().fill_buf()?.is_empty() {
             return Err(io::Error::from(io::ErrorKind::InvalidData));
         }
-        Ok(nread)
+        Ok(&buf[buf.len() - len..])
     }
 }
 
-impl<R: BufRead + Seek> GmkSeek for R {
+trait GmSeek {
+    fn skip_blob(&mut self) -> io::Result<usize>;
+}
+
+impl<R: Read + Seek> GmSeek for R {
     fn skip_blob(&mut self) -> io::Result<usize> {
         let mut nread = 0;
         let mut len = 0;
         nread += self.read_u32(&mut len)?;
         self.seek(SeekFrom::Current(len as i64))?;
+        nread += len as usize;
+        Ok(nread)
+    }
+}
+
+trait GmSliceExt {
+    fn skip_blob(&mut self) -> io::Result<usize>;
+}
+
+impl GmSliceExt for &[u8] {
+    fn skip_blob(&mut self) -> io::Result<usize> {
+        let mut nread = 0;
+        let mut len = 0;
+        nread += self.read_u32(&mut len)?;
+        *self = self.get(len as usize..).ok_or_else(|| io::ErrorKind::UnexpectedEof)?;
         nread += len as usize;
         Ok(nread)
     }
