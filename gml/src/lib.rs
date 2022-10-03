@@ -114,7 +114,9 @@ pub fn build<W, F: FnMut() -> E, E: io::Write>(
 
     // Compile scripts.
     let resources = Iterator::zip(debug.scripts.iter(), game.scripts.iter());
-    for (id, (&script, &project::Script { body, .. })) in resources.enumerate() {
+    for (id, (&script, &project::Script { name, body })) in resources.enumerate() {
+        if name.is_empty() { continue; }
+
         let function = Function::Script { id: id as i32 };
         let name = FunctionDisplay::Script { script };
         let (code, locations, errors) = compile_program(prototypes, name, body, errors());

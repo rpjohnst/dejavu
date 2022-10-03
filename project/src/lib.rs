@@ -126,10 +126,10 @@ pub mod bounds_kind {
 
 #[derive(Default)]
 pub struct Bounds {
-    pub left: u32,
-    pub right: u32,
-    pub bottom: u32,
-    pub top: u32,
+    pub left: i32,
+    pub right: i32,
+    pub bottom: i32,
+    pub top: i32,
 }
 
 #[derive(Default)]
@@ -149,7 +149,7 @@ pub struct Background<'a> {
 #[derive(Default)]
 pub struct Path<'a> {
     pub name: &'a [u8],
-    pub kind: u32,
+    pub smooth: bool,
     pub closed: bool,
     pub precision: u32,
     pub points: Vec<Point>,
