@@ -13,7 +13,7 @@ impl State {
         let Context { assets, .. } = cx;
         for i in 0..assets.rooms[num as usize].instances.len() {
             let Context { assets, .. } = cx;
-            let Instance { x, y, object_index, id } = assets.rooms[0].instances[i];
+            let Instance { x, y, object_index, id } = assets.rooms[num as usize].instances[i];
             instance::State::instance_create_id(cx, x as f32, y as f32, object_index, id);
         }
 
@@ -21,7 +21,7 @@ impl State {
         let Context { assets, .. } = cx;
         for i in 0..assets.rooms[num as usize].instances.len() {
             let Context { world, assets, .. } = cx;
-            let Instance { object_index, id, .. } = assets.rooms[0].instances[i];
+            let Instance { object_index, id, .. } = assets.rooms[num as usize].instances[i];
             let crate::World { world, .. } = world;
             let entity = world.instances[id];
 
