@@ -44,3 +44,11 @@ impl BitVec {
         }
     }
 }
+
+impl FromIterator<usize> for BitVec {
+    fn from_iter<T: IntoIterator<Item = usize>>(iter: T) -> Self {
+        let mut vec = BitVec::default();
+        for bit in iter { vec.set(bit); }
+        vec
+    }
+}

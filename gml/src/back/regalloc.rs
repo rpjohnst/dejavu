@@ -1,6 +1,7 @@
 use std::cmp;
 use std::collections::HashSet;
 
+use crate::bit_vec::BitVec;
 use crate::handle_map::HandleMap;
 use crate::back::{ssa, analysis::*};
 
@@ -101,7 +102,7 @@ impl Interference {
     pub fn color(self) -> (HandleMap<ssa::Value, usize>, usize, usize) {
         let mut colors = HandleMap::with_capacity(self.adjacency.len());
         for &value in Iterator::chain(self.vertices.iter(), self.precolored.iter()) {
-            colors[value] = usize::max_value();
+            colors[value] = usize::MAX;
         }
 
         let mut color_count;
@@ -118,11 +119,12 @@ impl Interference {
 
         // Regular values are allocated greedily in perfect/simplical elimination order
         for value in Self::perfect_elimination_order(&self.adjacency, self.vertices, &self.precolored) {
-            let neighbors: HashSet<_> = self.adjacency[value].iter()
+            let neighbors: BitVec = self.adjacency[value].iter()
                 .map(|&neighbor| colors[neighbor])
+                .filter(|&color| color != usize::MAX)
                 .collect();
             let color = (0..)
-                .skip_while(|&color| neighbors.contains(&color))
+                .skip_while(|&color| neighbors.get(color))
                 .next()
                 .unwrap_or(color_count);
 
@@ -135,11 +137,12 @@ impl Interference {
             let (start, end) = (group[0], group[1]);
             let arguments = &self.precolored[start..end];
 
-            let neighbors: HashSet<_> = self.adjacency[arguments[0]].iter()
+            let neighbors: BitVec = self.adjacency[arguments[0]].iter()
                 .map(|&neighbor| colors[neighbor])
+                .filter(|&color| color != usize::MAX)
                 .collect();
             let color = (0..color_count).rev()
-                .take_while(|&color| !neighbors.contains(&color))
+                .take_while(|&color| !neighbors.get(color))
                 .last()
                 .unwrap_or(color_count);
 
