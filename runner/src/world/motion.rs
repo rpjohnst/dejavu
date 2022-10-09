@@ -46,7 +46,7 @@ impl State {
             instance.yprevious = instance.y;
 
             if draw.sprite_index != -1 {
-                let image_number = assets.sprites[draw.sprite_index as usize].frames.len();
+                let image_number = assets.sprites[draw.sprite_index as usize].images.len();
                 draw.image_index = (draw.image_index + draw.image_speed) % image_number as f32;
             }
 

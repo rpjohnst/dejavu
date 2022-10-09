@@ -94,7 +94,7 @@ pub struct Sprite<'a> {
     pub name: &'a [u8],
     pub origin: (u32, u32),
 
-    pub frames: Vec<Frame<'a>>,
+    pub images: Vec<Image<'a>>,
 
     pub shape: u32,
     pub alpha_tolerance: u32,
@@ -106,7 +106,7 @@ pub struct Sprite<'a> {
 }
 
 #[derive(Default)]
-pub struct Frame<'a> {
+pub struct Image<'a> {
     pub size: (u32, u32),
     pub data: &'a [u8],
 }

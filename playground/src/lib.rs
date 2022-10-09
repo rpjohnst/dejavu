@@ -79,8 +79,8 @@ pub extern "system" fn game_sprite<'a>(
     game.sprites.push(project::Sprite {
         name,
         origin,
-        frames: vec![
-            project::Frame { size, data },
+        images: vec![
+            project::Image { size, data },
         ],
         masks: vec![],
         ..project::Sprite::default()

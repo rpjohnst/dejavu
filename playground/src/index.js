@@ -32,7 +32,7 @@ let project = {
     {
       name: "circle_spr",
       origin: [0, 0],
-      frames: [
+      images: [
         { size: [32, 32], canvas },
       ],
       masks: [],
@@ -175,7 +175,7 @@ function spriteOnEdit(parent, sprite) {
 
   const sheet = view.appendChild(document.createElement("div"));
   sheet.classList.add("sheet");
-  sheet.appendChild(sprite.frames[0].canvas);
+  sheet.appendChild(sprite.images[0].canvas);
 
   return {
     resource: sprite,
@@ -193,7 +193,7 @@ function objectOnEdit(parent, object) {
   const sprite = view.appendChild(document.createElement("div"));
   sprite.classList.add("sprite");
   sprite.textContent = "Sprite: ";
-  sprite.appendChild(project.sprites[object.sprite].frames[0].canvas);
+  sprite.appendChild(project.sprites[object.sprite].images[0].canvas);
 
   const events = [];
   for (const event of object.events) { events.push(eventOnEdit(view, event)); }
@@ -317,8 +317,8 @@ function start() {
 
   run((builder) => {
     for (const sprite of project.sprites) {
-      const [width, height] = sprite.frames[0].size;
-      const cx = sprite.frames[0].canvas.getContext("2d");
+      const [width, height] = sprite.images[0].size;
+      const cx = sprite.images[0].canvas.getContext("2d");
       const data = cx.getImageData(0, 0, width, height).data;
       builder.sprite(sprite.name, sprite.origin, [width, height], data);
     }

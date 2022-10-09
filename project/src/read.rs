@@ -7,7 +7,7 @@ use quickdry::Arena;
 use crate::{
     Game, Constant,
     Sound,
-    Sprite, Frame, Mask,
+    Sprite, Image, Mask,
     Background,
     Path, Point,
     Script,
@@ -381,20 +381,20 @@ fn read_body<'a>(
         read.read_u32(&mut sprite.origin.1)?;
 
         let len = read.next_u32()? as usize;
-        sprite.frames.reserve(len);
+        sprite.images.reserve(len);
         for i in 0..len {
-            sprite.frames.push(Frame::default());
+            sprite.images.push(Image::default());
 
-            let frame = &mut sprite.frames[i];
+            let image = &mut sprite.images[i];
             if version == 400 {
                 if read.next_i32()? == -1 { continue; }
 
-                frame.size.0 = width;
-                frame.size.1 = height;
+                image.size.0 = width;
+                image.size.1 = height;
 
                 read.read_blob_zlib(buf)?;
                 let layout = Layout::for_value(&buf[..]);
-                frame.data = unsafe {
+                image.data = unsafe {
                     let data = arena.alloc(layout);
                     if data == ptr::null_mut() { handle_alloc_error(layout); }
                     ptr::copy_nonoverlapping(buf.as_ptr(), data, buf.len());
@@ -407,10 +407,10 @@ fn read_body<'a>(
                     return Err(io::Error::from(io::ErrorKind::InvalidData));
                 }
 
-                read.read_u32(&mut frame.size.0)?;
-                read.read_u32(&mut frame.size.1)?;
-                if frame.size.0 != 0 && frame.size.1 != 0 {
-                    read.read_blob(&mut frame.data, arena)?;
+                read.read_u32(&mut image.size.0)?;
+                read.read_u32(&mut image.size.1)?;
+                if image.size.0 != 0 && image.size.1 != 0 {
+                    read.read_blob(&mut image.data, arena)?;
                 }
             }
         }

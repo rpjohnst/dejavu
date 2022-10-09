@@ -57,10 +57,10 @@ pub struct Texture {
 
 pub struct Sprite {
     pub origin: (u32, u32),
-    pub frames: Vec<Frame>,
+    pub images: Vec<Image>,
 }
 
-pub struct Frame {
+pub struct Image {
     pub texture: i32,
     pub pos: (u16, u16),
     pub size: (u16, u16),
@@ -116,9 +116,9 @@ pub fn build<'a, F: FnMut() -> E, E: io::Write>(game: &'a project::Game, errors:
     }
 }
 
-struct Image {
+struct Frame {
     sprite: usize,
-    frame: usize,
+    image: usize,
 
     pos: (u16, u16),
     size: (u16, u16),
@@ -128,40 +128,40 @@ fn compile_textures(game: &project::Game) -> (Vec<Texture>, Vec<Sprite>) {
     let mut texture = Vec::default();
     let mut sprites = Vec::default();
 
-    let mut images = Vec::default();
+    let mut frames = Vec::default();
     let mut area = 0;
     let mut max_width = 0;
     let mut max_height = 0;
-    for (sprite, &project::Sprite { origin, ref frames, .. }) in game.sprites.iter().enumerate() {
+    for (sprite, &project::Sprite { origin, ref images, .. }) in game.sprites.iter().enumerate() {
         let mut assets = Vec::default();
-        for (frame, &project::Frame { size, .. }) in frames.iter().enumerate() {
+        for (image, &project::Image { size, .. }) in images.iter().enumerate() {
             let pos = (0, 0);
 
             let (width, height) = size;
             let size = (width as u16, height as u16);
             debug_assert!(width <= u16::MAX as u32 && height <= u16::MAX as u32);
 
-            assets.push(Frame { pos, size, texture: 0 });
-            images.push(Image { sprite, frame, pos, size });
+            assets.push(Image { pos, size, texture: 0 });
+            frames.push(Frame { sprite, image, pos, size });
 
             area += width as u32 * height as u32;
             max_width = cmp::max(max_width, width as u16);
             max_height = cmp::max(max_height, height as u16);
         }
-        sprites.push(Sprite { origin, frames: assets });
+        sprites.push(Sprite { origin, images: assets });
     }
 
     // As a heuristic, sort by height and assume the packer will achieve about 75% utilization.
-    images.sort_by_key(|&Image { size: (_, height), .. }| cmp::Reverse(height));
+    frames.sort_by_key(|&Frame { size: (_, height), .. }| cmp::Reverse(height));
     let square = f32::sqrt(area as f32 / 0.75) as u16;
     let mut atlas_width = u16::next_power_of_two(cmp::max(max_width, square));
     let mut atlas_height = u16::next_power_of_two(cmp::max(max_height, square));
     let mut atlas = Atlas::new(atlas_width, atlas_height);
     'pack: loop {
-        for image in &mut images {
-            let (width, height) = image.size;
+        for frame in &mut frames {
+            let (width, height) = frame.size;
             if let Some(pos) = atlas.pack(width, height) {
-                image.pos = pos;
+                frame.pos = pos;
             } else {
                 // Something didn't fit. Move up to the next power of two and retry.
                 atlas_width *= 2;
@@ -175,10 +175,10 @@ fn compile_textures(game: &project::Game) -> (Vec<Texture>, Vec<Sprite>) {
 
     let len = atlas_width as usize * atlas_height as usize * 4;
     texture.resize_with(len, u8::default);
-    for &Image { sprite, frame, pos: (x, y), size: (width, _) } in &images {
-        sprites[sprite].frames[frame].pos = (x, y);
+    for &Frame { sprite, image, pos: (x, y), size: (width, _) } in &frames {
+        sprites[sprite].images[image].pos = (x, y);
 
-        let data = game.sprites[sprite].frames[frame].data;
+        let data = game.sprites[sprite].images[image].data;
         for (i, row) in data.chunks_exact(width as usize * 4).enumerate() {
             let start = (y as usize + i) * (atlas_width as usize * 4) + (x as usize * 4);
             texture[start..start + row.len()].copy_from_slice(row);
