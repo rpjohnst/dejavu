@@ -117,16 +117,19 @@ impl Interference {
         color_count = parameters.len();
         param_count = color_count;
 
+        let mut neighbors = BitVec::default();
+
         // Regular values are allocated greedily in perfect/simplical elimination order
         for value in Self::perfect_elimination_order(&self.adjacency, self.vertices, &self.precolored) {
-            let neighbors: BitVec = self.adjacency[value].iter()
+            let iter = self.adjacency[value].iter()
                 .map(|&neighbor| colors[neighbor])
-                .filter(|&color| color != usize::MAX)
-                .collect();
+                .filter(|&color| color != usize::MAX);
+            neighbors.extend(iter);
             let color = (0..)
                 .skip_while(|&color| neighbors.get(color))
                 .next()
                 .unwrap_or(color_count);
+            neighbors.clear();
 
             colors[value] = color;
             color_count = cmp::max(color_count, color + 1);
@@ -137,14 +140,15 @@ impl Interference {
             let (start, end) = (group[0], group[1]);
             let arguments = &self.precolored[start..end];
 
-            let neighbors: BitVec = self.adjacency[arguments[0]].iter()
+            let iter = self.adjacency[arguments[0]].iter()
                 .map(|&neighbor| colors[neighbor])
-                .filter(|&color| color != usize::MAX)
-                .collect();
+                .filter(|&color| color != usize::MAX);
+            neighbors.extend(iter);
             let color = (0..color_count).rev()
                 .take_while(|&color| !neighbors.get(color))
                 .last()
                 .unwrap_or(color_count);
+            neighbors.clear();
 
             for (color, &value) in Iterator::zip(color.., arguments) {
                 colors[value] = color;

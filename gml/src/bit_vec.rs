@@ -26,7 +26,7 @@ impl BitVec {
         result
     }
 
-    pub fn clear(&mut self, bit: usize) -> bool {
+    pub fn reset(&mut self, bit: usize) -> bool {
         self.ensure(bit);
 
         let word = bit / 64;
@@ -35,6 +35,10 @@ impl BitVec {
         let result = (self.data[word] & mask) != 0;
         self.data[word] &= !mask;
         result
+    }
+
+    pub fn clear(&mut self) {
+        self.data.clear();
     }
 
     fn ensure(&mut self, bit: usize) {
@@ -48,7 +52,13 @@ impl BitVec {
 impl FromIterator<usize> for BitVec {
     fn from_iter<T: IntoIterator<Item = usize>>(iter: T) -> Self {
         let mut vec = BitVec::default();
-        for bit in iter { vec.set(bit); }
+        vec.extend(iter);
         vec
+    }
+}
+
+impl Extend<usize> for BitVec {
+    fn extend<T: IntoIterator<Item = usize>>(&mut self, iter: T) {
+        for bit in iter { self.set(bit); }
     }
 }

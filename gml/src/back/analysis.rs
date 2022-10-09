@@ -71,7 +71,7 @@ impl Liveness {
             dirty = false;
 
             for block in program.blocks.keys().rev() {
-                if !work.clear(block.index()) {
+                if !work.reset(block.index()) {
                     continue;
                 }
 
