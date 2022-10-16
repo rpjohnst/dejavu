@@ -398,7 +398,7 @@ fn read_body<'a>(
                     let data = arena.alloc(layout);
                     if data == ptr::null_mut() { handle_alloc_error(layout); }
                     ptr::copy_nonoverlapping(buf.as_ptr(), data, buf.len());
-                    slice::from_raw_parts(data, len as usize)
+                    slice::from_raw_parts(data, buf.len())
                 };
             }
             if version == 800 {
@@ -470,17 +470,18 @@ fn read_body<'a>(
 
         let background = &mut game.backgrounds[id];
         if version == 400 {
-            read_background(read, exe, version, background, arena)?;
+            read_background(read, buf, exe, version, background, arena)?;
         }
         if version == 800 {
             let read = &mut read.read_blob_zlib(buf)?;
-            read_background(read, exe, version, background, arena)?;
+            read_background(read, &mut Vec::default(), exe, version, background, arena)?;
             assert!(read.is_empty());
         }
     }
 
     fn read_background<'a>(
-        read: &mut &[u8], exe: bool, version: u32, background: &mut Background<'a>, arena: &'a Arena
+        read: &mut &[u8], buf: &mut Vec<u8>, exe: bool,
+        version: u32, background: &mut Background<'a>, arena: &'a Arena
     ) -> io::Result<()> {
         if !read.next_bool()? { return Ok(()); }
 
@@ -501,8 +502,14 @@ fn read_body<'a>(
             let _lazy_load = read.next_bool()?;
 
             if read.next_bool()? && read.next_i32()? != -1 {
-                let mut data = Vec::default();
-                read.read_blob_zlib(&mut data)?;
+                read.read_blob_zlib(buf)?;
+                let layout = Layout::for_value(&buf[..]);
+                background.data = unsafe {
+                    let data = arena.alloc(layout);
+                    if data == ptr::null_mut() { handle_alloc_error(layout); }
+                    ptr::copy_nonoverlapping(buf.as_ptr(), data, buf.len());
+                    slice::from_raw_parts(data, buf.len())
+                };
             }
         }
         if version == 710 {
