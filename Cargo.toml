@@ -12,6 +12,8 @@ panic = "abort"
 opt-level = 3
 [profile.dev.package.project]
 opt-level = 3
+[profile.dev.package.atlas]
+opt-level = 3
 
 [profile.release]
 lto = "thin"

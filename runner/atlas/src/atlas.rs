@@ -31,7 +31,7 @@ impl Atlas {
         // Search for the lowest point on the skyline that can fit `width`.
         for i in 0..self.skyline.len() {
             let right = self.skyline[i].x + width;
-            if right > self.width { 
+            if right > self.width {
                 break;
             }
 

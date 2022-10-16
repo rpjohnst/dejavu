@@ -1,5 +1,6 @@
 use gml::{self, vm};
-use crate::{Context, Texture, Sprite, Image, Batch, batch};
+use atlas::{Texture, Image};
+use crate::{Context, Sprite, Batch, batch};
 
 #[derive(Default)]
 pub struct State {
@@ -91,9 +92,9 @@ impl State {
             subimg = vm::to_i32(draw.instances[entity].image_index as f64);
         }
 
-        let &Sprite { origin, ref images, .. } = &assets.sprites[sprite as usize];
-        let &Image { texture, pos, size } = &images[subimg as usize];
-        let &Texture { size: texture_size, .. } = &assets.textures[texture as usize];
+        let Sprite { origin, ref images, .. } = assets.sprites[sprite as usize];
+        let Image { texture, pos, size } = assets.images[images.clone()][subimg as usize];
+        let Texture { size: texture_size, .. } = assets.textures[texture as usize];
         if draw.batch.texture != texture {
             crate::graphics::batch(cx);
 
