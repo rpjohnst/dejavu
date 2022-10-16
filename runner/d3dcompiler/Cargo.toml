@@ -1,7 +1,6 @@
 [package]
 name = "d3dcompiler"
 version = "0.1.0"
-authors = ["Russell Johnston <rpjohnst@gmail.com>"]
 edition = "2021"
 
 [target.'cfg(windows)'.dependencies]
