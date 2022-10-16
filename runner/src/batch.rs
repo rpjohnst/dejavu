@@ -3,15 +3,14 @@ pub struct Batch {
     pub index: Vec<u16>,
 
     pub texture: i32,
-    width: f32,
-    height: f32,
 }
 
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct Vertex {
     pub position: [f32; 3],
-    pub texture: [f32; 2],
+    pub uv: [f32; 2],
+    pub image: [f32; 4],
 }
 
 pub struct Rect {
@@ -27,38 +26,36 @@ impl Default for Batch {
             vertex: Vec::default(),
             index: Vec::default(),
             texture: -1,
-            width: 0.0,
-            height: 0.0,
         }
     }
 }
 
 impl Batch {
-    pub fn reset(&mut self, texture: i32, (width, height): (u16, u16)) {
+    pub fn reset(&mut self, texture: i32) {
         self.vertex.clear();
         self.index.clear();
         self.texture = texture;
-        self.width = width as f32;
-        self.height = height as f32;
     }
 
-    pub fn quad(&mut self, position: Rect, texture: Rect) {
+    pub fn quad(&mut self, position: Rect, uv: Rect, image: Rect) {
         let x1 = position.x;
         let y1 = position.y;
         let x2 = position.x + position.w;
         let y2 = position.y + position.h;
 
-        let u1 = texture.x / self.width;
-        let v1 = texture.y / self.height;
-        let u2 = (texture.x + texture.w) / self.width;
-        let v2 = (texture.y + texture.h) / self.height;
+        let u1 = uv.x;
+        let v1 = uv.y;
+        let u2 = uv.x + uv.w;
+        let v2 = uv.y + uv.h;
+
+        let image = [image.x, image.y, image.w, image.h];
 
         let i = self.vertex.len() as u16;
         self.vertex.extend_from_slice(&[
-            Vertex { position: [x1, y2, 0.0], texture: [u1, v2], },
-            Vertex { position: [x2, y2, 0.0], texture: [u2, v2], },
-            Vertex { position: [x2, y1, 0.0], texture: [u2, v1], },
-            Vertex { position: [x1, y1, 0.0], texture: [u1, v1], },
+            Vertex { position: [x1, y1, 0.0], uv: [u1, v1], image },
+            Vertex { position: [x1, y2, 0.0], uv: [u1, v2], image },
+            Vertex { position: [x2, y2, 0.0], uv: [u2, v2], image },
+            Vertex { position: [x2, y1, 0.0], uv: [u2, v1], image },
         ]);
         self.index.extend_from_slice(&[
             i + 0, i + 1, i + 2,

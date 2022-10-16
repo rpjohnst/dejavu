@@ -38,7 +38,8 @@ pub struct Draw {
     dss: Com<ID3D11DepthStencilState>,
     bs: Com<ID3D11BlendState>,
 
-    constants: Com<ID3D11Buffer>,
+    view: Com<ID3D11Buffer>,
+    material: Com<ID3D11Buffer>,
     srv: Com<ID3D11ShaderResourceView>,
     vertex_buffer: Com<ID3D11Buffer>,
     index_buffer: Com<ID3D11Buffer>,
@@ -46,10 +47,17 @@ pub struct Draw {
     index_capacity: UINT,
 }
 
+#[allow(dead_code)]
 #[repr(align(16))]
-struct Constants {
-    #[allow(dead_code)]
+struct View {
     view_size: [f32; 2],
+    port_size: [f32; 2],
+}
+
+#[allow(dead_code)]
+#[repr(align(16))]
+struct Material {
+    atlas_size: [f32; 2],
 }
 
 pub fn load(cx: &mut Context) { unsafe {
@@ -148,6 +156,15 @@ pub fn load(cx: &mut Context) { unsafe {
             SemanticName: b"TEXCOORD\0".as_ptr() as *const i8,
             SemanticIndex: 0,
             Format: DXGI_FORMAT_R32G32_FLOAT,
+            InputSlot: 0,
+            AlignedByteOffset: D3D11_APPEND_ALIGNED_ELEMENT,
+            InputSlotClass: D3D11_INPUT_PER_VERTEX_DATA,
+            InstanceDataStepRate: 0,
+        },
+        D3D11_INPUT_ELEMENT_DESC {
+            SemanticName: b"TEXCOORD\0".as_ptr() as *const i8,
+            SemanticIndex: 1,
+            Format: DXGI_FORMAT_R32G32B32A32_FLOAT,
             InputSlot: 0,
             AlignedByteOffset: D3D11_APPEND_ALIGNED_ELEMENT,
             InputSlotClass: D3D11_INPUT_PER_VERTEX_DATA,
@@ -262,8 +279,8 @@ pub fn load(cx: &mut Context) { unsafe {
                 SrcBlend: D3D11_BLEND_SRC_ALPHA,
                 DestBlend: D3D11_BLEND_INV_SRC_ALPHA,
                 BlendOp: D3D11_BLEND_OP_ADD,
-                SrcBlendAlpha: D3D11_BLEND_ONE,
-                DestBlendAlpha: D3D11_BLEND_ZERO,
+                SrcBlendAlpha: D3D11_BLEND_SRC_ALPHA,
+                DestBlendAlpha: D3D11_BLEND_INV_SRC_ALPHA,
                 BlendOpAlpha: D3D11_BLEND_OP_ADD,
                 RenderTargetWriteMask: D3D11_COLOR_WRITE_ENABLE_ALL as u8,
             },
@@ -281,18 +298,31 @@ pub fn load(cx: &mut Context) { unsafe {
 
     // constants
 
-    let mut constants = ptr::null_mut();
+    let mut view = ptr::null_mut();
     let bd = D3D11_BUFFER_DESC {
-        ByteWidth: mem::size_of::<Constants>() as UINT,
+        ByteWidth: mem::size_of::<View>() as UINT,
         Usage: D3D11_USAGE_DEFAULT,
         BindFlags: D3D11_BIND_CONSTANT_BUFFER,
         ..mem::zeroed()
     };
-    match device.CreateBuffer(&bd, ptr::null_mut(), &mut constants) {
+    match device.CreateBuffer(&bd, ptr::null_mut(), &mut view) {
         hr if FAILED(hr) => panic!("failed to create constant buffer: {}", HResult(hr)),
         _ => (),
     }
-    let constants = Com::from_raw(constants);
+    let view = Com::from_raw(view);
+
+    let mut material = ptr::null_mut();
+    let bd = D3D11_BUFFER_DESC {
+        ByteWidth: mem::size_of::<Material>() as UINT,
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_CONSTANT_BUFFER,
+        ..mem::zeroed()
+    };
+    match device.CreateBuffer(&bd, ptr::null_mut(), &mut material) {
+        hr if FAILED(hr) => panic!("failed to create constant buffer: {}", HResult(hr)),
+        _ => (),
+    }
+    let material = Com::from_raw(material);
 
     // texture
 
@@ -305,7 +335,7 @@ pub fn load(cx: &mut Context) { unsafe {
         Height: height as u32,
         MipLevels: 1,
         ArraySize: 1,
-        Format: DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
+        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
         SampleDesc: DXGI_SAMPLE_DESC {
             Count: 1,
             Quality: 0,
@@ -328,7 +358,7 @@ pub fn load(cx: &mut Context) { unsafe {
 
     let mut srv = ptr::null_mut();
     let mut srvd = D3D11_SHADER_RESOURCE_VIEW_DESC {
-        Format: DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
+        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
         ViewDimension: D3D11_SRV_DIMENSION_TEXTURE2D,
         ..mem::zeroed()
     };
@@ -353,7 +383,7 @@ pub fn load(cx: &mut Context) { unsafe {
     *graphics = Some(Draw {
         device, context, swap_chain, frame_wait, rtv, rtv_size,
         input_layout, sampler, vertex_shader, rs, pixel_shader, dss, bs,
-        constants, srv, vertex_buffer, index_buffer, vertex_capacity, index_capacity,
+        view, material, srv, vertex_buffer, index_buffer, vertex_capacity, index_capacity,
     });
 
     loop {
@@ -377,7 +407,7 @@ fn create_rtv(
     let back_buffer = Com::from_raw(back_buffer as *mut ID3D11Texture2D);
 
     let rtvd = D3D11_RENDER_TARGET_VIEW_DESC {
-        Format: DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+        Format: DXGI_FORMAT_R8G8B8A8_UNORM,
         ViewDimension: D3D11_RTV_DIMENSION_TEXTURE2D,
         ..mem::zeroed()
     };
@@ -414,7 +444,7 @@ pub fn frame(cx: &mut crate::Context) { unsafe {
     let Draw {
         device, context, swap_chain, rtv, rtv_size,
         input_layout, sampler, vertex_shader, rs, pixel_shader, dss, bs,
-        constants,
+        view,
         ..
     } = graphics.as_mut().unwrap();
 
@@ -434,14 +464,7 @@ pub fn frame(cx: &mut crate::Context) { unsafe {
     }
     let rtv = rtv.as_mut().unwrap();
 
-    fn from_srgb(srgb: f32) -> f32 {
-        if srgb <= 0.04045 {
-            srgb / 12.92
-        } else {
-            f32::powf((srgb + 0.055) / 1.055, 2.4)
-        }
-    }
-    let gray = from_srgb(0.75);
+    let gray = 192.0 / 255.0;
     context.ClearRenderTargetView(rtv.as_ptr(), &[gray, gray, gray, 1.0]);
 
     let rtvs = [rtv.as_ptr()];
@@ -461,11 +484,17 @@ pub fn frame(cx: &mut crate::Context) { unsafe {
 
     let dpi = GetDpiForWindow(hwnd);
     let scale = f32::ceil(dpi as f32 / USER_DEFAULT_SCREEN_DPI as f32);
-    let constants_data = Constants { view_size: [viewport.Width / scale, viewport.Height / scale] };
+    let view_data = View {
+        view_size: [viewport.Width / scale, viewport.Height / scale],
+        port_size: [viewport.Width, viewport.Height],
+    };
     context.UpdateSubresource(
-        &***constants as *const _ as *mut _, 0, ptr::null_mut(),
-        &constants_data as *const _ as *const _, 0, 0
+        &***view as *const _ as *mut _, 0, ptr::null_mut(),
+        &view_data as *const _ as *const _, 0, 0
     );
+
+    let constants = [view.as_ptr()];
+    context.VSSetConstantBuffers(0, constants.len() as UINT, constants.as_ptr());
 
     // per-material
 
@@ -481,21 +510,30 @@ pub fn frame(cx: &mut crate::Context) { unsafe {
 } }
 
 pub fn batch(cx: &mut crate::Context) { unsafe {
-    let Context { world, .. } = cx;
+    let Context { world, assets, .. } = cx;
     let crate::World { draw, .. } = world;
     let crate::draw::State { graphics, batch, .. } = draw;
     let Draw {
         device, context,
         vertex_buffer, index_buffer, vertex_capacity, index_capacity,
-        constants, srv,
+        material, srv,
         ..
     } = graphics.as_mut().unwrap();
     if batch.index.len() == 0 {
         return;
     }
 
-    let constants = [constants.as_ptr()];
-    context.VSSetConstantBuffers(0, constants.len() as UINT, constants.as_ptr());
+    let atlas = &assets.textures[batch.texture as usize];
+    let (width, height) = atlas.size;
+
+    let material_data = Material { atlas_size: [width as f32, height as f32] };
+    context.UpdateSubresource(
+        &***material as *const _ as *mut _, 0, ptr::null_mut(),
+        &material_data as *const _ as *const _, 0, 0
+    );
+
+    let constants = [material.as_ptr()];
+    context.PSSetConstantBuffers(0, constants.len() as UINT, constants.as_ptr());
 
     let textures = [srv.as_ptr()];
     context.PSSetShaderResources(0, textures.len() as UINT, textures.as_ptr());

@@ -37,7 +37,7 @@ pub fn frame(cx: &mut crate::Context) {
 }
 
 pub fn batch(cx: &mut crate::Context) {
-    let crate::Context { world, .. } = cx;
+    let crate::Context { world, assets, .. } = cx;
     let crate::World { draw, .. } = world;
     let crate::draw::State { graphics, batch, .. } = draw;
     let &mut Draw { renderer } = graphics.as_mut().unwrap();
@@ -45,13 +45,16 @@ pub fn batch(cx: &mut crate::Context) {
         return;
     }
 
+    let atlas = &assets.textures[batch.texture as usize];
+    let (width, height) = atlas.size;
+
     unsafe {
         let vertex_ptr = batch.vertex.as_ptr() as *const f32;
-        let vertex_len = batch.vertex.len() * 5;
+        let vertex_len = batch.vertex.len() * 10;
         let index_ptr = batch.index.as_ptr();
         let index_len = batch.index.len();
 
-        renderer_batch(renderer, vertex_ptr, vertex_len, index_ptr, index_len);
+        renderer_batch(renderer, vertex_ptr, vertex_len, index_ptr, index_len, width, height);
     }
 }
 
@@ -68,6 +71,7 @@ extern "system" {
     fn renderer_batch(
         renderer: JsValue,
         vertex_ptr: *const f32, vertex_len: usize,
-        index_ptr: *const u16, index_len: usize
+        index_ptr: *const u16, index_len: usize,
+        width: u16, height: u16
     );
 }

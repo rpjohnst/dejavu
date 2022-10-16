@@ -36,11 +36,11 @@ export default async function init(canvas, output) {
   };
   env.renderer_drop = (renderer) => drop(renderer);
   env.renderer_frame = (renderer) => rendererFrame(deref(renderer));
-  env.renderer_batch = (renderer, vertexPtr, vertexLen, indexPtr, indexLen) => {
+  env.renderer_batch = (renderer, vertexPtr, vertexLen, indexPtr, indexLen, width, height) => {
     renderer = deref(renderer);
     const vertex = sliceF32FromWasm(vertexPtr, vertexLen);
     const index = sliceU16FromWasm(indexPtr, indexLen);
-    rendererBatch(renderer, vertex, index);
+    rendererBatch(renderer, vertex, index, width, height);
   };
 
   const response = await fetch(playground_wasm);

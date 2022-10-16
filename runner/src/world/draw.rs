@@ -1,5 +1,5 @@
 use gml::{self, vm};
-use atlas::{Texture, Image};
+use atlas::Image;
 use crate::{Context, Sprite, Batch, batch};
 
 #[derive(Default)]
@@ -94,25 +94,27 @@ impl State {
 
         let Sprite { origin, ref images, .. } = assets.sprites[sprite as usize];
         let Image { texture, pos, size } = assets.images[images.clone()][subimg as usize];
-        let Texture { size: texture_size, .. } = assets.textures[texture as usize];
-        if draw.batch.texture != texture {
+        if draw.batch.texture != texture || draw.batch.vertex.len() + 3 > u16::MAX as usize {
             crate::graphics::batch(cx);
 
             let Context { world, .. } = cx;
             let crate::World { draw, .. } = world;
-            draw.batch.reset(texture, texture_size);
+            draw.batch.reset(texture);
         }
 
+        // Subtract 0.5 from vertex positions to compensate for pixel sample positions.
+        // GM does not account for viewport size here.
         let (ox, oy) = origin;
-        let (x, y) = (x - ox as f32, y - oy as f32);
+        let (x, y) = (x - ox as f32 - 0.5, y - oy as f32 - 0.5);
         let (w, h) = size;
         let position = batch::Rect { x, y, w: w as f32, h: h as f32 };
+        let texture = batch::Rect { x: 0.0, y: 0.0, w: 1.0, h: 1.0 };
         let (x, y) = pos;
-        let texture = batch::Rect { x: x as f32, y: y as f32, w: w as f32, h: h as f32 };
+        let image = batch::Rect { x: x as f32, y: y as f32, w: w as f32, h: h as f32 };
 
         let Context { world, .. } = cx;
         let crate::World { draw, .. } = world;
-        draw.batch.quad(position, texture);
+        draw.batch.quad(position, texture, image);
     }
 
     #[gml::api]
@@ -129,7 +131,7 @@ impl State {
                 .unwrap_or_else(|| bool::cmp(&!a.is_nan(), &!b.is_nan()))
         });
 
-        draw.batch.reset(-1, (0, 0));
+        draw.batch.reset(-1);
         for i in 0..draw.depth.len() {
             let Context { world, assets } = cx;
             let crate::World { motion, instance, draw, .. } = world;
