@@ -1,6 +1,19 @@
-use std::{error::Error, env};
+use std::{env, io};
+use std::error::Error;
+use std::io::Write;
+use std::process::ExitCode;
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> ExitCode {
+    match build() {
+        Ok(()) => { ExitCode::SUCCESS }
+        Err(err) => {
+            let _ = writeln!(io::stderr(), "{err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn build() -> Result<(), Box<dyn Error>> {
     let target_family = env::var("CARGO_CFG_TARGET_FAMILY").unwrap_or_default();
 
     #[cfg(windows)]
