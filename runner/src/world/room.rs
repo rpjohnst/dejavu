@@ -1,16 +1,45 @@
-use crate::{Context, instance, Instance};
+use crate::{Context, World, Instance, instance};
 
 use gml::vm;
 
 #[derive(Default)]
-pub struct State;
+pub struct State {
+    pub room: i32,
+    pub backgrounds: Vec<Layer>,
+}
+
+pub struct Layer {
+    pub visible: bool,
+    pub foreground: bool,
+    pub background: i32,
+    pub x: f32,
+    pub y: f32,
+    pub htiled: bool,
+    pub vtiled: bool,
+    pub xscale: f32,
+    pub yscale: f32,
+    pub hspeed: f32,
+    pub vspeed: f32,
+}
 
 impl State {
     pub fn load_room(cx: &mut Context, thread: &mut vm::Thread, num: i32) ->
         vm::Result<()>
     {
+        let Context { world, assets, .. } = cx;
+        let World { room, .. } = world;
+        room.room = num;
+
+        room.backgrounds.clear();
+        room.backgrounds.extend(assets.rooms[num as usize].backgrounds.iter().map(|&crate::Layer {
+            visible, foreground, background, x, y, htiled, vtiled, xscale, yscale, hspeed, vspeed
+        }| Layer {
+            visible, foreground, background,
+            x: x as f32, y: y as f32, htiled, vtiled, xscale, yscale,
+            hspeed: hspeed as f32, vspeed: vspeed as f32
+        }));
+
         // Create instances:
-        let Context { assets, .. } = cx;
         for i in 0..assets.rooms[num as usize].instances.len() {
             let Context { assets, .. } = cx;
             let Instance { x, y, object_index, id } = assets.rooms[num as usize].instances[i];
@@ -48,5 +77,27 @@ impl State {
 
         crate::instance::State::free_destroyed(cx);
         Ok(())
+    }
+}
+
+#[gml::bind]
+impl State {
+    #[gml::get(room)]
+    pub fn get_room(&self) -> i32 { self.room }
+
+    #[gml::get(room_width)]
+    pub fn get_room_width(cx: &Context) -> u32 {
+        let Context { world, assets } = cx;
+        let World { room, .. } = world;
+        let (width, _) = assets.rooms[room.room as usize].size;
+        width
+    }
+
+    #[gml::get(room_height)]
+    pub fn get_room_height(cx: &Context) -> u32 {
+        let Context { world, assets } = cx;
+        let World { room, .. } = world;
+        let (_, height) = assets.rooms[room.room as usize].size;
+        height
     }
 }

@@ -23,6 +23,7 @@ pub fn run(mut cx: crate::Context) {
         let crate::World { show, .. } = &cx.world;
         show.show_vm_error(&*error);
     }
+    crate::draw::State::animate(&mut cx);
 
     if let Err(error) = crate::instance::State::step(&mut cx, &mut thread) {
         let crate::World { show, .. } = &cx.world;

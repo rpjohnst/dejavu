@@ -62,9 +62,14 @@ impl State {
 
     pub fn step(cx: &mut Context, thread: &mut vm::Thread) -> vm::Result<()> {
         let Context { world, .. } = cx;
-        let crate::World { world, .. } = world;
+        let crate::World { world, motion, .. } = world;
         let entities = world.instances.values().clone();
 
+        for &entity in entities.iter() {
+            let instance = &mut motion.instances[entity];
+            instance.xprevious = instance.x;
+            instance.yprevious = instance.y;
+        }
         for &entity in entities.iter() {
             let Context { world, assets, .. } = cx;
             let crate::World { instance, .. } = world;

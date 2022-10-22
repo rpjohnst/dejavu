@@ -902,8 +902,8 @@ fn read_body<'a>(
             read.read_i32(&mut background.background)?;
             read.read_i32(&mut background.x)?;
             read.read_i32(&mut background.y)?;
-            read.read_bool(&mut background.tile_h)?;
-            read.read_bool(&mut background.tile_v)?;
+            read.read_bool(&mut background.htiled)?;
+            read.read_bool(&mut background.vtiled)?;
             read.read_i32(&mut background.hspeed)?;
             read.read_i32(&mut background.vspeed)?;
             read.read_bool(&mut background.stretch)?;

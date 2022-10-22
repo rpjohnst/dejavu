@@ -34,21 +34,15 @@ impl Instance {
 
 impl State {
     pub fn simulate(cx: &mut Context) {
-        let Context { world, assets, .. } = cx;
-        let crate::World { world, motion, draw, .. } = world;
+        let Context { world, .. } = cx;
+        let crate::World { world, motion, .. } = world;
         let entities = world.instances.values().clone();
 
         for &entity in entities.iter() {
             let instance = &mut motion.instances[entity];
-            let draw = &mut draw.instances[entity];
 
             instance.xprevious = instance.x;
             instance.yprevious = instance.y;
-
-            if draw.sprite_index != -1 {
-                let image_number = assets.sprites[draw.sprite_index as usize].images.len();
-                draw.image_index = (draw.image_index + draw.image_speed) % image_number as f32;
-            }
 
             instance.x += instance.hspeed;
             instance.y += instance.vspeed;

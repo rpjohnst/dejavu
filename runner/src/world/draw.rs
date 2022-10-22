@@ -1,6 +1,6 @@
 use gml::{self, vm};
 use atlas::Image;
-use crate::{Context, Sprite, Batch, batch};
+use crate::{Context, Sprite, Background, Batch, batch};
 
 #[derive(Default)]
 pub struct State {
@@ -43,6 +43,52 @@ impl State {
         State::screen_redraw(cx, thread)?;
         crate::instance::State::free_destroyed(cx);
         Ok(())
+    }
+
+    pub fn animate(cx: &mut Context) {
+        let Context { world, assets, .. } = cx;
+        let crate::World { world, room, draw, .. } = world;
+        let entities = world.instances.values().clone();
+
+        for &entity in entities.iter() {
+            let draw = &mut draw.instances[entity];
+
+            if draw.sprite_index != -1 {
+                let image_number = assets.sprites[draw.sprite_index as usize].images.len();
+                draw.image_index = (draw.image_index + draw.image_speed) % image_number as f32;
+            }
+        }
+
+        for layer in &mut room.backgrounds[..] {
+            layer.x += layer.hspeed;
+            layer.y += layer.vspeed;
+        }
+    }
+
+    fn draw_batch_image(
+        cx: &mut Context, image: usize, position: batch::Rect, uv: batch::Rect
+    ) {
+        let Context { world, assets, .. } = cx;
+        let crate::World { draw, .. } = world;
+        let Image { texture, pos, size } = assets.images[image];
+        if draw.batch.texture != texture || draw.batch.vertex.len() + 3 > u16::MAX as usize {
+            crate::graphics::batch(cx);
+
+            let Context { world, .. } = cx;
+            let crate::World { draw, .. } = world;
+            draw.batch.reset(texture);
+        }
+
+        // Subtract 0.5 from vertex positions to compensate for pixel sample positions.
+        // GM does not account for viewport size here.
+        let position = batch::Rect { x: position.x - 0.5, y: position.y - 0.5, ..position };
+        let (x, y) = pos;
+        let (w, h) = size;
+        let image = batch::Rect { x: x as f32, y: y as f32, w: w as f32, h: h as f32 };
+
+        let Context { world, .. } = cx;
+        let crate::World { draw, .. } = world;
+        draw.batch.quad(position, uv, image);
     }
 }
 
@@ -93,33 +139,67 @@ impl State {
         }
 
         let Sprite { origin, ref images, .. } = assets.sprites[sprite as usize];
-        let Image { texture, pos, size } = assets.images[images.clone()][subimg as usize];
-        if draw.batch.texture != texture || draw.batch.vertex.len() + 3 > u16::MAX as usize {
-            crate::graphics::batch(cx);
-
-            let Context { world, .. } = cx;
-            let crate::World { draw, .. } = world;
-            draw.batch.reset(texture);
-        }
-
-        // Subtract 0.5 from vertex positions to compensate for pixel sample positions.
-        // GM does not account for viewport size here.
+        let image = images.start + subimg as usize;
+        let Image { size, .. } = assets.images[image];
         let (ox, oy) = origin;
-        let (x, y) = (x - ox as f32 - 0.5, y - oy as f32 - 0.5);
+        let (x, y) = (x - ox as f32, y - oy as f32);
         let (w, h) = size;
         let position = batch::Rect { x, y, w: w as f32, h: h as f32 };
-        let texture = batch::Rect { x: 0.0, y: 0.0, w: 1.0, h: 1.0 };
-        let (x, y) = pos;
-        let image = batch::Rect { x: x as f32, y: y as f32, w: w as f32, h: h as f32 };
-
-        let Context { world, .. } = cx;
-        let crate::World { draw, .. } = world;
-        draw.batch.quad(position, texture, image);
+        let uv = batch::Rect { x: 0.0, y: 0.0, w: 1.0, h: 1.0 };
+        Self::draw_batch_image(cx, image, position, uv);
     }
 
     #[gml::api]
     pub fn screen_redraw(cx: &mut Context, thread: &mut vm::Thread) -> vm::Result<()> {
         crate::graphics::frame(cx);
+
+        let Context { world, .. } = cx;
+        let crate::World { draw, .. } = world;
+        draw.batch.reset(-1);
+
+        let Context { world, .. } = cx;
+        let crate::World { room, .. } = world;
+        for i in 0..room.backgrounds.len() {
+            let Context { world, assets } = cx;
+            let crate::World { room, .. } = world;
+            let (room_width, room_height) = assets.rooms[room.room as usize].size;
+            let crate::room::Layer {
+                visible, foreground, background, x, y, htiled, vtiled, xscale, yscale, ..
+            } = room.backgrounds[i];
+
+            if !visible || foreground { continue; }
+            if background < 0 || assets.backgrounds.len() <= background as usize { continue; }
+
+            let Background { image } = assets.backgrounds[background as usize];
+            let Image { size: (w, h), .. } = assets.images[image];
+            let (w, h) = (w as f32, h as f32);
+
+            let (w, h) = (w * xscale, h * yscale);
+            let (mut xstart, mut xend) = (x, x + w);
+            if htiled {
+                xstart = f32::rem_euclid(x, w);
+                if xstart > 0.0 { xstart -= w; }
+                xend = room_width as f32;
+            }
+            let (mut ystart, mut yend) = (y, y + h);
+            if vtiled {
+                ystart = f32::rem_euclid(y, h);
+                if y > 0.0 { ystart -= h; }
+                yend = room_height as f32;
+            }
+
+            let mut x = xstart;
+            while x < xend {
+                let mut y = ystart;
+                while y < yend {
+                    let position = batch::Rect { x, y, w, h };
+                    let uv = batch::Rect { x: 0.0, y: 0.0, w: 1.0, h: 1.0 };
+                    Self::draw_batch_image(cx, image, position, uv);
+                    y += h;
+                }
+                x += w;
+            }
+        }
 
         let Context { world, .. } = cx;
         let crate::World { draw, .. } = world;
@@ -131,7 +211,6 @@ impl State {
                 .unwrap_or_else(|| bool::cmp(&!a.is_nan(), &!b.is_nan()))
         });
 
-        draw.batch.reset(-1);
         for i in 0..draw.depth.len() {
             let Context { world, assets } = cx;
             let crate::World { motion, instance, draw, .. } = world;

@@ -102,6 +102,7 @@ pub fn run(mut cx: Context) { unsafe {
             let crate::World { show, .. } = &cx.world;
             show.show_vm_error(&*error);
         }
+        crate::draw::State::animate(&mut cx);
 
         let mut msg: MSG = mem::zeroed();
         while PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {

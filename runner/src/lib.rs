@@ -46,6 +46,7 @@ pub struct Assets {
     pub images: Vec<atlas::Image>,
 
     pub sprites: Vec<Sprite>,
+    pub backgrounds: Vec<Background>,
     pub objects: Vec<Object>,
     pub rooms: Vec<Room>,
     pub next_instance: i32,
@@ -57,6 +58,10 @@ pub struct Sprite {
     pub images: Range<usize>,
 }
 
+pub struct Background {
+    pub image: usize,
+}
+
 pub struct Object {
     pub sprite_index: i32,
     pub depth: f32,
@@ -64,7 +69,23 @@ pub struct Object {
 }
 
 pub struct Room {
+    pub size: (u32, u32),
+    pub backgrounds: Vec<Layer>,
     pub instances: Vec<Instance>,
+}
+
+pub struct Layer {
+    pub visible: bool,
+    pub foreground: bool,
+    pub background: i32,
+    pub x: i32,
+    pub y: i32,
+    pub htiled: bool,
+    pub vtiled: bool,
+    pub xscale: f32,
+    pub yscale: f32,
+    pub hspeed: i32,
+    pub vspeed: i32,
 }
 
 pub struct Instance {
@@ -98,6 +119,16 @@ pub fn build<'a, F: FnMut() -> E, E: io::Write>(game: &'a project::Game, errors:
 
         assets.sprites.push(Sprite { origin, images: start..end });
     }
+    for &project::Background { name, size, data, .. } in &game.backgrounds[..] {
+        let start = builder.len();
+        let (width, height) = size;
+        if !name.is_empty() && width * height > 0 {
+            builder.insert(size, data);
+        }
+
+        // TODO: use a placeholder image for unused resource indices
+        assets.backgrounds.push(Background { image: start });
+    }
     (assets.textures, assets.images) = builder.build();
 
     assets.objects = game.objects.iter()
@@ -105,8 +136,27 @@ pub fn build<'a, F: FnMut() -> E, E: io::Write>(game: &'a project::Game, errors:
             sprite_index: sprite, depth: depth as f32, persistent
         })
         .collect();
+
     assets.rooms = game.rooms.iter()
-        .map(|&project::Room { ref instances, .. }| Room {
+        .map(|&project::Room { ref backgrounds, ref instances, width, height, .. }| Room {
+            size: (width, height),
+            backgrounds: backgrounds.iter()
+                .map(|&project::RoomBackground {
+                    visible, foreground, background, x, y, htiled, vtiled, hspeed, vspeed, stretch
+                }| {
+                    let (mut xscale, mut yscale) = (1.0, 1.0);
+                    if stretch {
+                        if let Some(background) = assets.backgrounds.get(background as usize) {
+                            let (w, h) = assets.textures[background.image].size;
+                            (xscale, yscale) = (width as f32 / w as f32, height as f32 / h as f32);
+                        }
+                    }
+                    Layer {
+                        visible, foreground, background,
+                        x, y, htiled, vtiled, xscale, yscale, hspeed, vspeed
+                    }
+                })
+                .collect(),
             instances: instances.iter()
                 .map(|&project::Instance { x, y, object_index, id, .. }| Instance {
                     x, y, object_index, id
