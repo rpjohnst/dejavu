@@ -1,5 +1,5 @@
 #[cfg(feature = "read")]
-pub use read::{read_project, read_exe};
+pub use read::{read_project, read_exe, read_ged, read_gex};
 
 #[cfg(feature = "read")]
 mod read;
@@ -14,7 +14,6 @@ pub struct Game<'a> {
     pub id: u32,
     pub guid: [u32; 4],
 
-    pub extensions: Vec<&'a [u8]>,
     pub constants: Vec<Constant<'a>>,
 
     pub sounds: Vec<Sound<'a>>,
@@ -27,6 +26,8 @@ pub struct Game<'a> {
 
     pub last_instance: i32,
     pub last_tile: i32,
+
+    pub extensions: Vec<&'a [u8]>,
 
     pub room_order: Vec<u32>,
 }
@@ -390,6 +391,69 @@ pub struct Tile {
     pub id: i32,
 }
 
+#[derive(Default)]
+pub struct Extension<'a> {
+    pub name: &'a [u8],
+    pub folder: &'a [u8],
+    pub version: &'a [u8],
+    pub author: &'a [u8],
+    pub date: &'a [u8],
+    pub license: &'a [u8],
+    pub description: &'a [u8],
+    pub help_file: &'a [u8],
+    pub hidden: u32,
+    pub uses: Vec<&'a [u8]>,
+    pub files: Vec<ExtensionFile<'a>>,
+}
+
+#[derive(Default)]
+pub struct ExtensionFile<'a> {
+    pub file_name: &'a [u8],
+    pub original_name: &'a [u8],
+    pub kind: u32,
+    pub initialization: &'a [u8],
+    pub finalization: &'a [u8],
+    pub functions: Vec<ExtensionFunction<'a>>,
+    pub constants: Vec<ExtensionConstant<'a>>,
+}
+
+pub mod extension_kind {
+    pub const DLL: u32 = 1;
+    pub const GML: u32 = 2;
+    pub const LIB: u32 = 3;
+    pub const OTHER: u32 = 4;
+}
+
+#[derive(Default)]
+pub struct ExtensionFunction<'a> {
+    pub name: &'a [u8],
+    pub external_name: &'a [u8],
+    pub calling_convention: u32,
+    pub help_line: &'a [u8],
+    pub hidden: u32,
+    pub parameters_used: u32,
+    pub parameters: [u32; 17],
+    pub result: u32,
+}
+
+pub mod calling_convention {
+    pub const GML: u32 = 2;
+    pub const STDCALL: u32 = 11;
+    pub const CDECL: u32 = 11;
+}
+
+pub mod parameter_type {
+    pub const STRING: u32 = 1;
+    pub const REAL: u32 = 2;
+}
+
+#[derive(Default)]
+pub struct ExtensionConstant<'a> {
+    pub name: &'a [u8],
+    pub value: &'a [u8],
+    pub hidden: u32,
+}
+
 impl<'a> Default for Game<'a> {
     fn default() -> Game<'a> {
         Game {
@@ -402,7 +466,6 @@ impl<'a> Default for Game<'a> {
             id: 0,
             guid: [0; 4],
 
-            extensions: Vec::default(),
             constants: Vec::default(),
 
             sounds: Vec::default(),
@@ -415,6 +478,8 @@ impl<'a> Default for Game<'a> {
 
             last_instance: 100000,
             last_tile: 10000000,
+
+            extensions: Vec::default(),
 
             room_order: Vec::default(),
         }

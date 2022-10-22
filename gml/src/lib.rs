@@ -43,7 +43,10 @@ pub enum Item<W> {
 
 /// Build the GML and D&D in a Game Maker project.
 pub fn build<W, F: FnMut() -> E, E: io::Write>(
-    game: &project::Game, runner: &HashMap<Symbol, Item<W>>, mut errors: F
+    game: &project::Game<'_>,
+    extensions: &[project::Extension<'_>],
+    runner: &HashMap<Symbol, Item<W>>,
+    mut errors: F
 ) -> Result<(vm::Assets<W>, vm::Debug), u32> {
     let mut assets = vm::Assets::default();
     let mut debug = vm::Debug::default();
@@ -65,6 +68,15 @@ pub fn build<W, F: FnMut() -> E, E: io::Write>(
                 if let Some(get) = get { assets.get.insert(name, get); }
                 if let Some(set) = set { assets.set.insert(name, set); }
                 prototypes.insert(name, ssa::Prototype::Member);
+            }
+        }
+    }
+    for extension in extensions {
+        for file in &extension.files[..] {
+            for function in &file.functions[..] {
+                let name = Symbol::intern(function.name);
+                let arity = function.parameters_used as usize;
+                prototypes.insert(name, ssa::Prototype::Native { arity, variadic: false });
             }
         }
     }

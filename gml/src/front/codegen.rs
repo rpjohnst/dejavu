@@ -741,7 +741,7 @@ impl<'p, 'e, 'f> Codegen<'p, 'e, 'f> {
             _ => {
                 self.errors.error(symbol_span,
                     format_args!("unknown function or script: {}", symbol));
-                (ssa::Opcode::Call, 0, true)
+                (ssa::Opcode::CallApi, 0, true)
             }
         };
 

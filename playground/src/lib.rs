@@ -29,7 +29,7 @@ pub extern "system" fn run(load: JsValue) {
     let mut game = project::Game::default();
     unsafe { load_call(load, &arena, &mut game) };
 
-    let (assets, debug) = match runner::build(&game, HostErr) {
+    let (assets, debug) = match runner::build(&game, &[], HostErr) {
         Ok(assets) => assets,
         Err(errors) => {
             if errors > 1 {

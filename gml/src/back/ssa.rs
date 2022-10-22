@@ -203,6 +203,7 @@ pub enum Prototype {
     Member,
     /// A project resource id.
     Resource { id: i32, script: bool },
+    /// A project constant.
     Constant { id: i32 },
 }
 

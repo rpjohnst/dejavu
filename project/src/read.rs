@@ -13,6 +13,7 @@ use crate::{
     Script,
     Object, Action, Event,
     Room, RoomBackground, View, Instance, Tile,
+    Extension, ExtensionFile, ExtensionFunction, ExtensionConstant,
 };
 
 const GM_OFFSET_500: u64 = 1_500_000;
@@ -35,14 +36,14 @@ pub fn read_project<'a>(read: &[u8], game: &mut Game<'a>, arena: &'a Arena) -> i
     }
 
     if game.version == 530 { read.read_u32(&mut game.debug)?; }
-    read_body(read, buf, false, game, arena)?;
+    read_body(read, buf, false, game, &mut Vec::default(), arena)?;
 
     Ok(())
 }
 
-pub fn read_exe<'a, R: BufRead + Seek>(read: &mut R, game: &mut Game<'a>, arena: &'a Arena) ->
-    io::Result<()>
-{
+pub fn read_exe<'a, R: BufRead + Seek>(
+    read: &mut R, game: &mut Game<'a>, extensions: &mut Vec<Extension<'a>>, arena: &'a Arena
+) -> io::Result<()> {
     let mut buf = [0; 2];
     read.read_exact(&mut buf[..])?;
     if &buf != b"MZ" {
@@ -142,7 +143,7 @@ pub fn read_exe<'a, R: BufRead + Seek>(read: &mut R, game: &mut Game<'a>, arena:
         *read = &read[skip * 4..];
 
         read.read_bool(&mut game.pro)?;
-        read_body(read, buf, true, game, arena)?;
+        read_body(read, buf, true, game, extensions, arena)?;
     } else {
         return Err(io::Error::from(io::ErrorKind::InvalidData));
     }
@@ -151,7 +152,8 @@ pub fn read_exe<'a, R: BufRead + Seek>(read: &mut R, game: &mut Game<'a>, arena:
 }
 
 fn read_body<'a>(
-    read: &mut &[u8], buf: &mut Vec<u8>, exe: bool, game: &mut Game<'a>, arena: &'a Arena
+    read: &mut &[u8], buf: &mut Vec<u8>, exe: bool,
+    game: &mut Game<'a>, extensions: &mut Vec<Extension<'a>>, arena: &'a Arena
 ) -> io::Result<()> {
     read.read_u32(&mut game.id)?;
     read.read_u32(&mut game.guid[0])?;
@@ -183,54 +185,13 @@ fn read_body<'a>(
         let _version = read.next_u32()?;
         let len = read.next_u32()? as usize;
         game.extensions.reserve(len);
+        extensions.reserve(len);
         for id in 0..len {
-            game.extensions.push(&[][..]);
+            extensions.push(Extension::default());
 
-            let extension = &mut game.extensions[id];
-            let _version = read.next_u32()?;
-            read.read_blob(extension, arena)?;
-            let mut folder = &[][..];
-            read.read_blob(&mut folder, arena)?;
-
-            let len = read.next_u32()? as usize;
-            for _id in 0..len {
-                let _version = read.next_u32()?;
-                let mut file = &[][..];
-                read.read_blob(&mut file, arena)?;
-                let _kind = read.next_u32()?;
-                let mut initialization = &[][..];
-                read.read_blob(&mut initialization, arena)?;
-                let mut finalization = &[][..];
-                read.read_blob(&mut finalization, arena)?;
-
-                let len = read.next_u32()? as usize;
-                for _id in 0..len {
-                    let _version = read.next_u32()?;
-                    let mut name = &[][..];
-                    read.read_blob(&mut name, arena)?;
-                    let mut external_name = &[][..];
-                    read.read_blob(&mut external_name, arena)?;
-                    let _ = read.next_u32()?;
-                    let _ = read.next_u32()?;
-                    let _parameters = read.next_u32()?;
-
-                    for _ in 0..16 {
-                        let _type = read.next_u32()?;
-                    }
-                    let _type = read.next_u32()?;
-
-                    let _ = read.next_u32()?;
-                }
-
-                let len = read.next_u32()? as usize;
-                for _id in 0..len {
-                    let _hidden = read.next_u32()?;
-                    let mut name = &[][..];
-                    read.read_blob(&mut name, arena)?;
-                    let mut value = &[][..];
-                    read.read_blob(&mut value, arena)?;
-                }
-            }
+            let extension = &mut extensions[id];
+            read_ged(read, true, extension, arena)?;
+            game.extensions.push(extension.name);
 
             read.skip_blob()?;
         }
@@ -1325,6 +1286,123 @@ fn read_action<'a, R: BufRead>(read: &mut R, action: &mut Action<'a>, arena: &'a
     }
 
     read.read_bool(&mut action.negate)?;
+
+    Ok(())
+}
+
+pub fn read_gex<'a, R: BufRead>(read: &mut R, extension: &mut Extension<'a>, arena: &'a Arena) ->
+    io::Result<()>
+{
+    if read.next_u32()? != GM_MAGIC {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
+    let _version = read.next_u32()?;
+
+    // swap tables
+
+    let seed = read.next_u32()? as usize;
+    let a = seed % 250 + 6;
+    let b = seed / 250;
+
+    let mut forward = [0u8; 256];
+    for i in 0..256 { forward[i] = i as u8; }
+    for i in 1..10001 {
+        let j = (i * a + b) % 254 + 1;
+        forward.swap(j, j + 1);
+    }
+
+    let mut reverse = [0u8; 256];
+    for i in 0..256 { reverse[forward[i] as usize] = i as u8; }
+
+    // decrypt
+
+    let mut data = Vec::default();
+    read.read_to_end(&mut data)?;
+    for x in &mut data[..] { *x = reverse[*x as usize]; }
+
+    // extension data
+
+    let read = &mut &data[..];
+
+    read_ged(read, false, extension, arena)?;
+
+    for _ in 0..extension.files.len() {
+        let mut file = Vec::default();
+        read.read_blob_zlib(&mut file)?;
+    }
+
+    assert!(read.fill_buf()?.is_empty());
+    Ok(())
+}
+
+pub fn read_ged<'a>(read: &mut &[u8], exe: bool, extension: &mut Extension<'a>, arena: &'a Arena) ->
+    io::Result<()>
+{
+    let _version = read.next_u32()?;
+    if !exe { let _editable = read.next_u32()?; }
+    read.read_blob(&mut extension.name, arena)?;
+    read.read_blob(&mut extension.folder, arena)?;
+    if !exe {
+        read.read_blob(&mut extension.version, arena)?;
+        read.read_blob(&mut extension.author, arena)?;
+        read.read_blob(&mut extension.date, arena)?;
+        read.read_blob(&mut extension.license, arena)?;
+        read.read_blob(&mut extension.description, arena)?;
+        read.read_blob(&mut extension.help_file, arena)?;
+        read.read_u32(&mut extension.hidden)?;
+
+        let len = read.next_u32()? as usize;
+        for id in 0..len {
+            extension.uses.push(&[][..]);
+
+            let line = &mut extension.uses[id];
+            read.read_blob(line, arena)?;
+        }
+    }
+
+    let len = read.next_u32()? as usize;
+    for id in 0..len {
+        extension.files.push(ExtensionFile::default());
+
+        let file = &mut extension.files[id];
+        let _version = read.next_u32()?;
+        read.read_blob(&mut file.file_name, arena)?;
+        if !exe { read.read_blob(&mut file.original_name, arena)?; }
+        read.read_u32(&mut file.kind)?;
+        read.read_blob(&mut file.initialization, arena)?;
+        read.read_blob(&mut file.finalization, arena)?;
+
+        let len = read.next_u32()? as usize;
+        for id in 0..len {
+            file.functions.push(ExtensionFunction::default());
+
+            let function = &mut file.functions[id];
+            let _version = read.next_u32()?;
+            read.read_blob(&mut function.name, arena)?;
+            read.read_blob(&mut function.external_name, arena)?;
+            read.read_u32(&mut function.calling_convention)?;
+            if !exe { read.read_blob(&mut function.help_line, arena)?; }
+            read.read_u32(&mut function.hidden)?;
+            read.read_u32(&mut function.parameters_used)?;
+            for parameter in &mut function.parameters[..] {
+                read.read_u32(parameter)?;
+            }
+            read.read_u32(&mut function.result)?;
+        }
+
+        let len = read.next_u32()? as usize;
+        for id in 0..len {
+            file.constants.push(ExtensionConstant::default());
+
+            let constant = &mut file.constants[id];
+            if !exe { let _version = read.next_u32()?; }
+            if exe { read.read_u32(&mut constant.hidden)?; }
+            read.read_blob(&mut constant.name, arena)?;
+            read.read_blob(&mut constant.value, arena)?;
+            if !exe { read.read_u32(&mut constant.hidden)?; }
+        }
+    }
 
     Ok(())
 }

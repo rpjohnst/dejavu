@@ -96,15 +96,16 @@ pub struct Instance {
 }
 
 /// Build a Game Maker project.
-pub fn build<'a, F: FnMut() -> E, E: io::Write>(game: &'a project::Game, errors: F) ->
-    Result<(Assets, vm::Debug), u32>
+pub fn build<F: FnMut() -> E, E: io::Write>(
+    game: &project::Game<'_>, extensions: &[project::Extension<'_>], errors: F
+) -> Result<(Assets, vm::Debug), u32>
 {
     let mut assets = Assets::default();
     let debug;
 
     let mut items = HashMap::default();
     World::register(&mut items);
-    (assets.code, debug) = match gml::build(game, &items, errors) {
+    (assets.code, debug) = match gml::build(game, extensions, &items, errors) {
         Ok(gml) => { gml }
         Err(count) => { return Err(count); }
     };

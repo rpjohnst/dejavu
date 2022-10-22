@@ -16,7 +16,7 @@ fn arguments() -> vm::Result<()> {
         return argument0 + argument1
     }" });
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let world = World::default();
 
@@ -50,7 +50,7 @@ fn member() -> vm::Result<()> {
         return c
     }" });
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let mut world = World::default();
 
@@ -94,7 +94,7 @@ fn builtin() -> vm::Result<()> {
         return global_array[1]
     }" });
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let mut world = World::default();
 
@@ -132,7 +132,7 @@ fn global() -> vm::Result<()> {
         return self.a + a
     }" });
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let mut world = World::default();
 
@@ -166,7 +166,7 @@ fn with_scopes() -> vm::Result<()> {
         return argument0.n + argument1.n + argument0.m + argument1.m
     }" });
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let mut world = World::default();
 
@@ -205,7 +205,7 @@ fn with_iterator() -> vm::Result<()> {
     let create_instance = Symbol::intern(b"create_instance");
     items.insert(create_instance, Item::Native(World::native_create_instance, 0, false));
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let mut world = World::default();
 
@@ -236,7 +236,7 @@ fn array() -> vm::Result<()> {
         return a + a[1] + b[0] + b[1] + b[2] + c + c[1, 1]
     }" });
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let world = World::default();
 
@@ -263,7 +263,7 @@ fn conditional_initialization() -> vm::Result<()> {
         return t
     }" });
 
-    let _: (vm::Assets<Context>, _) = gml::build(&game, &items, io::stderr)
+    let _: (vm::Assets<Context>, _) = gml::build(&game, &[], &items, io::stderr)
         .unwrap_or_else(|_| panic!());
     Ok(())
 }
@@ -282,7 +282,7 @@ fn dead_undef() -> vm::Result<()> {
         return i
     }" });
 
-    let _: (vm::Assets<Context>, _) = gml::build(&game, &items, io::stderr)
+    let _: (vm::Assets<Context>, _) = gml::build(&game, &[], &items, io::stderr)
         .unwrap_or_else(|_| panic!());
     Ok(())
 }
@@ -303,7 +303,7 @@ fn for_loop() -> vm::Result<()> {
         return j
     }" });
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let world = World::default();
 
@@ -335,7 +335,7 @@ fn switch() -> vm::Result<()> {
         return i
     }" });
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let world = World::default();
 
@@ -368,7 +368,7 @@ fn switch_empty() -> vm::Result<()> {
         }
     }" });
 
-    let _: (vm::Assets<Context>, _) = gml::build(&game, &items, io::stderr)
+    let _: (vm::Assets<Context>, _) = gml::build(&game, &[], &items, io::stderr)
         .unwrap_or_else(|_| panic!());
     Ok(())
 }
@@ -393,7 +393,7 @@ fn switch_fallthrough() -> vm::Result<()> {
         return i
     }" });
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let world = World::default();
 
@@ -426,7 +426,7 @@ fn call_script() -> vm::Result<()> {
     let call = Function::Script { id: game.scripts.len() as i32 };
     game.scripts.push(project::Script { name: b"call", body: b"return id(3) + 5" });
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let world = World::default();
 
@@ -452,7 +452,7 @@ fn recurse() -> vm::Result<()> {
         }
     }" });
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let world = World::default();
 
@@ -483,7 +483,7 @@ fn ffi() -> vm::Result<()> {
         return add(3, 5) + 8
     }" });
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let world = World::default();
 
@@ -515,7 +515,7 @@ fn reentrant() -> vm::Result<()> {
         return argument0 + 5
     }" });
 
-    let (code, _) = gml::build(&game, &items, io::stderr).unwrap_or_else(|_| panic!());
+    let (code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     let assets = Assets { code };
     let world = World::default();
 

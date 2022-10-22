@@ -68,6 +68,8 @@ pub enum ErrorKind {
     Scope(i32),
     /// Name in entity does not exist.
     Name(Symbol),
+    /// Callable name does not exist.
+    Call(Symbol),
     /// Variable is read-only.
     Write(Symbol),
     /// Array index out of bounds.
@@ -87,6 +89,7 @@ impl Error {
     pub fn arity(arity: usize) -> Box<Error> { Box::from(ErrorKind::Arity(arity)) }
     pub fn scope(scope: i32) -> Box<Error> { Box::from(ErrorKind::Scope(scope)) }
     pub fn name(name: Symbol) -> Box<Error> { Box::from(ErrorKind::Name(name)) }
+    pub fn call(name: Symbol) -> Box<Error> { Box::from(ErrorKind::Call(name)) }
     pub fn write(name: Symbol) -> Box<Error> { Box::from(ErrorKind::Write(name)) }
     pub fn bounds(index: i32) -> Box<Error> { Box::from(ErrorKind::Bounds(index)) }
 }
@@ -124,6 +127,7 @@ impl fmt::Display for ErrorKind {
             Arity(_) => write!(f, "wrong number of arguments to function or script"),
             Scope(_) => write!(f, "scope does not exist"),
             Name(symbol) => write!(f, "unknown variable {}", symbol),
+            Call(symbol) => write!(f, "unknown function or script: {}", symbol),
             Write(symbol) => write!(f, "cannot assign to the variable {}", symbol),
             Bounds(_) => write!(f, "array index out of bounds"),
             Other(ref error) => error.fmt(f),
@@ -787,7 +791,10 @@ fn execute_internal(
 
             (code::Op::CallApi, callee, base, len) => {
                 let symbol = code.symbols[callee];
-                let api = assets.api[&symbol];
+                let api = match assets.api.get(&symbol) {
+                    Some(&api) => { api }
+                    None => { break Error::call(symbol); }
+                };
                 let reg_base = reg_base + base;
 
                 let array = unsafe {
