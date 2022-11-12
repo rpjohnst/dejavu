@@ -10,7 +10,7 @@ use crate::front::{Lexer, Parser, ActionParser, Lines, Position, Span};
 use crate::back::ssa;
 use crate::vm::code;
 
-pub use gml_meta::bind;
+pub use gml_meta::{bind, api, get, set};
 
 #[macro_use]
 mod handle_map;

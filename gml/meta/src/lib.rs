@@ -178,10 +178,12 @@ fn param_reference_type(param: &FnArg) -> Option<&Type> {
 
 #[proc_macro_attribute]
 pub fn bind(_attr: TokenStream, input: TokenStream) -> TokenStream {
+    let output = proc_macro2::TokenStream::from(input.clone());
+
     // Parse the impl and collect method attributes.
 
-    let mut input: ItemImpl = syn::parse_macro_input!(input);
-    let bindings = match ItemBindings::parse(&mut input) {
+    let mut item: ItemImpl = syn::parse_macro_input!(input);
+    let bindings = match ItemBindings::parse(&mut item) {
         Ok(bindings) => bindings,
         Err(errors) => {
             let errors: proc_macro2::TokenStream = errors.iter()
@@ -193,7 +195,7 @@ pub fn bind(_attr: TokenStream, input: TokenStream) -> TokenStream {
 
     // Generate the API glue.
 
-    let self_ty = &input.self_ty;
+    let self_ty = &item.self_ty;
 
     let api_binding = bindings.apis.iter().map(|function| &function.name);
     let api_context = bindings.apis.iter().map(|function| {
@@ -233,8 +235,8 @@ pub fn bind(_attr: TokenStream, input: TokenStream) -> TokenStream {
         quote! { #(&'r mut #receivers,)* }
     });
 
-    let output = quote! {
-        #input
+    TokenStream::from(quote! {
+        #output
 
         impl #self_ty {
             pub fn register<W>(
@@ -266,6 +268,12 @@ pub fn bind(_attr: TokenStream, input: TokenStream) -> TokenStream {
                 })*
             }
         }
-    };
-    output.into()
+    })
 }
+
+#[proc_macro_attribute]
+pub fn api(_attr: TokenStream, input: TokenStream) -> TokenStream { input }
+#[proc_macro_attribute]
+pub fn get(_attr: TokenStream, input: TokenStream) -> TokenStream { input }
+#[proc_macro_attribute]
+pub fn set(_attr: TokenStream, input: TokenStream) -> TokenStream { input }
