@@ -198,9 +198,14 @@ pub fn bind(_attr: TokenStream, input: TokenStream) -> TokenStream {
     let self_ty = &item.self_ty;
 
     let api_binding = bindings.apis.iter().map(|function| &function.name);
-    let api_context = bindings.apis.iter().map(|function| {
+    let api_context1 = bindings.apis.iter().map(|function| {
         let receivers = function.receivers.iter();
         quote! { #(&'r mut #receivers,)* }
+    });
+    let api_context2 = api_context1.clone();
+    let api_context3 = bindings.apis.iter().map(|function| {
+        let receivers = function.receivers.iter();
+        quote! { #(&mut #receivers,)* }
     });
 
     let member = bindings.fields.iter().map(|(name, _)| name);
@@ -242,19 +247,25 @@ pub fn bind(_attr: TokenStream, input: TokenStream) -> TokenStream {
             pub fn register<W>(
                 items: &mut std::collections::HashMap<gml::symbol::Symbol, gml::Item<W>>
             ) where
-                #(W: for<'r> gml::vm::Project<'r, (#api_context)>,)*
+                #(W: for<'r> gml::vm::Project<'r, (#api_context1)>,)*
                 #(W: for<'r> gml::vm::Project<'r, (#get_context)>,)*
                 #(W: for<'r> gml::vm::Project<'r, (#set_context)>,)*
             {
                 use gml::{symbol::Symbol, vm};
+                use std::marker::PhantomData;
 
                 #({
+                    // Inferring the types here is the slowest part of compiling this function.
+                    // Give the compiler as much help as possible by specifying what we do know.
+                    fn bind<'t, W>() -> impl vm::FnBind<'t, W> where
+                        W: for<'r> vm::Project<'r, (#api_context2)>
+                    { vm::Bind::<_, (#api_context3), _, _>(#self_ty::#api_binding, PhantomData) }
+
                     let symbol = Symbol::intern(stringify!(#api_binding).as_bytes());
                     let api = |cx: &mut W, thread: &mut vm::Thread, range| unsafe {
-                        let bind = vm::Bind(#self_ty::#api_binding, std::marker::PhantomData);
-                        vm::FnBind::call(bind, cx, thread, range)
+                        vm::FnBind::call(bind(), cx, thread, range)
                     };
-                    let bind = vm::Bind(#self_ty::#api_binding, std::marker::PhantomData);
+                    let bind = bind();
                     let arity = vm::bind::arity::<_, W>(&bind);
                     let variadic = vm::bind::variadic::<_, W>(&bind);
                     let item = gml::Item::Native(api, arity, variadic);
