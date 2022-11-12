@@ -6,4 +6,4 @@ edition = "2021"
 [dependencies]
 gml-meta = { path = "meta" }
 project = { path = "../project" }
-bstr = { version = "0.2", default-features = false }
+bstr = { version = "1.0", default-features = false }
