@@ -165,7 +165,6 @@ flat in uint wrap;
 out vec4 color;
 
 void main() {
-
   // Emulate clamped texture sampling within the atlas texture.
   vec2 wh = image.zw;
   vec2 st = clamp(uv * wh, vec2(0.5, 0.5), wh - vec2(0.5, 0.5));

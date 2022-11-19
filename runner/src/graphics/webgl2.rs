@@ -50,7 +50,7 @@ pub fn batch(cx: &mut crate::Context) {
 
     unsafe {
         let vertex_ptr = batch.vertex.as_ptr() as *const f32;
-        let vertex_len = batch.vertex.len() * 10;
+        let vertex_len = batch.vertex.len() * 9;
         let index_ptr = batch.index.as_ptr();
         let index_len = batch.index.len();
 
