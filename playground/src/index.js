@@ -1,5 +1,5 @@
 import init, { run, stop } from "./playground.js";
-import { EditorState, basicSetup } from "@codemirror/basic-setup";
+import { basicSetup } from "codemirror";
 import { EditorView, keymap } from "@codemirror/view";
 import { indentUnit } from "@codemirror/language";
 import { indentWithTab } from "@codemirror/commands";
@@ -271,8 +271,7 @@ function eventOnEdit(parent, event) {
     kindNames(event.event_kind);
 
   const doc = event.actions[0].arguments[0];
-  const state = EditorState.create({ doc, extensions });
-  const editor = new EditorView({ state, parent: view });
+  const editor = new EditorView({ doc, extensions, parent: view });
 
   return {
     resource: event,

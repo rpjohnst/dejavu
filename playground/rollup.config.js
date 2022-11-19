@@ -1,8 +1,8 @@
 import { nodeResolve } from "@rollup/plugin-node-resolve";
 import url from "@rollup/plugin-url";
+import terser from "@rollup/plugin-terser";
 import livereload from "rollup-plugin-livereload";
 import serve from "rollup-plugin-serve";
-import { terser } from "rollup-plugin-terser";
 
 const release = !process.env.ROLLUP_WATCH;
 

@@ -1,6 +1,5 @@
 #![cfg(target_arch = "wasm32")]
 #![feature(const_mut_refs)]
-#![feature(let_else)]
 
 use std::{io, ptr, slice};
 use std::io::Write;
