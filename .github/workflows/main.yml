@@ -14,17 +14,12 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
-        rust: [nightly]
     runs-on: ${{ matrix.os }}
     steps:
     - name: Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: ${{ matrix.rust }}
-        override: true
-        profile: minimal
+      uses: dtolnay/rust-toolchain@nightly
     - name: Checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     - name: Build
       run: cargo build --locked
     - name: Test
@@ -34,18 +29,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Rust
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@nightly
       with:
-        toolchain: nightly
-        target: wasm32-unknown-unknown
-        override: true
-        profile: minimal
+        targets: wasm32-unknown-unknown
     - name: Binaryen
       run: |
-        curl -s -L https://github.com/WebAssembly/binaryen/releases/download/version_104/binaryen-version_104-x86_64-linux.tar.gz | tar -xzf - -C ~
-        echo "$HOME/binaryen-version_104/bin" >> $GITHUB_PATH
+        curl -s -L https://github.com/WebAssembly/binaryen/releases/download/version_110/binaryen-version_110-x86_64-linux.tar.gz | tar -xzf - -C ~
+        echo "$HOME/binaryen-version_110/bin" >> $GITHUB_PATH
     - name: Checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     - name: Build
       working-directory: playground
       run: |
