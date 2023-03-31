@@ -34,8 +34,8 @@ jobs:
         targets: wasm32-unknown-unknown
     - name: Binaryen
       run: |
-        curl -s -L https://github.com/WebAssembly/binaryen/releases/download/version_110/binaryen-version_110-x86_64-linux.tar.gz | tar -xzf - -C ~
-        echo "$HOME/binaryen-version_110/bin" >> $GITHUB_PATH
+        curl -s -L https://github.com/WebAssembly/binaryen/releases/download/version_112/binaryen-version_112-x86_64-linux.tar.gz | tar -xzf - -C ~
+        echo "$HOME/binaryen-version_112/bin" >> $GITHUB_PATH
     - name: Checkout
       uses: actions/checkout@v3
     - name: Build
