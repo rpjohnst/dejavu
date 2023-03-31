@@ -1,5 +1,4 @@
 #![feature(box_patterns)]
-#![feature(box_syntax)]
 #![feature(extern_types)]
 
 use std::collections::HashMap;
