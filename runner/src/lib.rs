@@ -148,7 +148,7 @@ pub fn build<F: FnMut() -> E, E: io::Write>(
                     let (mut xscale, mut yscale) = (1.0, 1.0);
                     if stretch {
                         if let Some(background) = assets.backgrounds.get(background as usize) {
-                            let (w, h) = assets.textures[background.image].size;
+                            let (w, h) = assets.images[background.image].size;
                             (xscale, yscale) = (width as f32 / w as f32, height as f32 / h as f32);
                         }
                     }
