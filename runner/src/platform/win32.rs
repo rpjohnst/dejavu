@@ -78,8 +78,8 @@ pub fn run(mut cx: Context) { unsafe {
     let mut thread = vm::Thread::default();
 
     if let Err(error) = gml::vm::World::load(&mut cx, &mut thread) {
-        let crate::World { show, .. } = &cx.world;
-        show.show_vm_error(&*error);
+        let crate::World { debug, .. } = &cx.world;
+        debug.show_vm_error(&*error);
     }
 
     let Context { world, .. } = &mut cx;
@@ -93,14 +93,14 @@ pub fn run(mut cx: Context) { unsafe {
 
     let room = cx.assets.room_order[0] as i32;
     if let Err(error) = crate::room::State::load_room(&mut cx, &mut thread, room) {
-        let crate::World { show, .. } = &cx.world;
-        show.show_vm_error(&*error);
+        let crate::World { debug, .. } = &cx.world;
+        debug.show_vm_error(&*error);
     }
 
     'main: loop {
         if let Err(error) = crate::draw::State::draw(&mut cx, &mut thread) {
-            let crate::World { show, .. } = &cx.world;
-            show.show_vm_error(&*error);
+            let crate::World { debug, .. } = &cx.world;
+            debug.show_vm_error(&*error);
         }
         crate::draw::State::animate(&mut cx);
 
@@ -111,8 +111,8 @@ pub fn run(mut cx: Context) { unsafe {
         }
 
         if let Err(error) = crate::instance::State::step(&mut cx, &mut thread) {
-            let crate::World { show, .. } = &cx.world;
-            show.show_vm_error(&*error);
+            let crate::World { debug, .. } = &cx.world;
+            debug.show_vm_error(&*error);
         }
         crate::motion::State::simulate(&mut cx);
     }

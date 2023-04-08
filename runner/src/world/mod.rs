@@ -7,11 +7,11 @@ pub mod string;
 pub mod motion;
 pub mod instance;
 pub mod room;
+pub mod debug;
 pub mod draw;
-pub mod show;
-pub mod control;
-pub mod data;
 pub mod ini;
+pub mod data;
+pub mod control;
 
 #[derive(Default)]
 pub struct World {
@@ -21,11 +21,11 @@ pub struct World {
     pub motion: motion::State,
     pub instance: instance::State,
     pub room: room::State,
+    pub debug: debug::State,
     pub draw: draw::State,
-    pub show: show::State,
-    pub control: control::State,
-    pub data: data::State,
     pub ini: ini::State,
+    pub data: data::State,
+    pub control: control::State,
 }
 
 impl<'r> vm::Project<'r, (&'r mut vm::World,)> for Context {
@@ -75,24 +75,17 @@ impl<'r> vm::Project<'r, (&'r mut instance::State, &'r mut vm::World)> for Conte
     }
 }
 
+impl<'r> vm::Project<'r, (&'r mut debug::State,)> for Context {
+    fn fields(&'r mut self) -> (&'r mut debug::State,) {
+        let Context { world, .. } = self;
+        (&mut world.debug,)
+    }
+}
+
 impl<'r> vm::Project<'r, (&'r mut draw::State,)> for Context {
     fn fields(&'r mut self) -> (&'r mut draw::State,) {
         let Context { world, .. } = self;
         (&mut world.draw,)
-    }
-}
-
-impl<'r> vm::Project<'r, (&'r mut show::State,)> for Context {
-    fn fields(&'r mut self) -> (&'r mut show::State,) {
-        let Context { world, .. } = self;
-        (&mut world.show,)
-    }
-}
-
-impl<'r> vm::Project<'r, (&'r mut data::State,)> for Context {
-    fn fields(&'r mut self) -> (&'r mut data::State,) {
-        let Context { world, .. } = self;
-        (&mut world.data,)
     }
 }
 
@@ -103,11 +96,18 @@ impl<'r> vm::Project<'r, (&'r mut ini::State,)> for Context {
     }
 }
 
+impl<'r> vm::Project<'r, (&'r mut data::State,)> for Context {
+    fn fields(&'r mut self) -> (&'r mut data::State,) {
+        let Context { world, .. } = self;
+        (&mut world.data,)
+    }
+}
+
 impl World {
     pub fn from_assets(assets: &crate::Assets, debug: vm::Debug) -> Self {
         let mut world = Self::default();
         world.instance.next_id = assets.next_instance;
-        world.show.debug = debug;
+        world.debug.debug = debug;
         world
     }
 
@@ -116,10 +116,10 @@ impl World {
         string::State::register(items);
         motion::State::register(items);
         instance::State::register(items);
+        debug::State::register(items);
         draw::State::register(items);
-        show::State::register(items);
-        control::State::register(items);
-        data::State::register(items);
         ini::State::register(items);
+        data::State::register(items);
+        control::State::register(items);
     }
 }

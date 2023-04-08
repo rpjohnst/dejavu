@@ -41,8 +41,8 @@ pub extern "system" fn run(load: JsValue) {
     };
     let mut world = World::from_assets(&assets, debug);
     world.draw.platform.canvas = unsafe { canvas() };
-    world.show.error = |state, error| state.show_vm_error_write(error, HostErr());
-    world.show.write = Box::new(HostOut);
+    world.debug.error = |state, error| state.show_vm_error_write(error, HostErr());
+    world.debug.write = Box::new(HostOut);
 
     let state = runner::run(runner::Context { world, assets });
     STATE.store(state, Ordering::Relaxed);
