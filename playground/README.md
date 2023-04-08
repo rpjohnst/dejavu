@@ -16,6 +16,7 @@ To build the playground locally, run these commands from this directory:
 ```bash
 # Build the playground crate to WebAssembly:
 # (The wasm-opt step can be replaced with a simple file copy.)
+rustup target add wasm32-unknown-unknown
 cargo build --release
 wasm-opt -Os -o src/playground.wasm ../target/wasm32-unknown-unknown/release/playground.wasm
 
