@@ -9,7 +9,7 @@ You can [**try it out**][playground] in your web browser right now!
 
 # Building
 
-Dejavu currently requires a nightly Rust toolchain, though mostly out of convenience. It should move to stable Rust in the future. When Rust is installed using `rustup`, the `rust-toolchain.toml` file will select the appropriate toolchain automatically.
+Dejavu currently requires a nightly Rust toolchain, though mostly out of convenience. It should move to stable Rust in the future. When Rust is installed using `rustup`, the `rust-toolchain.toml` file will ensure a nightly toolchain is installed and select it automatically.
 
 With Rust installed, build and run using `cargo`:
 

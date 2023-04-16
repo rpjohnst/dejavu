@@ -6,7 +6,9 @@ It is currently hosted here: https://dejavu.abubalay.com/
 
 # Building
 
-In addition to the Rust toolchain needed to build Dejavu itself, the playground relies on [Binaryen] (optionally) and [Node.js].
+The playground requires Rust's `wasm32-unknown-unknown` target. When Rust is installed using `rustup`, the `rust-toolchain.toml` file will ensure it is installed, and the `.cargo/config.toml` will select it automatically.
+
+In addition to the Rust toolchain needed to build Dejavu itself, the playground requires [Binaryen] (optionally) and [Node.js].
 
 [binaryen]: https://github.com/WebAssembly/binaryen/
 [node.js]: https://nodejs.org/
