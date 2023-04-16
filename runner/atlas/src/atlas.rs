@@ -31,15 +31,13 @@ impl Atlas {
         // Search for the lowest point on the skyline that can fit `width`.
         for i in 0..self.skyline.len() {
             let right = self.skyline[i].x + width;
-            if right > self.width {
-                break;
-            }
+            if right > self.width { break; }
 
             // Find the maximum height starting with segment `i` and spanning `width`.
             let top = self.skyline.iter()
                 .skip(i).take_while(|&&Segment { x, .. }| x < right)
-                .map(|&Segment { y, .. }| y).max()
-                .unwrap_or(0);
+                .map(|&Segment { y, .. }| y)
+                .max().unwrap_or(0);
 
             if top < bottom {
                 position = i;
@@ -54,14 +52,15 @@ impl Atlas {
         let left = self.skyline[position].x;
         let right = left + width;
         self.skyline.insert(position, Segment { x: left, y: bottom + height });
-        self.skyline[position + 1].x = right;
 
         // Remove old segments underneath the new segment.
-        let rest = position + 2;
-        let next = self.skyline.iter()
-            .position(|&Segment { x, .. }| x > right)
-            .unwrap_or(self.skyline.len());
+        let rest = position + 1;
+        let next = self.skyline.iter().enumerate()
+            .skip(rest).take_while(|&(_, &Segment { x, .. })| x <= right)
+            .map(|(i, _)| i)
+            .last().unwrap();
         self.skyline.drain(rest..next);
+        self.skyline[position + 1].x = right;
 
         Some((left, bottom))
     }
