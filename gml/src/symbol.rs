@@ -5,6 +5,7 @@ use std::hash::{Hash, Hasher};
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::ffi::c_char;
 use bstr::ByteSlice;
 
 /// A symbol is an index into a thread-local interner.
@@ -36,6 +37,8 @@ impl Symbol {
     pub fn into_index(self) -> NonZeroUsize { self.index }
 
     pub fn from_index(index: NonZeroUsize) -> Symbol { Symbol { index, _marker: PhantomData } }
+
+    pub fn as_cstr(self) -> *const c_char { self.as_ptr() as *const c_char }
 }
 
 impl Default for Symbol {
@@ -87,8 +90,11 @@ impl Interner {
             return entry.index;
         }
 
-        let string = Vec::from(string).into_boxed_slice();
-        let data = &*string as *const [u8];
+        let mut buffer = Vec::with_capacity(string.len() + 1);
+        buffer.extend_from_slice(string);
+        buffer.push(b'\0');
+        let string = buffer.into_boxed_slice();
+        let data = &string[..string.len() - 1] as *const [u8];
         // Safety: `self.indices` always has at least one entry.
         let index = unsafe { NonZeroUsize::new_unchecked(self.indices.len()) };
         self.strings.insert(Entry { string, index });
@@ -109,12 +115,12 @@ impl Interner {
 
 impl Default for Interner {
     fn default() -> Self {
-        Interner { strings: HashSet::default(), indices: vec![b"UNUSED"] }
+        Interner { strings: HashSet::default(), indices: vec![b"UNUSED\0"] }
     }
 }
 
 impl Borrow<[u8]> for Entry {
-    fn borrow(&self) -> &[u8] { &self.string }
+    fn borrow(&self) -> &[u8] { &self.string[..self.string.len() - 1] }
 }
 
 impl cmp::Eq for Entry {}
