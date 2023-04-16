@@ -7,8 +7,13 @@ use winapi::shared::minwindef::*;
 use winapi::shared::windef::*;
 use winapi::um::winnt::*;
 use winapi::um::winuser::*;
+use winapi::um::winnls::*;
+use winapi::um::libloaderapi::*;
+use winapi::um::stringapiset::*;
+use winapi::ctypes::c_char;
 
 use gml::vm;
+use gml::symbol::Symbol;
 use crate::Context;
 
 pub struct Draw {
@@ -133,6 +138,45 @@ unsafe extern "system" fn WindowProc(
             );
             0
         }
+        WM_KEYDOWN => { 0 }
+        WM_KEYUP => { 0 }
         _ => DefWindowProcW(hwnd, uMsg, wParam, lParam),
+    }
+}
+
+pub struct Library(HMODULE);
+
+pub type Proc = FARPROC;
+
+impl Library {
+    pub fn load(dll: Symbol) -> Option<Library> {
+        let dll = as_wide_cstr(dll);
+        let dll = unsafe { LoadLibraryW(dll.as_ptr()) };
+        if dll == ptr::null_mut() { return None; }
+        Some(Library(dll))
+    }
+
+    pub fn symbol(&self, sym: *const c_char) -> Option<Proc> {
+        let Library(dll) = *self;
+        let sym = unsafe { GetProcAddress(dll, sym) };
+        if sym == ptr::null_mut() { return None; }
+        Some(sym)
+    }
+}
+
+impl Drop for Library {
+    fn drop(&mut self) {
+        let Library(dll) = *self;
+        unsafe { FreeLibrary(dll) };
+    }
+}
+
+fn as_wide_cstr(str: Symbol) -> Vec<u16> {
+    unsafe {
+        let ptr = str.as_cstr();
+        let len = MultiByteToWideChar(CP_ACP, 0, ptr, -1, ptr::null_mut(), 0);
+        let mut buf = Vec::from_iter(iter::repeat(0).take(len as usize));
+        MultiByteToWideChar(CP_ACP, 0, ptr, -1, buf.as_mut_ptr(), len);
+        buf
     }
 }

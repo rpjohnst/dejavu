@@ -14,7 +14,7 @@ wasm = { path = "wasm" }
 
 [target.'cfg(windows)'.dependencies]
 win32 = { path = "win32" }
-winapi = { version = "0.3", features = ["synchapi", "winbase", "winuser", "dxgi1_3", "d3d11"] }
+winapi = { version = "0.3", features = ["dxgi1_3", "d3d11", "stringapiset", "synchapi", "winbase", "winuser"] }
 
 [target.'cfg(windows)'.build-dependencies]
 d3dcompiler = { path = "d3dcompiler" }

@@ -11,6 +11,7 @@ pub mod debug;
 pub mod draw;
 pub mod ini;
 pub mod data;
+pub mod external;
 pub mod control;
 
 #[derive(Default)]
@@ -25,6 +26,7 @@ pub struct World {
     pub draw: draw::State,
     pub ini: ini::State,
     pub data: data::State,
+    pub external: external::State,
     pub control: control::State,
 }
 
@@ -103,6 +105,13 @@ impl<'r> vm::Project<'r, (&'r mut data::State,)> for Context {
     }
 }
 
+impl<'r> vm::Project<'r, (&'r mut external::State,)> for Context {
+    fn fields(&'r mut self) -> (&'r mut external::State,) {
+        let Context { world, .. } = self;
+        (&mut world.external,)
+    }
+}
+
 impl World {
     pub fn from_assets(assets: &crate::Assets, debug: vm::Debug) -> Self {
         let mut world = Self::default();
@@ -120,6 +129,7 @@ impl World {
         draw::State::register(items);
         ini::State::register(items);
         data::State::register(items);
+        external::State::register(items);
         control::State::register(items);
     }
 }

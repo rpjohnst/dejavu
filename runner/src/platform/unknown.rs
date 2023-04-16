@@ -1,3 +1,5 @@
+use std::ffi::c_char;
+use gml::symbol::Symbol;
 use gml::vm;
 
 #[derive(Default)]
@@ -30,4 +32,14 @@ pub fn run(mut cx: crate::Context) {
         debug.show_vm_error(&*error);
     }
     crate::motion::State::simulate(&mut cx);
+}
+
+pub struct Library(*mut ());
+
+pub type Proc = *mut ();
+
+impl Library {
+    pub fn load(dll: Symbol) -> Option<Library> { None }
+
+    pub fn symbol(&self, sym: *const c_char) -> Option<Proc> { None }
 }

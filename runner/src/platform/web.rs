@@ -1,3 +1,5 @@
+use std::ffi::c_char;
+use gml::symbol::Symbol;
 use gml::vm;
 use wasm::JsValue;
 
@@ -57,4 +59,14 @@ extern "system" fn invoke<F: FnMut()>(f: *mut u8) {
 extern "system" {
     fn start(frame_fn: extern "system" fn(*mut u8), frame_cx: *mut u8);
     pub fn stop();
+}
+
+pub struct Library(*mut ());
+
+pub type Proc = *mut ();
+
+impl Library {
+    pub fn load(dll: Symbol) -> Option<Library> { None }
+
+    pub fn symbol(&self, sym: *const c_char) -> Option<Proc> { None }
 }
