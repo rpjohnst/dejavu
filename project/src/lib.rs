@@ -415,6 +415,7 @@ pub struct ExtensionFile<'a> {
     pub finalization: &'a [u8],
     pub functions: Vec<ExtensionFunction<'a>>,
     pub constants: Vec<ExtensionConstant<'a>>,
+    pub contents: &'a [u8],
 }
 
 pub mod extension_kind {
@@ -439,7 +440,7 @@ pub struct ExtensionFunction<'a> {
 pub mod calling_convention {
     pub const GML: u32 = 2;
     pub const STDCALL: u32 = 11;
-    pub const CDECL: u32 = 11;
+    pub const CDECL: u32 = 12;
 }
 
 pub mod parameter_type {

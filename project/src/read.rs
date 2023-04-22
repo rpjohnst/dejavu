@@ -193,7 +193,42 @@ fn read_body<'a>(
             read_ged(read, true, extension, arena)?;
             game.extensions.push(extension.name);
 
-            read.skip_blob()?;
+            let len = read.next_u32()?;
+            if read.len() < len as usize {
+                return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+            }
+            let read = &mut &std::mem::replace(read, &read[len as usize..])[..len as usize];
+
+            // swap tables
+
+            let seed = read.next_u32()? as usize;
+            let a = seed % 250 + 6;
+            let b = seed / 250;
+
+            let mut forward = [0u8; 256];
+            for i in 0..256 { forward[i] = i as u8; }
+            for i in 1..10001 {
+                let j = (i * a + b) % 254 + 1;
+                forward.swap(j, j + 1);
+            }
+
+            let mut reverse = [0u8; 256];
+            for i in 0..256 { reverse[forward[i] as usize] = i as u8; }
+
+            // decrypt
+
+            let mut data = Vec::with_capacity(read.len());
+            data.push(read[0]);
+            for &x in &read[1..] { data.push(reverse[x as usize]); }
+
+            // extension files
+
+            let read = &mut &data[..];
+
+            for file in &mut extension.files[..] {
+                read.read_blob_zlib(buf)?;
+                file.contents = alloc_buf(arena, &buf[..]);
+            }
         }
     }
 
@@ -354,13 +389,7 @@ fn read_body<'a>(
                 image.size.1 = height;
 
                 read.read_blob_zlib(buf)?;
-                let layout = Layout::for_value(&buf[..]);
-                image.data = unsafe {
-                    let data = arena.alloc(layout);
-                    if data == ptr::null_mut() { handle_alloc_error(layout); }
-                    ptr::copy_nonoverlapping(buf.as_ptr(), data, buf.len());
-                    slice::from_raw_parts(data, buf.len())
-                };
+                image.data = alloc_buf(arena, buf);
             }
             if version == 800 {
                 let version = read.next_u32()?;
@@ -464,13 +493,7 @@ fn read_body<'a>(
 
             if read.next_bool()? && read.next_i32()? != -1 {
                 read.read_blob_zlib(buf)?;
-                let layout = Layout::for_value(&buf[..]);
-                background.data = unsafe {
-                    let data = arena.alloc(layout);
-                    if data == ptr::null_mut() { handle_alloc_error(layout); }
-                    ptr::copy_nonoverlapping(buf.as_ptr(), data, buf.len());
-                    slice::from_raw_parts(data, buf.len())
-                };
+                background.data = alloc_buf(arena, buf);
             }
         }
         if version == 710 {
@@ -1327,9 +1350,10 @@ pub fn read_gex<'a, R: BufRead>(read: &mut R, extension: &mut Extension<'a>, are
 
     read_ged(read, false, extension, arena)?;
 
-    for _ in 0..extension.files.len() {
-        let mut file = Vec::default();
-        read.read_blob_zlib(&mut file)?;
+    let buf = &mut Vec::default();
+    for file in &mut extension.files[..] {
+        read.read_blob_zlib(buf)?;
+        file.contents = alloc_buf(arena, &buf[..]);
     }
 
     assert!(read.fill_buf()?.is_empty());
@@ -1405,6 +1429,17 @@ pub fn read_ged<'a>(read: &mut &[u8], exe: bool, extension: &mut Extension<'a>, 
     }
 
     Ok(())
+}
+
+fn alloc_buf<'a>(arena: &'a Arena, buf: &[u8]) -> &'a mut [u8] {
+    // Safety: 0 < len < isize::MAX; allocation is checked and initialized before use.
+    unsafe {
+        let layout = Layout::for_value(buf);
+        let data = arena.alloc(layout);
+        if data == ptr::null_mut() { handle_alloc_error(layout); }
+        ptr::copy_nonoverlapping(buf.as_ptr(), data, buf.len());
+        slice::from_raw_parts_mut(data, buf.len())
+    }
 }
 
 trait GmRead {
