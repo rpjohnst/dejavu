@@ -66,7 +66,7 @@ pub struct Library(*mut ());
 pub type Proc = *mut ();
 
 impl Library {
-    pub fn load(dll: Symbol) -> Option<Library> { None }
+    pub fn load(_dll: Symbol) -> Option<Library> { None }
 
-    pub fn symbol(&self, sym: *const c_char) -> Option<Proc> { None }
+    pub fn symbol(&self, _sym: *const c_char) -> Option<Proc> { None }
 }

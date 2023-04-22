@@ -348,29 +348,26 @@ fn read_body<'a>(
         read.read_blob(&mut sprite.name, arena)?;
         if version == 800 && !exe { let _time = read.next_f64()?; }
 
-        let version = read.next_u32()?;
-        if version != 400 && version != 800 {
+        read.read_u32(&mut sprite.version)?;
+        if sprite.version != 400 && sprite.version != 800 {
             return Err(io::Error::from(io::ErrorKind::InvalidData));
         }
 
-        let mut width = 0;
-        let mut height = 0;
-        if version == 400 {
-            width = read.next_u32()?;
-            height = read.next_u32()?;
+        if sprite.version == 400 {
+            read.read_u32(&mut sprite.size.0)?;
+            read.read_u32(&mut sprite.size.1)?;
 
             read.read_i32(&mut sprite.bounds.left)?;
             read.read_i32(&mut sprite.bounds.right)?;
             read.read_i32(&mut sprite.bounds.bottom)?;
             read.read_i32(&mut sprite.bounds.top)?;
 
-            let _transparent = read.next_bool()?;
+            read.read_bool(&mut sprite.transparent)?;
 
             read.read_u32(&mut sprite.bounds_kind)?;
-            let _precise = read.next_bool()?;
-
-            let _use_vram = read.next_bool()?;
-            let _lazy_load = read.next_bool()?;
+            read.read_bool(&mut sprite.precise)?;
+            read.read_bool(&mut sprite.use_vram)?;
+            read.read_bool(&mut sprite.lazy_load)?;
         }
 
         read.read_u32(&mut sprite.origin.0)?;
@@ -382,16 +379,15 @@ fn read_body<'a>(
             sprite.images.push(Image::default());
 
             let image = &mut sprite.images[i];
-            if version == 400 {
+            if sprite.version == 400 {
                 if read.next_i32()? == -1 { continue; }
 
-                image.size.0 = width;
-                image.size.1 = height;
+                image.size = sprite.size;
 
                 read.read_blob_zlib(buf)?;
-                image.data = alloc_buf(arena, buf);
+                image.data = alloc_buf(arena, &buf[..]);
             }
-            if version == 800 {
+            if sprite.version == 800 {
                 let version = read.next_u32()?;
                 if version != 800 {
                     return Err(io::Error::from(io::ErrorKind::InvalidData));
@@ -405,7 +401,7 @@ fn read_body<'a>(
             }
         }
 
-        if version == 800 {
+        if sprite.version == 800 {
             if !exe {
                 read.read_u32(&mut sprite.shape)?;
                 read.read_u32(&mut sprite.alpha_tolerance)?;
@@ -478,25 +474,25 @@ fn read_body<'a>(
         read.read_blob(&mut background.name, arena)?;
         if version == 800 && !exe { let _time = read.next_f64()?; }
 
-        let version = read.next_u32()?;
-        if version != 400 && version != 710 {
+        read.read_u32(&mut background.version)?;
+        if background.version != 400 && background.version != 710 {
             return Err(io::Error::from(io::ErrorKind::InvalidData));
         }
 
-        if version == 400 {
+        if background.version == 400 {
             read.read_u32(&mut background.size.0)?;
             read.read_u32(&mut background.size.1)?;
 
-            let _transparent = read.next_bool()?;
-            let _use_vram = read.next_bool()?;
-            let _lazy_load = read.next_bool()?;
+            read.read_bool(&mut background.transparent)?;
+            read.read_bool(&mut background.use_vram)?;
+            read.read_bool(&mut background.lazy_load)?;
 
             if read.next_bool()? && read.next_i32()? != -1 {
                 read.read_blob_zlib(buf)?;
-                background.data = alloc_buf(arena, buf);
+                background.data = alloc_buf(arena, &buf[..]);
             }
         }
-        if version == 710 {
+        if background.version == 710 {
             if !exe {
                 let _tileset = read.next_bool()?;
                 let _tile_width = read.next_u32()?;
@@ -1431,6 +1427,83 @@ pub fn read_ged<'a>(read: &mut &[u8], exe: bool, extension: &mut Extension<'a>, 
     Ok(())
 }
 
+pub fn read_bmp<'a>(read: &mut &[u8], transparent: bool, arena: &'a Arena) -> io::Result<&'a [u8]> {
+    const BI_RGB: u32 = 0;
+
+    let bitmap = *read;
+
+    let mut buf = [0; 2];
+    read.read_exact(&mut buf[..])?;
+    if &buf != b"BM" {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
+    let bytes = read.next_u32()? as usize;
+    if bytes != bitmap.len() {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+    read.next_u16()?;
+    read.next_u16()?;
+    let image = read.next_u32()? as usize;
+
+    let header = read.next_u32()?;
+    if header != 40 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+    let width = read.next_i32()?;
+    let height = read.next_i32()?;
+    if width < 0 || height < 0 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+    let planes = read.next_u16()?;
+    if planes != 1 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+    let depth = read.next_u16()?;
+    if depth != 24 {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+    let compression = read.next_u32()?;
+    if compression != BI_RGB {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+    let bytes = read.next_u32()?;
+    let _ppmx = read.next_i32()?;
+    let _ppmy = read.next_i32()?;
+    let _colors = read.next_u32()?;
+    let _important_colors = read.next_u32()?;
+
+    let (width, height) = (width as usize, height as usize);
+
+    let row_bytes = (depth as usize * width + 31) / 32 * 4;
+    let image_bytes = row_bytes * height;
+    if bytes != 0 && bytes as usize != image_bytes {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+    let Some(image) = bitmap.get(image..image + bytes as usize) else {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    };
+    let corner = (image[0], image[1], image[2]);
+
+    let pixels = width * height;
+    let layout = Layout::array::<[u8; 4]>(pixels).unwrap();
+    unsafe {
+        let data = arena.alloc(layout) as *mut [u8; 4];
+        if data == ptr::null_mut() { handle_alloc_error(layout) };
+        for y in 0..height {
+            for x in 0..width {
+                let b = image[(height - 1 - y) * row_bytes + x * 3 + 0];
+                let g = image[(height - 1 - y) * row_bytes + x * 3 + 1];
+                let r = image[(height - 1 - y) * row_bytes + x * 3 + 2];
+                let a = if transparent && (b, g, r) == corner { 0 } else { 255 };
+                data.add(y * width + x).write([b, g, r, a]);
+            }
+        }
+
+        Ok(slice::from_raw_parts(data as *const u8, pixels * 4))
+    }
+}
+
 fn alloc_buf<'a>(arena: &'a Arena, buf: &[u8]) -> &'a mut [u8] {
     // Safety: 0 < len < isize::MAX; allocation is checked and initialized before use.
     unsafe {
@@ -1443,6 +1516,7 @@ fn alloc_buf<'a>(arena: &'a Arena, buf: &[u8]) -> &'a mut [u8] {
 }
 
 trait GmRead {
+    fn read_u16(&mut self, buf: &mut u16) -> io::Result<usize>;
     fn read_u32(&mut self, buf: &mut u32) -> io::Result<usize>;
     fn read_i32(&mut self, buf: &mut i32) -> io::Result<usize>;
     fn read_bool(&mut self, buf: &mut bool) -> io::Result<usize>;
@@ -1454,6 +1528,12 @@ trait GmRead {
         let nread = self.read_blob_mut(&mut blob, arena)?;
         *buf = &*blob;
         Ok(nread)
+    }
+
+    fn next_u16(&mut self) -> io::Result<u16> {
+        let mut buf = 0;
+        self.read_u16(&mut buf)?;
+        Ok(buf)
     }
 
     fn next_u32(&mut self) -> io::Result<u32> {
@@ -1482,6 +1562,13 @@ trait GmRead {
 }
 
 impl<R: Read> GmRead for R {
+    fn read_u16(&mut self, buf: &mut u16) -> io::Result<usize> {
+        let mut bytes = [0u8; 2];
+        self.read_exact(&mut bytes)?;
+        *buf = u16::from_le_bytes(bytes);
+        Ok(bytes.len())
+    }
+
     fn read_u32(&mut self, buf: &mut u32) -> io::Result<usize> {
         let mut bytes = [0u8; 4];
         self.read_exact(&mut bytes)?;

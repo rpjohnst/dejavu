@@ -5,8 +5,9 @@ edition = "2021"
 
 [dependencies]
 gml = { path = "../gml" }
-project = { path = "../project" }
+project = { path = "../project", features = ["read"] }
 atlas = { path = "atlas" }
+quickdry = "0.1.2"
 bstr = { version = "1.0", default-features = false, features = ["alloc"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

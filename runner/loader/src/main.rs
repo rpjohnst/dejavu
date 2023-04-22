@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{env, fs, io};
+use std::{env, fs, io, mem};
 use std::error::Error;
 use std::ffi::OsStr;
 use std::fs::File;
@@ -27,17 +27,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         .and_then(|path| { let kind = path.extension()?; Some((path, kind)) })
         .ok_or("expected project (.gmd or .gmk), executable (.exe), or script (.gml)")?;
 
-    let arena = &quickdry::Arena::default();
+    let arena = quickdry::Arena::default();
     let mut game = project::Game::default();
     let mut extensions = Vec::with_capacity(installed.len());
 
     let gml;
     if kind == OsStr::new("gmk") {
         let read = fs::read(path)?;
-        project::read_project(&read[..], &mut game, arena)?;
+        project::read_project(&read[..], &mut game, &arena)?;
     } else if kind == OsStr::new("exe") {
         let mut read = io::BufReader::new(File::open(path)?);
-        project::read_exe(&mut read, &mut game, &mut extensions, arena)?;
+        project::read_exe(&mut read, &mut game, &mut extensions, &arena)?;
     } else if kind == OsStr::new("gml") {
         gml = fs::read(path)?;
         let mut room = project::Room::default();
@@ -54,16 +54,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         let kind = path.extension().unwrap_or_default();
         if kind == OsStr::new("ged") {
             let read = fs::read(path)?;
-            project::read_ged(&mut &read[..], false, extension, arena)?;
+            project::read_ged(&mut &read[..], false, extension, &arena)?;
         } else if kind == OsStr::new("gex") {
             let mut read = io::BufReader::new(File::open(path)?);
-            project::read_gex(&mut read, extension, arena)?;
+            project::read_gex(&mut read, extension, &arena)?;
         } else {
             Err("unrecognized extension type")?;
         }
     }
 
-    let (assets, debug) = match runner::build(&game, &extensions[..], io::stderr) {
+    let (assets, debug) = match runner::build(&game, &extensions[..], &arena, io::stderr) {
         Ok(assets) => assets,
         Err(errors) => {
             let error = if errors > 1 {
@@ -74,6 +74,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             return Err(error)?;
         }
     };
+    mem::drop(arena);
+
     let world = runner::World::from_assets(&assets, debug);
     runner::run(runner::Context { world, assets });
 

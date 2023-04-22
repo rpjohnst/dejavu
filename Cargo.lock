@@ -149,6 +149,7 @@ dependencies = [
  "d3dcompiler",
  "gml",
  "project",
+ "quickdry",
  "wasm",
  "win32",
  "winapi",

@@ -3,6 +3,7 @@
 use std::io;
 use std::ops::Range;
 use std::collections::HashMap;
+use quickdry::Arena;
 use gml::vm;
 
 pub use crate::world::*;
@@ -96,8 +97,8 @@ pub struct Instance {
 }
 
 /// Build a Game Maker project.
-pub fn build<F: FnMut() -> E, E: io::Write>(
-    game: &project::Game<'_>, extensions: &[project::Extension<'_>], errors: F
+pub fn build<F: Clone + FnMut() -> E, E: io::Write>(
+    game: &project::Game<'_>, extensions: &[project::Extension<'_>], arena: &Arena, mut errors: F
 ) -> Result<(Assets, vm::Debug), u32>
 {
     let mut assets = Assets::default();
@@ -105,25 +106,32 @@ pub fn build<F: FnMut() -> E, E: io::Write>(
 
     let mut items = HashMap::default();
     World::register(&mut items);
-    (assets.code, debug) = match gml::build(game, extensions, &items, errors) {
-        Ok(gml) => { gml }
-        Err(count) => { return Err(count); }
-    };
+    (assets.code, debug) = gml::build(game, extensions, &items, errors.clone())?;
 
     let mut builder = atlas::Builder::default();
     for sprite @ &project::Sprite { origin, .. } in &game.sprites[..] {
         let start = builder.len();
         for &project::Image { size, data } in &sprite.images[..] {
+            let data = match sprite.version {
+                400 => { build_bmp(data, sprite.transparent, arena, errors())? }
+                800 => { data }
+                _ => unreachable!()
+            };
             builder.insert(size, data);
         }
         let end = builder.len();
 
         assets.sprites.push(Sprite { origin, images: start..end });
     }
-    for &project::Background { name, size, data, .. } in &game.backgrounds[..] {
+    for background @ &project::Background { name, size, data, .. } in &game.backgrounds[..] {
         let start = builder.len();
         let (width, height) = size;
         if !name.is_empty() && width * height > 0 {
+            let data = match background.version {
+                400 => { build_bmp(data, background.transparent, arena, errors())? }
+                710 => { data }
+                _ => unreachable!()
+            };
             builder.insert(size, data);
         }
 
@@ -169,4 +177,16 @@ pub fn build<F: FnMut() -> E, E: io::Write>(
     assets.room_order = game.room_order.clone();
 
     Ok((assets, debug))
+}
+
+fn build_bmp<'a, E: io::Write>(
+    data: &[u8], transparent: bool, arena: &'a Arena, mut errors: E
+) -> Result<&'a [u8], u32> {
+    match project::read_bmp(&mut { data }, transparent, arena) {
+        Ok(data) => { Ok(data) }
+        Err(err) => {
+            let _ = writeln!(errors, "error reading sprite: {err}");
+            Err(1)
+        }
+    }
 }

@@ -1,5 +1,5 @@
 #[cfg(feature = "read")]
-pub use read::{read_project, read_exe, read_ged, read_gex};
+pub use read::{read_project, read_exe, read_ged, read_gex, read_bmp};
 
 #[cfg(feature = "read")]
 mod read;
@@ -93,8 +93,15 @@ pub struct Sound<'a> {
 #[derive(Default)]
 pub struct Sprite<'a> {
     pub name: &'a [u8],
-    pub origin: (u32, u32),
+    pub version: u32,
 
+    pub size: (u32, u32),
+    pub transparent: bool,
+    pub precise: bool,
+    pub use_vram: bool,
+    pub lazy_load: bool,
+
+    pub origin: (u32, u32),
     pub images: Vec<Image<'a>>,
 
     pub shape: u32,
@@ -143,7 +150,12 @@ pub struct Mask {
 #[derive(Default)]
 pub struct Background<'a> {
     pub name: &'a [u8],
+    pub version: u32,
+
     pub size: (u32, u32),
+    pub transparent: bool,
+    pub use_vram: bool,
+    pub lazy_load: bool,
     pub data: &'a [u8],
 }
 

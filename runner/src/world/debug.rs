@@ -19,7 +19,7 @@ impl Default for State {
 
 #[gml::bind]
 impl State {
-    pub fn show_vm_error(&self, error: &vm::Error) { (self.error)(self, error); panic!() }
+    pub fn show_vm_error(&self, error: &vm::Error) { (self.error)(self, error); }
     pub fn show_vm_error_write<W: Write>(&self, error: &vm::Error, write: W) {
         if let [ref frame, ref stack @ ..] = error.frames[..] {
             let mut errors = ErrorPrinter::from_debug(&self.debug, frame.function, write);

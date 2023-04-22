@@ -28,7 +28,7 @@ pub extern "system" fn run(load: JsValue) {
     let mut game = project::Game::default();
     unsafe { load_call(load, &arena, &mut game) };
 
-    let (assets, debug) = match runner::build(&game, &[], HostErr) {
+    let (assets, debug) = match runner::build(&game, &[], &arena, HostErr) {
         Ok(assets) => assets,
         Err(errors) => {
             if errors > 1 {
@@ -77,6 +77,7 @@ pub extern "system" fn game_sprite<'a>(
     let data = unsafe { slice::from_raw_parts(data_ptr, data_len) };
     game.sprites.push(project::Sprite {
         name,
+        version: 800,
         origin,
         images: vec![
             project::Image { size, data },
