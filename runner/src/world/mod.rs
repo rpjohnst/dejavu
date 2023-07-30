@@ -77,6 +77,13 @@ impl<'r> vm::Project<'r, (&'r mut instance::State, &'r mut vm::World)> for Conte
     }
 }
 
+impl<'r> vm::Project<'r, (&'r mut room::State,)> for Context {
+    fn fields(&'r mut self) -> (&'r mut room::State,) {
+        let Context { world, .. } = self;
+        (&mut world.room,)
+    }
+}
+
 impl<'r> vm::Project<'r, (&'r mut debug::State,)> for Context {
     fn fields(&'r mut self) -> (&'r mut debug::State,) {
         let Context { world, .. } = self;
@@ -125,6 +132,7 @@ impl World {
         string::State::register(items);
         motion::State::register(items);
         instance::State::register(items);
+        room::State::register(items);
         debug::State::register(items);
         draw::State::register(items);
         ini::State::register(items);

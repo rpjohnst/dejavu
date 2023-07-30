@@ -75,7 +75,24 @@ impl State {
             thread.execute(cx, create, vec![])?;
         }
 
-        crate::instance::State::free_destroyed(cx);
+        // Run room start events:
+        let Context { world, .. } = cx;
+        let crate::World { world, .. } = world;
+        let entities = world.instances.values().clone();
+        for &entity in entities.iter() {
+            let Context { world, assets, .. } = cx;
+            let crate::World { instance, .. } = world;
+            let &instance::Instance { object_index, .. } = &instance.instances[entity];
+
+            let event_type = project::event_type::OTHER;
+            let event_kind = project::event_kind::ROOM_START;
+            let step = gml::Function::Event { event_type, event_kind, object_index };
+            if assets.code.code.contains_key(&step) {
+                thread.with(entity).execute(cx, step, vec![])?;
+            }
+        }
+
+        instance::State::free_destroyed(cx);
         Ok(())
     }
 }
