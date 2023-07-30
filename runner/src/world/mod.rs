@@ -7,6 +7,7 @@ pub mod string;
 pub mod motion;
 pub mod instance;
 pub mod room;
+pub mod score;
 pub mod debug;
 pub mod draw;
 pub mod ini;
@@ -22,6 +23,7 @@ pub struct World {
     pub motion: motion::State,
     pub instance: instance::State,
     pub room: room::State,
+    pub score: score::State,
     pub debug: debug::State,
     pub draw: draw::State,
     pub ini: ini::State,
@@ -84,6 +86,13 @@ impl<'r> vm::Project<'r, (&'r mut room::State,)> for Context {
     }
 }
 
+impl<'r> vm::Project<'r, (&'r mut score::State,)> for Context {
+    fn fields(&'r mut self) -> (&'r mut score::State,) {
+        let Context { world, .. } = self;
+        (&mut world.score,)
+    }
+}
+
 impl<'r> vm::Project<'r, (&'r mut debug::State,)> for Context {
     fn fields(&'r mut self) -> (&'r mut debug::State,) {
         let Context { world, .. } = self;
@@ -133,6 +142,7 @@ impl World {
         motion::State::register(items);
         instance::State::register(items);
         room::State::register(items);
+        score::State::register(items);
         debug::State::register(items);
         draw::State::register(items);
         ini::State::register(items);
