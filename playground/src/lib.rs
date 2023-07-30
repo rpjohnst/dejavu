@@ -28,7 +28,7 @@ pub extern "system" fn run(load: JsValue) {
     let mut game = project::Game::default();
     unsafe { load_call(load, &arena, &mut game) };
 
-    let (assets, debug) = match runner::build(&game, &[], &arena, HostErr) {
+    let (mut assets, debug) = match runner::build(&game, &[], &arena, HostErr) {
         Ok(assets) => assets,
         Err(errors) => {
             if errors > 1 {
@@ -39,6 +39,7 @@ pub extern "system" fn run(load: JsValue) {
             return;
         }
     };
+    let _ = runner::load(&mut assets, &[]);
     let mut world = World::from_assets(&assets, debug);
     world.draw.platform.canvas = unsafe { canvas() };
     world.debug.error = |state, error| state.show_vm_error_write(error, HostErr());

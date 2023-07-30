@@ -40,6 +40,23 @@ pub enum Item<W> {
     Member(Option<vm::GetFunction<W>>, Option<vm::SetFunction<W>>),
 }
 
+pub fn load<W>(
+    assets: &mut vm::Assets<W>,
+    runner: &HashMap<Symbol, Item<W>>
+) {
+    for (&name, item) in runner.iter() {
+        match *item {
+            Item::Native(api, _, _) => {
+                assets.api.insert(name, api);
+            }
+            Item::Member(get, set) => {
+                if let Some(get) = get { assets.get.insert(name, get); }
+                if let Some(set) = set { assets.set.insert(name, set); }
+            }
+        }
+    }
+}
+
 /// Build the GML and D&D in a Game Maker project.
 pub fn build<W, F: FnMut() -> E, E: io::Write>(
     game: &project::Game<'_>,
@@ -59,13 +76,10 @@ pub fn build<W, F: FnMut() -> E, E: io::Write>(
     );
     for (&name, item) in runner.iter() {
         match *item {
-            Item::Native(api, arity, variadic) => {
-                assets.api.insert(name, api);
-                prototypes.insert(name, ssa::Prototype::Native { arity, variadic });
+            Item::Native(_, arity, variadic) => {
+                prototypes.insert(name, ssa::Prototype::Native { arity, variadic, dll: false });
             }
-            Item::Member(get, set) => {
-                if let Some(get) = get { assets.get.insert(name, get); }
-                if let Some(set) = set { assets.set.insert(name, set); }
+            Item::Member(_, _) => {
                 prototypes.insert(name, ssa::Prototype::Member);
             }
         }
@@ -75,7 +89,8 @@ pub fn build<W, F: FnMut() -> E, E: io::Write>(
             for function in &file.functions[..] {
                 let name = Symbol::intern(function.name);
                 let arity = function.parameters_used as usize;
-                prototypes.insert(name, ssa::Prototype::Native { arity, variadic: false });
+                let variadic = false;
+                prototypes.insert(name, ssa::Prototype::Native { arity, variadic, dll: true });
             }
         }
     }

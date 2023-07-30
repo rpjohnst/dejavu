@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let (assets, debug) = match runner::build(&game, &extensions[..], &arena, io::stderr) {
+    let (mut assets, debug) = match runner::build(&game, &extensions[..], &arena, io::stderr) {
         Ok(assets) => assets,
         Err(errors) => {
             let error = if errors > 1 {
@@ -74,6 +74,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             return Err(error)?;
         }
     };
+    runner::load(&mut assets, &extensions[..])?;
     mem::drop(arena);
 
     let world = runner::World::from_assets(&assets, debug);

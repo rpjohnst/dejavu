@@ -1,10 +1,11 @@
 #![feature(type_alias_impl_trait)]
 
-use std::io;
+use std::{io, iter};
 use std::ops::Range;
 use std::collections::HashMap;
 use quickdry::Arena;
 use gml::vm;
+use gml::symbol::Symbol;
 
 pub use crate::world::*;
 pub use crate::batch::Batch;
@@ -42,6 +43,7 @@ pub struct Context {
 #[derive(Default)]
 pub struct Assets {
     pub code: vm::Assets<Context>,
+    pub libraries: Vec<platform::Library>,
 
     pub textures: Vec<atlas::Texture>,
     pub images: Vec<atlas::Image>,
@@ -189,4 +191,55 @@ fn build_bmp<'a, E: io::Write>(
             Err(1)
         }
     }
+}
+
+pub fn load(assets: &mut Assets, extensions: &[project::Extension<'_>]) -> io::Result<()> {
+    let mut items = HashMap::default();
+    World::register(&mut items);
+    gml::load(&mut assets.code, &items);
+
+    for extension in extensions {
+        for file in &extension.files[..] {
+            if file.kind == project::extension_kind::DLL {
+                let file_name = Symbol::intern(file.file_name);
+                std::fs::write(std::str::from_utf8(&file_name[..]).unwrap(), file.contents)?;
+                let dll = platform::Library::load(file_name).unwrap();
+
+                for function in &file.functions[..] {
+                    let name = Symbol::intern(function.name);
+                    let external_name = Symbol::intern(function.external_name);
+                    let proc = dll.symbol(external_name.as_cstr()).unwrap();
+
+                    let calltype = match function.calling_convention {
+                        project::calling_convention::CDECL => { vm::dll::Cc::Cdecl }
+                        project::calling_convention::STDCALL => { vm::dll::Cc::Stdcall }
+                        _ => panic!()
+                    };
+                    let restype = match function.result {
+                        project::parameter_type::REAL => { vm::dll::Type::Real }
+                        project::parameter_type::STRING => { vm::dll::Type::String }
+                        _ => panic!(),
+                    };
+
+                    let mut types = [vm::dll::Type::Real; 16];
+                    let argtypes = &function.parameters[..function.parameters_used as usize];
+                    for (ty, &argtype) in iter::zip(&mut types[..], argtypes) {
+                        *ty = match argtype {
+                            project::parameter_type::REAL => { vm::dll::Type::Real }
+                            project::parameter_type::STRING => { vm::dll::Type::String }
+                            _ => panic!()
+                        }
+                    }
+
+                    let thunk = vm::dll::thunk(calltype, restype, &types[..argtypes.len()]).unwrap();
+
+                    assets.code.dll.insert(name, (proc, thunk));
+                }
+
+                assets.libraries.push(dll);
+            }
+        }
+    }
+
+    Ok(())
 }

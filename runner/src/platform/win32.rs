@@ -146,8 +146,6 @@ unsafe extern "system" fn WindowProc(
 
 pub struct Library(HMODULE);
 
-pub type Proc = FARPROC;
-
 impl Library {
     pub fn load(dll: Symbol) -> Option<Library> {
         let dll = as_wide_cstr(dll);
@@ -156,11 +154,11 @@ impl Library {
         Some(Library(dll))
     }
 
-    pub fn symbol(&self, sym: *const c_char) -> Option<Proc> {
+    pub fn symbol(&self, sym: *const c_char) -> Option<vm::Proc> {
         let Library(dll) = *self;
         let sym = unsafe { GetProcAddress(dll, sym) };
         if sym == ptr::null_mut() { return None; }
-        Some(sym)
+        Some(sym as vm::Proc)
     }
 }
 

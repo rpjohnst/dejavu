@@ -184,6 +184,7 @@ pub enum Opcode {
     Call,
     Return,
     CallApi,
+    CallDll,
     CallGet,
     CallSet,
 
@@ -198,7 +199,7 @@ pub enum Opcode {
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Prototype {
     /// A native API function.
-    Native { arity: usize, variadic: bool },
+    Native { arity: usize, variadic: bool, dll: bool },
     /// A built-in member accessed via getter and setter.
     Member,
     /// A project resource id.

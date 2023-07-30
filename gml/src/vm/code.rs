@@ -129,6 +129,7 @@ pub enum Op {
     Call,
     Ret,
     CallApi,
+    CallDll,
     CallGet,
     CallSet,
 

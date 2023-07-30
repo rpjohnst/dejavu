@@ -775,12 +775,9 @@ fn execute_internal(
                     return Ok(array);
                 }
 
-                let (cont, cont_instruction, cont_base, cont_owned) = thread.calls.pop().unwrap();
-
-                function = cont;
+                let cont_owned;
+                (function, instruction, reg_base, cont_owned) = thread.calls.pop().unwrap();
                 code = &assets.code[&function];
-                instruction = cont_instruction;
-                reg_base = cont_base;
 
                 thread.stack.resize_with(reg_base + code.locals as usize, Register::default);
                 thread.owned.truncate(cont_owned);
@@ -810,10 +807,31 @@ fn execute_internal(
 
                 // The call above may have mutated anything reachable through `cx`.
                 // Reload any invalidated borrows.
-                let (w, a) = cx.fields();
-                world = w;
-                assets = a;
+                (world, assets) = cx.fields();
                 code = &assets.code[&function];
+
+                let registers = &mut thread.stack[reg_base..];
+                registers[0].value = value;
+            }
+
+            (code::Op::CallDll, callee, base, len) => {
+                let symbol = code.symbols[callee];
+                let (proc, thunk) = match assets.dll.get(&symbol) {
+                    Some(&api) => { api }
+                    None => { break Error::call(symbol); }
+                };
+                let reg_base = reg_base + base;
+
+                let array = unsafe {
+                    let range = reg_base..reg_base + len;
+                    let args = thread.arguments(range);
+                    match thunk(proc, args) {
+                        Ok(value) => value,
+                        Err(error) => break error,
+                    }
+                };
+                let value = unsafe { erase_ref(array.borrow()) };
+                thread.owned.push(array);
 
                 let registers = &mut thread.stack[reg_base..];
                 registers[0].value = value;
@@ -840,9 +858,7 @@ fn execute_internal(
 
                 // The call above may have mutated anything reachable through `cx`.
                 // Reload any invalidated borrows.
-                let (w, a) = cx.fields();
-                world = w;
-                assets = a;
+                (world, assets) = cx.fields();
                 code = &assets.code[&function];
 
                 registers[0].value = value;
@@ -868,9 +884,7 @@ fn execute_internal(
 
                 // The call above may have mutated anything reachable through `cx`.
                 // Reload any invalidated borrows.
-                let (w, a) = cx.fields();
-                world = w;
-                assets = a;
+                (world, assets) = cx.fields();
                 code = &assets.code[&function];
             }
 

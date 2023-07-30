@@ -464,6 +464,7 @@ impl From<ssa::Opcode> for code::Op {
             ssa::Opcode::Call => code::Op::Call,
             ssa::Opcode::Return => code::Op::Ret,
             ssa::Opcode::CallApi => code::Op::CallApi,
+            ssa::Opcode::CallDll => code::Op::CallDll,
             ssa::Opcode::CallGet => code::Op::CallGet,
             ssa::Opcode::CallSet => code::Op::CallSet,
 
