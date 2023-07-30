@@ -1,6 +1,7 @@
 cargo-features = ["strip"]
 
 [workspace]
+resolver = "2"
 members = [
     "runner/loader",
     "playground",
