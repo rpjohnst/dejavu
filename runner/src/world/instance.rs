@@ -31,6 +31,7 @@ impl State {
 
         let &crate::Object {
             sprite_index,
+            visible,
             depth,
             persistent,
         } = &assets.objects[object_index as usize];
@@ -42,7 +43,7 @@ impl State {
         instance.instances.insert(entity, inst);
         let instance = motion::Instance::from_pos(x, y);
         motion.instances.insert(entity, instance);
-        let instance = draw::Instance { sprite_index, depth, ..Default::default() };
+        let instance = draw::Instance { visible, sprite_index, depth, ..Default::default() };
         draw.add_entity(entity, instance);
 
         entity

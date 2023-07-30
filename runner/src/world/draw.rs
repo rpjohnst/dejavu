@@ -12,6 +12,7 @@ pub struct State {
 }
 
 pub struct Instance {
+    pub visible: bool,
     pub sprite_index: i32,
     pub image_index: f32,
     pub image_speed: f32,
@@ -21,6 +22,7 @@ pub struct Instance {
 impl Default for Instance {
     fn default() -> Instance {
         Instance {
+            visible: true,
             sprite_index: 0,
             image_index: 0.0,
             image_speed: 1.0,
@@ -217,7 +219,9 @@ impl State {
             let entity = draw.depth[i];
             let &crate::motion::Instance { x, y, .. } = &motion.instances[entity];
             let &crate::instance::Instance { object_index, .. } = &instance.instances[entity];
-            let &Instance { sprite_index, image_index, .. } = &draw.instances[entity];
+            let &Instance { visible, sprite_index, image_index, .. } = &draw.instances[entity];
+
+            if !visible { continue; }
 
             let event_type = project::event_type::DRAW;
             let event_kind = project::event_kind::DRAW;

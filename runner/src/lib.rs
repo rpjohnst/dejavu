@@ -67,6 +67,7 @@ pub struct Background {
 
 pub struct Object {
     pub sprite_index: i32,
+    pub visible: bool,
     pub depth: f32,
     pub persistent: bool,
 }
@@ -143,8 +144,8 @@ pub fn build<F: Clone + FnMut() -> E, E: io::Write>(
     (assets.textures, assets.images) = builder.build();
 
     assets.objects = game.objects.iter()
-        .map(|&project::Object { sprite, depth, persistent, .. }| Object {
-            sprite_index: sprite, depth: depth as f32, persistent
+        .map(|&project::Object { sprite, visible, depth, persistent, .. }| Object {
+            sprite_index: sprite, visible, depth: depth as f32, persistent
         })
         .collect();
 

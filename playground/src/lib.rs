@@ -99,6 +99,7 @@ pub extern "system" fn game_object<'a>(
     game.objects.push(project::Object {
         name,
         sprite,
+        visible: true,
         events: Vec::with_capacity(events_len),
         ..project::Object::default()
     });
