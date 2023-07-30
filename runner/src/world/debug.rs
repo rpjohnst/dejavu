@@ -1,4 +1,5 @@
 use std::io::{self, Write};
+use gml::symbol::Symbol;
 use gml::{vm, front::Span, ErrorPrinter};
 
 pub struct State {
@@ -35,5 +36,15 @@ impl State {
             let _ = write!(&mut *self.write, "{:?} ", argument);
         }
         let _ = writeln!(&mut *self.write);
+    }
+
+    #[gml::api]
+    pub fn variable_global_exists(world: &mut vm::World, name: Symbol) -> bool {
+        world.globals.contains(&name)
+    }
+
+    #[gml::api]
+    pub fn variable_global_set(world: &mut vm::World, name: Symbol, value: vm::ValueRef) {
+        world.members[vm::world::GLOBAL].insert(name, value.clone());
     }
 }
