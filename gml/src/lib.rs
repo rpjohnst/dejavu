@@ -105,6 +105,11 @@ pub fn build<W, F: FnMut() -> E, E: io::Write>(
         let name = Symbol::intern(name);
         prototypes.insert(name, ssa::Prototype::Resource { id, script: false });
     }
+    for (id, &project::Background { name, .. }) in game.backgrounds.iter().enumerate() {
+        let id = id as i32;
+        let name = Symbol::intern(name);
+        prototypes.insert(name, ssa::Prototype::Resource { id, script: false });
+    }
     for (id, &project::Script { name, .. }) in game.scripts.iter().enumerate() {
         let id = id as i32;
         let name = Symbol::intern(name);
