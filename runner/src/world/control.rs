@@ -1,12 +1,29 @@
-use std::ops::Range;
+use std::{fmt, error, ops::Range};
 use gml::symbol::Symbol;
 use gml::{self, vm};
-use crate::Context;
+use crate::{Context, real};
 
 #[derive(Default)]
 pub struct State {
     next_id: i32,
 }
+
+#[derive(Debug)]
+pub enum Error {
+    /// Unknown operator, probably from a corrupt project file.
+    Operator,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Error::Operator => write!(f, "unknown operator")?,
+        }
+        Ok(())
+    }
+}
+
+impl error::Error for Error {}
 
 #[gml::bind]
 impl State {
@@ -59,5 +76,33 @@ impl State {
         cx: &mut Context, thread: &mut vm::Thread, scr: i32, args: Range<usize>
     ) -> vm::Result<vm::Value> {
         Self::script_execute(cx, thread, scr, args)
+    }
+
+    #[gml::api]
+    pub fn action_if_dice(real: &mut real::State, sides: i32) -> bool {
+        real.random(sides as f64) < 1.0
+    }
+
+    #[gml::api]
+    pub fn action_if_variable(
+        var: vm::ValueRef, val: vm::ValueRef, op: i32
+    ) -> vm::Result<bool> {
+        match op {
+            0 => Ok(var == val),
+
+            1 => match (var.decode(), val.decode()) {
+                (vm::Data::Real(var), vm::Data::Real(val)) => Ok(var < val),
+                (vm::Data::String(var), vm::Data::String(val)) => Ok(var < val),
+                _ => Err(vm::Error::type_binary(vm::code::Op::Lt, var.clone(), val.clone())),
+            },
+
+            2 => match (var.decode(), val.decode()) {
+                (vm::Data::Real(var), vm::Data::Real(val)) => Ok(var > val),
+                (vm::Data::String(var), vm::Data::String(val)) => Ok(var > val),
+                _ => Err(vm::Error::type_binary(vm::code::Op::Gt, var.clone(), val.clone())),
+            },
+
+            _ => Err(Error::Operator)?,
+        }
     }
 }
