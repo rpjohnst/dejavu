@@ -200,14 +200,16 @@ impl Thread {
     pub fn execute<W: for<'r> vm::Project<'r, (&'r mut World, &'r mut Assets<W>)>>(
         &mut self, cx: &mut W, f: Function, args: Vec<Value>
     ) -> Result<Value> {
-        let cx: &mut dyn vm::Project<(&mut World, &mut Assets<W>)> = cx;
-        let cx = unsafe { &mut *(cx as *mut _ as *mut _) };
-        execute_internal(self, cx, f, args)
+        unsafe {
+            let cx: *mut dyn for<'r> vm::Project<'r, (&'r mut World, &'r mut Assets<W>)> = cx;
+            let cx: *mut dyn for<'r> vm::Project<'r, (&'r mut World, &'r mut Assets<self::W>)> = mem::transmute(cx);
+            execute_internal(self, &mut *cx, f, args)
+        }
     }
 }
 
 // Opaque type to erase the runner-side container for `vm::World` and `vm::Assets`.
-extern { type W; }
+extern "C" { type W; }
 
 fn execute_internal(
     thread: &mut Thread, cx: &mut dyn for<'r> vm::Project<'r, (&'r mut World, &'r mut Assets<W>)>,

@@ -69,10 +69,14 @@ pub fn thunk(calltype: Cc, restype: Type, argtypes: &[Type]) -> Result<Thunk, Er
 macro_rules! generate_thunks { [$(($($t:ty),*))*] => { [
     $(<unsafe extern "C" fn($($t),*) -> f64 as FnExtern>::call,)*
     $(<unsafe extern "C" fn($($t),*) -> *const c_char as FnExtern>::call,)*
-    $(<unsafe extern "stdcall" fn($($t),*) -> f64 as FnExtern>::call,)*
-    $(<unsafe extern "stdcall" fn($($t),*) -> *const c_char as FnExtern>::call,)*
+    $(#[cfg(windows)] <unsafe extern "stdcall" fn($($t),*) -> f64 as FnExtern>::call,)*
+    $(#[cfg(windows)] <unsafe extern "stdcall" fn($($t),*) -> *const c_char as FnExtern>::call,)*
 ] } }
-static THUNKS: [Thunk; 172] = generate_thunks![
+#[cfg(not(windows))]
+const NUM_THUNKS: usize = 86;
+#[cfg(windows)]
+const NUM_THUNKS: usize = 86 + 86;
+static THUNKS: [Thunk; NUM_THUNKS] = generate_thunks![
     ()
 
     (f64)
@@ -192,4 +196,6 @@ macro_rules! impl_fn_extern_params { ($cc:literal) => {
 } }
 
 impl_fn_extern_params!("C");
+
+#[cfg(windows)]
 impl_fn_extern_params!("stdcall");

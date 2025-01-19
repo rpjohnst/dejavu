@@ -46,7 +46,7 @@ impl ControlFlow {
 /// that live across basic block boundaries. A block can either be dominated by a live definition,
 /// or it can contain a definition that dominates later blocks.
 pub struct Liveness {
-    pub in_: HandleMap<ssa::Label, HashSet<ssa::Value>>,
+    pub _in: HandleMap<ssa::Label, HashSet<ssa::Value>>,
     pub out: HandleMap<ssa::Label, HashSet<ssa::Value>>,
 }
 
@@ -107,6 +107,6 @@ impl Liveness {
             }
         }
 
-        Liveness { in_, out }
+        Liveness { _in: in_, out }
     }
 }

@@ -26,6 +26,9 @@ jobs:
       run: cargo test --locked
 
   playground:
+    permissions:
+      id-token: write
+      pages: write
     runs-on: ubuntu-latest
     steps:
     - name: Rust
@@ -45,13 +48,11 @@ jobs:
         wasm-opt -Os -o src/playground.wasm ../target/wasm32-unknown-unknown/release/playground.wasm
         npm ci
         npm run build
-    - name: Login
+    - name: Upload
       if: github.event_name == 'push'
-      uses: azure/login@v1
+      uses: actions/upload-pages-artifact@v3
       with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        path: playground/public
     - name: Deploy
       if: github.event_name == 'push'
-      run: |
-        az storage blob sync --account-name dejavu --container \$web --source playground/public
-        az cdn endpoint purge --resource-group dejavu --profile-name dejavu --name dejavu --content-paths "/*"
+      uses: actions/deploy-pages@v4

@@ -34,7 +34,7 @@ pub fn run(mut cx: crate::Context) {
     crate::motion::State::simulate(&mut cx);
 }
 
-pub struct Library(*mut ());
+pub struct Library;
 
 impl Library {
     pub fn load(_dll: Symbol) -> Option<Library> { None }

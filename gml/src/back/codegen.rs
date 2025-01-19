@@ -27,7 +27,7 @@ pub struct Codegen<'p> {
 }
 
 impl<'p> Codegen<'p> {
-    pub fn new(prototypes: &'p HashMap<Symbol, ssa::Prototype>) -> Codegen {
+    pub fn new(prototypes: &'p HashMap<Symbol, ssa::Prototype>) -> Codegen<'p> {
         Codegen {
             function: code::Function::new(),
             locations: code::Locations::default(),

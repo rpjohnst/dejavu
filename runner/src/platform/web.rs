@@ -61,7 +61,7 @@ extern "system" {
     pub fn stop();
 }
 
-pub struct Library(*mut ());
+pub struct Library;
 
 impl Library {
     pub fn load(_dll: Symbol) -> Option<Library> { None }
