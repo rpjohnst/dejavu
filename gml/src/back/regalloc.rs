@@ -1,8 +1,7 @@
 use std::cmp;
-use std::collections::HashSet;
 
 use crate::bit_vec::BitVec;
-use crate::handle_map::HandleMap;
+use crate::handle_map::{Handle, HandleMap};
 use crate::back::{ssa, analysis::*};
 
 /// A value interference graph.
@@ -24,7 +23,7 @@ impl Interference {
     /// Using a function's live value analysis, this algorithm determines which values are live at
     /// each definition point and marks them as interfering with the defined value.
     pub fn build(program: &ssa::Function, liveness: &Liveness) -> Interference {
-        let mut adjacency: HandleMap<_, Vec<_>> = HandleMap::with_capacity(program.values.len());
+        let mut edges = Vec::default();
         let mut vertices = Vec::with_capacity(program.values.len());
 
         let mut precolored = Vec::new();
@@ -38,7 +37,7 @@ impl Interference {
         }
 
         for block in program.blocks.keys() {
-            let mut live: HashSet<_> = liveness.out[block].clone();
+            let mut live = liveness.out[block].clone();
             for &value in program.blocks[block].instructions.iter().rev() {
                 // values defined by the instruction
                 let defs = program.defs(value);
@@ -46,9 +45,9 @@ impl Interference {
                 for def in defs {
                     live.remove(&def);
 
-                    adjacency[def].extend(live.iter().cloned());
                     for &used in &live {
-                        adjacency[used].push(def);
+                        edges.push((def, used));
+                        edges.push((used, def));
                     }
                 }
 
@@ -59,9 +58,9 @@ impl Interference {
                     precolored.extend(defs);
                 }
                 for &def in defs {
-                    adjacency[def].extend(live.iter().cloned());
                     for &used in &live {
-                        adjacency[used].push(def);
+                        edges.push((def, used));
+                        edges.push((used, def));
                     }
                 }
 
@@ -79,14 +78,22 @@ impl Interference {
             for &def in defs {
                 live.remove(&def);
 
-                adjacency[def].extend(live.iter().cloned());
                 for &used in &live {
-                    adjacency[used].push(def);
+                    edges.push((def, used));
+                    edges.push((used, def));
                 }
             }
         }
 
         groups.push(precolored.len());
+
+        // The edge list is ordered nondeterministically because `live` is a `HashSet`.
+        // Sorting it makes the result of register allocation deterministic.
+        edges.sort_unstable_by_key(|(u, v)| (u.index(), v.index()));
+        let mut adjacency: HandleMap<_, Vec<_>> = HandleMap::with_capacity(program.values.len());
+        for (u, v) in edges {
+            adjacency[u].push(v);
+        }
 
         Interference { adjacency, vertices, precolored, groups }
     }

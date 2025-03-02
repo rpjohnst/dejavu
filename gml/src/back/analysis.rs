@@ -75,7 +75,7 @@ impl Liveness {
                     continue;
                 }
 
-                let mut live: HashSet<_> = out[block].clone();
+                let mut live = out[block].clone();
                 for &value in program.blocks[block].instructions.iter().rev() {
                     for value in program.defs(value) {
                         live.remove(&value);

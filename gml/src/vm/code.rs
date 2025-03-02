@@ -171,7 +171,7 @@ impl fmt::Debug for Function {
                     writeln!(f, "  {:?} %{:?}, %{:?}.{:?}", op, a, b, self.symbols[c])?,
                 Op::StoreIndex => writeln!(f, "  {:?} %{:?}, %{:?}[%{:?}]", op, a, b, c)?,
                 Op::Call =>
-                    writeln!(f, "  %{:?} = {:?} {:?}(%{:?} +{:?})", b, op, a, b, c)?,
+                    writeln!(f, "  %{:?} = {:?} {:?}(%{:?} +{:?})", b, op, self.constants[a], b, c)?,
                 Op::CallApi | Op::CallGet =>
                     writeln!(f, "  %{:?} = {:?} {:?}(%{:?} +{:?})", b, op, self.symbols[a], b, c)?,
                 Op::CallSet =>
