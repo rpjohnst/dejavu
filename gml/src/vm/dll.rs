@@ -169,8 +169,10 @@ macro_rules! impl_fn_extern { ($cc:literal $($p:ident)*) => {
                 [$(ref $p,)*] => ($($p::from($p.borrow()),)*),
                 _ => return Err(vm::Error::arity(args.len())),
             };
-            let proc: Self = mem::transmute(proc);
-            Ok(proc($($p,)*).into())
+            unsafe {
+                let proc: Self = mem::transmute(proc);
+                Ok(proc($($p,)*).into())
+            }
         }
     }
 } }

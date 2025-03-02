@@ -15,7 +15,7 @@ impl<T> Com<T> {
     /// Takes ownership of the object; `AddRef` should already have been called.
     /// `T` must implement `IUnknown`.
     pub unsafe fn from_raw(ptr: *mut T) -> Com<T> where T: winapi::Interface {
-        let ptr = ptr::NonNull::new_unchecked(ptr);
+        let ptr = unsafe { ptr::NonNull::new_unchecked(ptr) };
 
         Com {
             ptr: ptr.cast(),

@@ -63,7 +63,7 @@ macro_rules! impl_fn_bind { (
         {
             let ($($r,)*) = cx.fields();
             $(let $e = $thread.self_entity();)?
-            let args = $thread.arguments(range.clone());
+            let args = unsafe { $thread.arguments(range.clone()) };
             let ($($p,)* $args,) = match *args {
                 [$(ref $p,)* ref ps @ ..] => ($($p.borrow().try_into().unwrap_or_default(),)* ps,),
                 _ => return Err(Error::arity(args.len())),

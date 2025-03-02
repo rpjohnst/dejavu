@@ -28,7 +28,7 @@ impl Default for Draw {
     }
 }
 
-extern "C" {
+unsafe extern "C" {
     #[allow(improper_ctypes)]
     static __ImageBase: ();
 }
@@ -125,7 +125,7 @@ pub fn run(mut cx: Context) { unsafe {
 
 unsafe extern "system" fn WindowProc(
     hwnd: HWND, uMsg: UINT, wParam: WPARAM, lParam: LPARAM
-) -> LRESULT {
+) -> LRESULT { unsafe {
     match uMsg {
         WM_DESTROY => { PostQuitMessage(0); 0 }
         WM_DPICHANGED => {
@@ -142,7 +142,7 @@ unsafe extern "system" fn WindowProc(
         WM_KEYUP => { 0 }
         _ => DefWindowProcW(hwnd, uMsg, wParam, lParam),
     }
-}
+} }
 
 pub struct Library(HMODULE);
 

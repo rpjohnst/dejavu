@@ -39,7 +39,10 @@ impl Array {
 
     pub fn into_raw(self) -> *const Data { Rc::into_raw(self.data) }
 
-    pub unsafe fn from_raw(ptr: *const Data) -> Array { Array { data: Rc::from_raw(ptr) } }
+    pub unsafe fn from_raw(ptr: *const Data) -> Array {
+        let data = unsafe { Rc::from_raw(ptr) };
+        Array { data }
+    }
 }
 
 impl<'a> ArrayRef<'a> {
@@ -137,7 +140,10 @@ impl<'a> ArrayRef<'a> {
 
     pub fn as_raw(self) -> *const Data { self.data }
 
-    pub unsafe fn from_raw(ptr: *const Data) -> ArrayRef<'a> { ArrayRef { data: &*ptr } }
+    pub unsafe fn from_raw(ptr: *const Data) -> ArrayRef<'a> {
+        let data = unsafe { &*ptr };
+        ArrayRef { data }
+    }
 }
 
 #[cfg(test)]

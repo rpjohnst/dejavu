@@ -194,7 +194,7 @@ impl Thread {
     /// with the `Range` passed in from `Thread::execute`,
     /// before the API function does anything else with the `Thread`.
     pub unsafe fn arguments(&self, arguments: Range<usize>) -> &[Value] {
-        mem::transmute(&self.stack[arguments])
+        unsafe { mem::transmute(&self.stack[arguments]) }
     }
 
     pub fn execute<W: for<'r> vm::Project<'r, (&'r mut World, &'r mut Assets<W>)>>(
@@ -209,7 +209,7 @@ impl Thread {
 }
 
 // Opaque type to erase the runner-side container for `vm::World` and `vm::Assets`.
-extern "C" { type W; }
+unsafe extern "C" { type W; }
 
 fn execute_internal(
     thread: &mut Thread, cx: &mut dyn for<'r> vm::Project<'r, (&'r mut World, &'r mut Assets<W>)>,
@@ -218,7 +218,7 @@ fn execute_internal(
     let (mut world, mut assets) = cx.fields();
 
     // Erase the lifetime of a `ValueRef` for use in a `Register`.
-    unsafe fn erase_ref(r: ValueRef<'_>) -> ValueRef<'static> { mem::transmute(r) }
+    unsafe fn erase_ref(r: ValueRef<'_>) -> ValueRef<'static> { unsafe { mem::transmute(r) } }
 
     // Thread state to restore on error:
     let orig_calls = thread.calls.len();

@@ -48,7 +48,7 @@ struct LocalBox<T: ?Sized> {
 
 impl<T: ?Sized> LocalBox<T> {
     unsafe fn from_raw(ptr: *mut T) -> LocalBox<T> {
-        let ptr = ptr::NonNull::new_unchecked(ptr);
+        let ptr = unsafe { ptr::NonNull::new_unchecked(ptr) };
         LocalBox { ptr }
     }
 

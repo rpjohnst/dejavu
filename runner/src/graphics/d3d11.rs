@@ -69,7 +69,7 @@ pub fn load(cx: &mut Context) { unsafe {
     // device
 
     let mut flags = 0;
-    if cfg!(debug) {
+    if cfg!(debug_assertions) {
         flags |= D3D11_CREATE_DEVICE_DEBUG;
     }
 
@@ -563,7 +563,7 @@ pub fn batch(cx: &mut crate::Context) { unsafe {
 unsafe fn update_buffer<T: Copy>(
     device: &ID3D11Device, context: &ID3D11DeviceContext,
     buffer: &mut Com<ID3D11Buffer>, bind: UINT, capacity: &mut UINT, data: &[T]
-) {
+) { unsafe {
     let needed = mem::size_of_val(data);
     if (*capacity as usize) < needed {
         assert!(needed <= UINT::MAX as usize);
@@ -583,7 +583,7 @@ unsafe fn update_buffer<T: Copy>(
     let slice = slice::from_raw_parts_mut(ptr, len);
     slice.copy_from_slice(data);
     context.Unmap(&***buffer as *const _ as *mut _, 0);
-}
+} }
 
 pub fn present(cx: &mut crate::Context) { unsafe {
     let Context { world, .. } = cx;

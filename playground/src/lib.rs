@@ -10,7 +10,7 @@ pub use runner::stop;
 
 static STATE: AtomicPtr<runner::State> = AtomicPtr::new(ptr::null_mut());
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn run(load: JsValue) {
     // Cancel the game loop and free old state.
     unsafe {
@@ -48,7 +48,7 @@ pub extern "system" fn run(load: JsValue) {
     STATE.store(state, Ordering::Relaxed);
 }
 
-extern "system" {
+unsafe extern "system" {
     // `Arena` and `Game` are not FFI-safe, but they are Sized, so references to them are FFI-safe.
     // These references are opaque on the host side, and passed back in to APIs exported from here.
     #[allow(improper_ctypes)]
@@ -57,13 +57,13 @@ extern "system" {
     fn canvas() -> JsValue;
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn arena_alloc(arena: &quickdry::Arena, size: usize, align: usize) -> *mut u8 {
     use std::alloc::Layout;
     unsafe { arena.alloc(Layout::from_size_align_unchecked(size, align)) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn game_sprite<'a>(
     game: &mut project::Game<'a>,
     name_ptr: *const u8, name_len: usize,
@@ -87,7 +87,7 @@ pub extern "system" fn game_sprite<'a>(
     });
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn game_object<'a>(
     game: &mut project::Game<'a>,
     name_ptr: *const u8, name_len: usize,
@@ -104,7 +104,7 @@ pub extern "system" fn game_object<'a>(
     });
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn game_object_event<'a>(
     game: &mut project::Game<'a>,
     event_type: u32, event_kind: i32,
@@ -131,7 +131,7 @@ pub extern "system" fn game_object_event<'a>(
     });
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn game_room<'a>(
     game: &mut project::Game<'a>,
     name_ptr: *const u8, name_len: usize,
@@ -191,7 +191,7 @@ impl io::Write for HostErr {
     fn flush(&mut self) -> io::Result<()> { Ok(()) }
 }
 
-extern "system" {
+unsafe extern "system" {
     fn clear();
     fn out_print(string_ptr: *const u8, string_len: usize);
     fn err_print(string_ptr: *const u8, string_len: usize);

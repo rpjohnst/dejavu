@@ -61,7 +61,7 @@ pub fn batch(cx: &mut crate::Context) {
 pub fn present(_cx: &mut crate::Context) {
 }
 
-extern "system" {
+unsafe extern "system" {
     fn renderer_new(
         canvas: JsValue,
         atlas_ptr: *const u8, atlas_len: usize, width: u16, height: u16

@@ -56,7 +56,7 @@ extern "system" fn invoke<F: FnMut()>(f: *mut u8) {
     f()
 }
 
-extern "system" {
+unsafe extern "system" {
     fn start(frame_fn: extern "system" fn(*mut u8), frame_cx: *mut u8);
     pub fn stop();
 }
