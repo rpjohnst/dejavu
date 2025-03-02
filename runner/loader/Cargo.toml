@@ -1,9 +1,9 @@
 [package]
 name = "loader"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
 
 [dependencies]
-runner = { path = "../../runner" }
-project = { path = "../../project", features = ["read"] }
-quickdry = "0.1.2"
+runner = { workspace = true }
+project = { workspace = true, features = ["read"] }
+quickdry = { workspace = true }

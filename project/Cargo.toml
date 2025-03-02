@@ -1,11 +1,11 @@
 [package]
 name = "project"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
 
 [dependencies]
 flate2 = { version = "1.0", optional = true }
-quickdry = { version = "0.1.2", optional = true }
+quickdry = { workspace = true, optional = true }
 
 [features]
 read = ["flate2", "quickdry"]

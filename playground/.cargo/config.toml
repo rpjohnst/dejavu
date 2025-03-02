@@ -3,7 +3,6 @@ target = "wasm32-unknown-unknown"
 
 [profile.release]
 opt-level = "s"
-strip = "symbols"
 
 [target.wasm32-unknown-unknown]
 rustflags = ["-Clink-arg=--export-table"]

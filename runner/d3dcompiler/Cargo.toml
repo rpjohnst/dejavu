@@ -1,8 +1,8 @@
 [package]
 name = "d3dcompiler"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-win32 = { path = "../win32" }
-winapi = { version = "0.3", features = ["d3dcompiler"] }
+win32 = { workspace = true }
+winapi = { workspace = true, features = ["d3dcompiler"] }

@@ -1,21 +1,21 @@
 [package]
 name = "runner"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
 
 [dependencies]
-gml = { path = "../gml" }
-project = { path = "../project", features = ["read"] }
+gml = { workspace = true }
+project = { workspace = true, features = ["read"] }
 atlas = { path = "atlas" }
-quickdry = "0.1.2"
-bstr = { version = "1.0", default-features = false, features = ["alloc"] }
+quickdry = { workspace = true }
+bstr = { workspace = true, features = ["alloc"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm = { path = "wasm" }
+wasm = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-win32 = { path = "win32" }
-winapi = { version = "0.3", features = ["dxgi1_3", "d3d11", "stringapiset", "synchapi", "winbase", "winuser"] }
+win32 = { workspace = true }
+winapi = { workspace = true, features = ["dxgi1_3", "d3d11", "stringapiset", "synchapi", "winbase", "winuser"] }
 
 [target.'cfg(windows)'.build-dependencies]
 d3dcompiler = { path = "d3dcompiler" }

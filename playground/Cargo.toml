@@ -1,14 +1,14 @@
 [package]
 name = "playground"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
 
 [lib]
 crate-type = ["cdylib"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-gml = { path = "../gml" }
-runner = { path = "../runner" }
-project = { path = "../project" }
-wasm = { path = "../runner/wasm" }
-quickdry = "0.1.2"
+gml = { workspace = true }
+project = { workspace = true }
+runner = { workspace = true }
+wasm = { workspace = true }
+quickdry = { workspace = true }

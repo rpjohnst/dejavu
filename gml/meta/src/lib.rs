@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use proc_macro::TokenStream;
 use proc_macro2;
 use syn::{
-    self, parse_quote, parenthesized, punctuated,
-    ItemImpl, ImplItemMethod, Attribute, Signature, FnArg, PatType,
+    self, parse_quote, punctuated,
+    ItemImpl, ImplItemFn, Attribute, Signature, FnArg, PatType,
     Type, TypeReference, Path, Ident
 };
-use syn::parse::{Parse, ParseStream, Result, Error};
+use syn::parse::{Result, Error};
 use syn::visit_mut::VisitMut;
 use quote::quote;
 
@@ -68,7 +68,7 @@ struct VisitBindings<'a> {
 }
 
 impl VisitMut for VisitBindings<'_> {
-    fn visit_impl_item_method_mut(&mut self, item: &mut ImplItemMethod) {
+    fn visit_impl_item_fn_mut(&mut self, item: &mut ImplItemFn) {
         let sig = &item.sig;
         item.attrs.retain(|attr| !self.process_attribute(attr, &sig));
     }
@@ -76,15 +76,15 @@ impl VisitMut for VisitBindings<'_> {
 
 impl VisitBindings<'_> {
     fn process_attribute(&mut self, attr: &Attribute, sig: &Signature) -> bool {
-        if attr.path == self.api {
+        if *attr.path() == self.api {
             match Function::parse(&self.self_ty, sig) {
                 Ok(function) => { self.bindings.apis.push(function); }
                 Err(err) => { self.errors.push(err); }
             }
             true
-        } else if attr.path == self.get || attr.path == self.set {
-            let (span, member) = match syn::parse2(attr.tokens.clone()) {
-                Ok(PropertyMeta { name }) => {
+        } else if *attr.path() == self.get || *attr.path() == self.set {
+            let (span, member) = match attr.parse_args::<Ident>() {
+                Ok(name) => {
                     (name.span(), self.bindings.fields.entry(name).or_default())
                 }
                 Err(err) => {
@@ -92,7 +92,7 @@ impl VisitBindings<'_> {
                     return true;
                 }
             };
-            let field = if attr.path == self.get {
+            let field = if *attr.path() == self.get {
                 if member.getter.is_some() {
                     self.errors.push(Error::new(span, "getter is defined multiple times"));
                     return true;
@@ -114,16 +114,6 @@ impl VisitBindings<'_> {
         } else {
             false
         }
-    }
-}
-
-struct PropertyMeta { name: Ident }
-
-impl Parse for PropertyMeta {
-    fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let content;
-        parenthesized!(content in input);
-        Ok(PropertyMeta { name: content.parse()? })
     }
 }
 

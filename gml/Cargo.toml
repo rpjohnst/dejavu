@@ -1,9 +1,9 @@
 [package]
 name = "gml"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
 
 [dependencies]
 gml-meta = { path = "meta" }
-project = { path = "../project" }
-bstr = { version = "1.0", default-features = false }
+project = { workspace = true }
+bstr = { workspace = true }
