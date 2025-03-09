@@ -1,5 +1,3 @@
-#![feature(type_alias_impl_trait)]
-
 use std::{io, iter};
 use std::ops::Range;
 use std::collections::HashMap;
@@ -14,7 +12,7 @@ pub use crate::batch::Batch;
 pub use crate::platform::State;
 pub use crate::platform::run;
 #[cfg(target_arch = "wasm32")]
-pub use crate::platform::stop;
+pub use crate::platform::end;
 
 mod world;
 mod batch;

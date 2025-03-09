@@ -1,14 +1,7 @@
-let handle;
-
-export function start(frame) {
-  handle = window.requestAnimationFrame(() => {
-    start(frame);
-    frame();
-  });
+export function schedule(frame) {
+  return window.requestAnimationFrame(frame);
 }
 
-export function stop() {
-  if (typeof handle !== "undefined") {
-    window.cancelAnimationFrame(handle);
-  }
+export function cancel(handle) {
+  window.cancelAnimationFrame(handle);
 }

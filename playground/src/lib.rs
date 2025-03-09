@@ -2,26 +2,12 @@
 
 use std::{io, ptr, slice};
 use std::io::Write;
-use std::sync::atomic::{AtomicPtr, Ordering};
 use runner::World;
 use wasm::JsValue;
 
-pub use runner::stop;
-
-static STATE: AtomicPtr<runner::State> = AtomicPtr::new(ptr::null_mut());
-
 #[unsafe(no_mangle)]
-pub extern "system" fn run(load: JsValue) {
-    // Cancel the game loop and free old state.
-    unsafe {
-        stop();
-        clear();
-    }
-    let state = STATE.swap(ptr::null_mut(), Ordering::Relaxed);
-    if !state.is_null() {
-        // Safety: STATE was set to a leaked box if non-null.
-        let _ = unsafe { Box::from_raw(state) };
-    }
+pub extern "system" fn run(load: JsValue, canvas: JsValue) -> *mut runner::State {
+    unsafe { clear() };
 
     let arena = quickdry::Arena::default();
     let mut game = project::Game::default();
@@ -35,17 +21,23 @@ pub extern "system" fn run(load: JsValue) {
             } else {
                 let _ = write!(HostErr(), "aborting due to previous error");
             }
-            return;
+            return ptr::null_mut();
         }
     };
     let _ = runner::load(&mut assets, &[]);
     let mut world = World::from_assets(&assets, debug);
-    world.draw.platform.canvas = unsafe { canvas() };
+    world.draw.platform.canvas = canvas;
     world.debug.error = |state, error| state.show_vm_error_write(error, HostErr());
     world.debug.write = Box::new(HostOut);
 
-    let state = runner::run(runner::Context { world, assets });
-    STATE.store(state, Ordering::Relaxed);
+    runner::run(runner::Context { world, assets })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn end(state: *mut runner::State) {
+    if !state.is_null() {
+        unsafe { runner::end(state) };
+    }
 }
 
 unsafe extern "system" {
@@ -53,8 +45,6 @@ unsafe extern "system" {
     // These references are opaque on the host side, and passed back in to APIs exported from here.
     #[allow(improper_ctypes)]
     fn load_call<'a>(load: JsValue, arena: &'a quickdry::Arena, game: &mut project::Game<'a>);
-
-    fn canvas() -> JsValue;
 }
 
 #[unsafe(no_mangle)]

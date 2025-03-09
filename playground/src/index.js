@@ -1,4 +1,4 @@
-import init, { run, stop } from "./playground.js";
+import init, { run, end } from "./playground.js";
 import { basicSetup } from "codemirror";
 import { EditorView, keymap } from "@codemirror/view";
 import { indentUnit } from "@codemirror/language";
@@ -74,13 +74,13 @@ let project = {
 
 if x < 0 {
     hspeed = 3
-} else if x > 256 {
+} else if x > 640 - 32 {
     hspeed = -3
 }
 
 if y < 0 {
     vspeed = 3
-} else if y > 384 {
+} else if y > 480 - 32 {
     vspeed = -3
 }`],
             },
@@ -111,7 +111,7 @@ let editor = {
   destroy() {},
 };
 
-document.getElementById("run").addEventListener("click", event => {
+document.getElementById("start").addEventListener("click", event => {
   event.preventDefault();
   start();
 });
@@ -121,6 +121,9 @@ document.getElementById("stop").addEventListener("click", event => {
 });
 const resourcesView = document.getElementById("resources");
 const editorView = document.getElementById("editor");
+const gameView = document.getElementById("game");
+
+gameView.style.display = "none";
 
 const ul = resourcesView.appendChild(document.createElement("ul"));
 ul.appendChild(resourceTree("Sprites", project.sprites, spriteOnEdit));
@@ -311,10 +314,15 @@ function nameOnEdit(parent, resource) {
 
 // Controller
 
+let state = 0;
+
 function start() {
+  stop();
+
   editor.apply();
 
-  run((builder) => {
+  gameView.style.display = "";
+  state = run((builder) => {
     for (const sprite of project.sprites) {
       const [width, height] = sprite.images[0].size;
       const cx = sprite.images[0].canvas.getContext("2d");
@@ -333,4 +341,10 @@ function start() {
       builder.room(room.name, room.instances[0].object_index);
     }
   });
+}
+
+function stop() {
+  end(state);
+  state = 0;
+  gameView.style.display = "none";
 }

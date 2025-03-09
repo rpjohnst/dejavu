@@ -77,12 +77,13 @@ body.playground-page {
 }
 .playground {
   display: grid;
+  position: relative;
   grid-template-areas:
-    'tool tool tool'
-    'tree edit game'
-    'tree edit logs';
+    'tool tool'
+    'tree edit'
+    'logs logs';
   grid-template-rows: auto minmax(0, 4fr) minmax(0, 1fr);
-  grid-template-columns: 2fr 5fr 5fr;
+  grid-template-columns: 2fr 10fr;
   gap: 3px;
   background-color: #eee;
 }
@@ -143,10 +144,26 @@ body.playground-page {
 #editor .cm-editor { font-size: 14px; }
 #editor .cm-editor .cm-scroller { font-family: SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace; }
 
-#game { grid-area: game; }
+#game {
+  grid-area: tree / tree / edit / edit;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin: auto;
+  background: rgba(255, 255, 255, 0.5);
+  overflow: hidden;
+}
 #canvas {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  width: 640px;
+  height: 480px;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin: auto;
 }
 
 #output {

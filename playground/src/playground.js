@@ -1,8 +1,10 @@
 import { clear, outPrint, errPrint } from "./page.js";
-import { start, stop } from "../../runner/src/platform/web.js";
+import { schedule, cancel } from "../../runner/src/platform/web.js";
 import { rendererNew, rendererFrame, rendererBatch } from "../../runner/src/graphics/webgl2.js";
 import playground_wasm from "./playground.wasm";
 let playground;
+
+let canvasRef;
 
 export default async function init(canvas, output) {
   const imports = {};
@@ -18,15 +20,14 @@ export default async function init(canvas, output) {
     }
   };
 
-  canvas = alloc(canvas);
-  env.canvas = () => canvas;
+  canvasRef = alloc(canvas);
 
   env.clear = () => clear(output);
   env.out_print = (ptr, len) => outPrint(output, stringFromWasm(ptr, len));
   env.err_print = (ptr, len) => errPrint(output, stringFromWasm(ptr, len));
 
-  env.start = (fn, cx) => start(() => playground.__indirect_function_table.get(fn)(cx));
-  env.stop = stop;
+  env.schedule = (fn, cx) => schedule(() => playground.__indirect_function_table.get(fn)(cx));
+  env.cancel = cancel;
 
   env.renderer_new = (canvas, atlasPtr, atlasLen, width, height) => {
     canvas = deref(canvas);
@@ -51,13 +52,15 @@ export default async function init(canvas, output) {
 export function run(load) {
   load = alloc(load);
   try {
-    playground.run(load);
+    return playground.run(load, canvasRef);
   } finally {
     drop(load);
   }
 }
 
-export { stop };
+export function end(state) {
+  playground.end(state);
+}
 
 export class Builder {
   constructor(arena, game) {
