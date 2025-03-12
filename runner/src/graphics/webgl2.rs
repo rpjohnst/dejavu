@@ -29,11 +29,12 @@ pub fn load(cx: &mut crate::Context) {
 }
 
 pub fn frame(cx: &mut crate::Context) {
-    let crate::Context { world, .. } = cx;
-    let crate::World { draw, .. } = world;
+    let crate::Context { world, assets } = cx;
+    let crate::World { room, draw, .. } = world;
+    let (room_width, room_height) = assets.rooms[room.room as usize].size;
     let crate::draw::State { graphics, .. } = draw;
     let &mut Draw { renderer } = graphics.as_mut().unwrap();
-    unsafe { renderer_frame(renderer) };
+    unsafe { renderer_frame(renderer, room_width, room_height) };
 }
 
 pub fn batch(cx: &mut crate::Context) {
@@ -67,7 +68,7 @@ unsafe extern "system" {
         atlas_ptr: *const u8, atlas_len: usize, width: u16, height: u16
     ) -> JsValue;
     fn renderer_drop(renderer: JsValue);
-    fn renderer_frame(renderer: JsValue);
+    fn renderer_frame(renderer: JsValue, room_width: u32, room_height: u32);
     fn renderer_batch(
         renderer: JsValue,
         vertex_ptr: *const f32, vertex_len: usize,

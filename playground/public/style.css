@@ -157,8 +157,6 @@ body.playground-page {
 }
 #canvas {
   position: absolute;
-  width: 640px;
-  height: 480px;
   left: 0;
   right: 0;
   top: 0;

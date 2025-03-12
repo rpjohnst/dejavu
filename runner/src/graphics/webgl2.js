@@ -73,7 +73,9 @@ function buildShader(gl, type, source) {
   return shader;
 }
 
-export function rendererFrame({ gl, program, viewLocation, view, vao }) {
+export function rendererFrame({ gl, program, viewLocation, view, vao }, roomWidth, roomHeight) {
+  gl.canvas.style.width = `${roomWidth}px`;
+  gl.canvas.style.height = `${roomHeight}px`;
   const width = window.devicePixelRatio * gl.canvas.clientWidth;
   const height = window.devicePixelRatio * gl.canvas.clientHeight;
   if (gl.canvas.width != width || gl.canvas.height != height) {

@@ -31,7 +31,7 @@ let project = {
   sprites: [
     {
       name: "circle_spr",
-      origin: [0, 0],
+      origin: [16, 16],
       images: [
         { size: [32, 32], canvas },
       ],
@@ -74,13 +74,13 @@ let project = {
 
 if x < 0 {
     hspeed = 3
-} else if x > 640 - 32 {
+} else if x > room_width {
     hspeed = -3
 }
 
 if y < 0 {
     vspeed = 3
-} else if y > 480 - 32 {
+} else if y > room_height {
     vspeed = -3
 }`],
             },
@@ -92,6 +92,8 @@ if y < 0 {
   rooms: [
     {
       name: "playground_rm",
+      width: 640,
+      height: 480,
       code: "",
       instances: [
         { x: 85, y: 128, object_index: 0, id: 100001, code: "hspeed = 3; vspeed = -3;" },
@@ -338,7 +340,7 @@ function start() {
     }
 
     for (const room of project.rooms) {
-      builder.room(room.name, room.instances[0].object_index);
+      builder.room(room.name, room.width, room.height);
     }
   });
 }

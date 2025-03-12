@@ -100,8 +100,7 @@ pub struct Instance {
 /// Build a Game Maker project.
 pub fn build<F: Clone + FnMut() -> E, E: io::Write>(
     game: &project::Game<'_>, extensions: &[project::Extension<'_>], arena: &Arena, mut errors: F
-) -> Result<(Assets, vm::Debug), u32>
-{
+) -> Result<(Assets, vm::Debug), u32> {
     let mut assets = Assets::default();
     let debug;
 

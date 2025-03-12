@@ -125,7 +125,7 @@ pub extern "system" fn game_object_event<'a>(
 pub extern "system" fn game_room<'a>(
     game: &mut project::Game<'a>,
     name_ptr: *const u8, name_len: usize,
-    object_index: i32,
+    width: u32, height: u32,
 ) {
     let name = unsafe { slice::from_raw_parts(name_ptr, name_len) };
 
@@ -137,14 +137,16 @@ pub extern "system" fn game_room<'a>(
     game.room_order.push(game.rooms.len() as u32);
     game.rooms.push(project::Room {
         name,
+        width,
+        height,
         code: b"",
         instances: vec![
             project::Instance {
-                x: 85, y: 128, object_index, id: id1,
+                x: 85, y: 128, object_index: 0, id: id1,
                 code: b"hspeed = 3; vspeed = -3;"
             },
             project::Instance {
-                x: 171, y: 128, object_index, id: id2,
+                x: 171, y: 128, object_index: 0, id: id2,
                 code: b"hspeed = -3; vspeed = 3;"
             },
         ],

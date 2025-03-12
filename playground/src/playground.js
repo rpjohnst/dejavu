@@ -36,7 +36,7 @@ export default async function init(canvas, output) {
     return alloc(renderer);
   };
   env.renderer_drop = (renderer) => drop(renderer);
-  env.renderer_frame = (renderer) => rendererFrame(deref(renderer));
+  env.renderer_frame = (renderer, width, height) => rendererFrame(deref(renderer), width, height);
   env.renderer_batch = (renderer, vertexPtr, vertexLen, indexPtr, indexLen, width, height) => {
     renderer = deref(renderer);
     const vertex = sliceF32FromWasm(vertexPtr, vertexLen);
@@ -107,13 +107,13 @@ export class Builder {
     playground.game_object_event(this.game, type, kind, codePtr, codeLen);
   }
 
-  room(name, objectIndex) {
+  room(name, width, height) {
     name = new TextEncoder().encode(name);
     const nameLen = name.byteLength;
     const namePtr = this.alloc(nameLen, 1);
     sliceU8FromWasm(namePtr, nameLen).set(name);
 
-    playground.game_room(this.game, namePtr, nameLen, objectIndex);
+    playground.game_room(this.game, namePtr, nameLen, width, height);
   }
 }
 
