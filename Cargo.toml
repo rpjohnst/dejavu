@@ -15,7 +15,7 @@ project = { path = "project" }
 runner = { path = "runner" }
 wasm = { path = "runner/wasm" }
 win32 = { path = "runner/win32" }
-quickdry = "0.1.2"
+quickdry = "0.1.3"
 bstr = { version = "1.0", default-features = false }
 winapi = { version = "0.3" }
 
