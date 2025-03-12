@@ -21,6 +21,7 @@ pub struct Thread {
 }
 
 /// A 64-bit stack slot for the VM.
+#[derive(Copy, Clone)]
 #[repr(C)]
 union Register {
     /// An uninitialized register.
@@ -263,8 +264,7 @@ fn execute_internal(
             }
 
             (code::Op::Move, t, s, _) => {
-                // Like a Rust move, this leaves the source place uninitialized.
-                registers[t] = mem::take(&mut registers[s]);
+                registers[t] = registers[s];
             }
 
             (op @ code::Op::Neg, t, a, _) => {

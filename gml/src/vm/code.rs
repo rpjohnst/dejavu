@@ -157,7 +157,7 @@ impl fmt::Debug for Function {
                     writeln!(f, "  %{:?} = {:?} %{:?}", a, op, b)?,
                 Op::DeclareGlobal => writeln!(f, "  {:?} {:?}", op, self.symbols[a])?,
                 Op::Lookup => writeln!(f, "  %{:?} = {:?} {:?}", a, op, self.symbols[b])?,
-                Op::LoadScope => writeln!(f, "  %{:?} = {:?} {:?}", a, op, b as i32)?,
+                Op::LoadScope => writeln!(f, "  %{:?} = {:?} {:?}", a, op, b as i8)?,
                 Op::StoreScope => writeln!(f, "  {:?} %{:?}, {:?}", op, a, b as i32)?,
                 Op::With => writeln!(f, "  %{:?}, %{:?} = {:?} %{:?}", a, b, op, c)?,
                 Op::ReleaseWith | Op::ReleaseOwned | Op::Ret =>
