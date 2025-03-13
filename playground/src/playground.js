@@ -10,14 +10,35 @@ export default async function init(canvas, output) {
   const imports = {};
   const env = imports.env = {};
 
-  env.load_call = (load, arena, game) => {
-    load = deref(load);
-    const builder = new Builder(arena, game);
+  env.with_game_call = (fn, arena, game) => {
+    fn = deref(fn);
+    game = new Game(arena, game);
     try {
-      load(builder);
+      fn(game);
     } finally {
-      builder.drop();
+      game.drop();
     }
+  };
+  env.visit_sprite = (visitor, sprite, namePtr, nameLen, sizeX, sizeY, dataPtr, dataLen) => {
+    visitor = deref(visitor);
+    const name = stringFromWasm(namePtr, nameLen);
+    const data = sliceU8FromWasm(dataPtr, dataLen);
+    visitor.sprite(sprite, name, [sizeX, sizeY], data);
+  };
+  env.visit_object = (visitor, object, namePtr, nameLen, sprite) => {
+    visitor = deref(visitor);
+    const name = stringFromWasm(namePtr, nameLen);
+    visitor.object(object, name, sprite);
+  };
+  env.visit_object_event = (visitor, object, type, kind, codePtr, codeLen) => {
+    visitor = deref(visitor);
+    const code = stringFromWasm(codePtr, codeLen);
+    visitor.event(object, type, kind, code);
+  };
+  env.visit_room = (visitor, room, namePtr, nameLen) => {
+    visitor = deref(visitor);
+    const name = stringFromWasm(namePtr, nameLen);
+    visitor.room(room, name);
   };
 
   canvasRef = alloc(canvas);
@@ -49,12 +70,12 @@ export default async function init(canvas, output) {
   playground = instance.exports;
 }
 
-export function run(load) {
-  load = alloc(load);
+export function with_game(fn) {
+  fn = alloc(fn);
   try {
-    return playground.run(load, canvasRef);
+    playground.with_game(fn);
   } finally {
-    drop(load);
+    drop(fn);
   }
 }
 
@@ -62,7 +83,7 @@ export function end(state) {
   playground.end(state);
 }
 
-export class Builder {
+export class Game {
   constructor(arena, game) {
     this.arena = arena;
     this.game = game;
@@ -73,47 +94,63 @@ export class Builder {
     this.arena = undefined;
   }
 
+  run() {
+    return playground.game_run(this.game, this.arena, canvasRef);
+  }
+
   alloc(size, align) { return playground.arena_alloc(this.arena, size, align); }
 
-  sprite(name, [ originX, originY ], [ sizeX, sizeY ], data) {
-    name = new TextEncoder().encode(name);
-    const nameLen = name.byteLength;
-    const namePtr = this.alloc(nameLen, 1);
-    sliceU8FromWasm(namePtr, nameLen).set(name);
-
+  read_project(data) {
     const dataLen = data.byteLength;
     const dataPtr = this.alloc(dataLen, 1);
     sliceU8FromWasm(dataPtr, dataLen).set(data);
 
-    playground.game_sprite(
-      this.game, namePtr, nameLen, originX, originY, sizeX, sizeY, dataPtr, dataLen);
+    playground.game_read_project(this.game, this.arena, dataPtr, dataLen);
   }
 
-  object(name, sprite, events) {
+  visit(visitor) {
+    visitor = alloc(visitor);
+    try {
+      playground.game_visit(this.game, visitor);
+    } finally {
+      drop(visitor);
+    }
+  }
+
+  sprite(sprite, name) {
     name = new TextEncoder().encode(name);
     const nameLen = name.byteLength;
     const namePtr = this.alloc(nameLen, 1);
     sliceU8FromWasm(namePtr, nameLen).set(name);
 
-    playground.game_object(this.game, namePtr, nameLen, sprite, events);
+    playground.game_sprite(this.game, sprite, namePtr, nameLen);
   }
 
-  event(type, kind, code) {
+  object(object, name) {
+    name = new TextEncoder().encode(name);
+    const nameLen = name.byteLength;
+    const namePtr = this.alloc(nameLen, 1);
+    sliceU8FromWasm(namePtr, nameLen).set(name);
+
+    playground.game_object(this.game, object, namePtr, nameLen);
+  }
+
+  event(object, type, kind, code) {
     code = new TextEncoder().encode(code);
     const codeLen = code.byteLength;
     const codePtr = this.alloc(codeLen, 1);
     sliceU8FromWasm(codePtr, codeLen).set(code);
 
-    playground.game_object_event(this.game, type, kind, codePtr, codeLen);
+    playground.game_object_event(this.game, object, type, kind, codePtr, codeLen);
   }
 
-  room(name, width, height) {
+  room(room, name) {
     name = new TextEncoder().encode(name);
     const nameLen = name.byteLength;
     const namePtr = this.alloc(nameLen, 1);
     sliceU8FromWasm(namePtr, nameLen).set(name);
 
-    playground.game_room(this.game, namePtr, nameLen, width, height);
+    playground.game_room(this.game, room, namePtr, nameLen);
   }
 }
 

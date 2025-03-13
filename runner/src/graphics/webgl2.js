@@ -172,5 +172,5 @@ void main() {
   vec2 st = clamp(uv * wh, vec2(0.5, 0.5), wh - vec2(0.5, 0.5));
   vec2 uv = (image.xy + st) / atlas_size;
 
-  color = texture(tex, uv);
+  color = texture(tex, uv).bgra;
 }`;

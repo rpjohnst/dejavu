@@ -1,4 +1,4 @@
-import init, { run, end } from "./playground.js";
+import init, { with_game, end } from "./playground.js";
 import { basicSetup } from "codemirror";
 import { EditorView, keymap } from "@codemirror/view";
 import { indentUnit } from "@codemirror/language";
@@ -9,103 +9,21 @@ import { gml } from "codemirror-lang-gml";
   const canvas = document.getElementById("canvas");
   const output = document.getElementById("output");
   await init(canvas, output);
+  open(new Blob());
 })();
 
 // Model
 
-const canvas = document.createElement("canvas");
-canvas.width = 32;
-canvas.height = 32;
-const cx = canvas.getContext("2d", { desynchronized: true });
-cx.translate(0.5, 0.5);
-cx.fillStyle = "#EDEDED";
-cx.beginPath();
-cx.arc(15, 15, 15, 0, 2 * Math.PI);
-cx.fill();
-cx.fillStyle = "#CE0000";
-cx.beginPath();
-cx.arc(15, 15, 13, 0, 2 * Math.PI);
-cx.fill();
-
-let project = {
-  sprites: [
-    {
-      name: "circle_spr",
-      origin: [16, 16],
-      images: [
-        { size: [32, 32], canvas },
-      ],
-      masks: [],
-    },
-  ],
-  objects: [
-    {
-      name: "playground_obj",
-      sprite: 0,
-      events: [
-        {
-          event_type: 0,
-          event_kind: 0,
-          actions: [
-            {
-              library: 1,
-              action: 603,
-              action_kind: 7,
-              has_target: true,
-              parameters_used: 1,
-              parameters: [1],
-              target: -1,
-              arguments: [""],
-            },
-          ],
-        },
-        {
-          event_type: 3,
-          event_kind: 0,
-          actions: [
-            {
-              library: 1,
-              action: 603,
-              action_kind: 7,
-              parameters_used: 1,
-              parameters: [1],
-              target: -1,
-              arguments: [`direction += 1
-
-if x < 0 {
-    hspeed = 3
-} else if x > room_width {
-    hspeed = -3
-}
-
-if y < 0 {
-    vspeed = 3
-} else if y > room_height {
-    vspeed = -3
-}`],
-            },
-          ],
-        },
-      ],
-    },
-  ],
-  rooms: [
-    {
-      name: "playground_rm",
-      width: 640,
-      height: 480,
-      code: "",
-      instances: [
-        { x: 85, y: 128, object_index: 0, id: 100001, code: "hspeed = 3; vspeed = -3;" },
-        { x: 171, y: 128, object_index: 0, id: 100002, code: "hspeed = -3; vspeed = 3;" },
-      ]
-    },
-  ],
-  last_instance: 100002,
-};
+let buffer = new ArrayBuffer();
+let project = { sprites: [], objects: [], rooms: [] };
+let state = 0;
 
 // View
 
+let resources = {
+  view: undefined,
+  destroy() {},
+};
 let editor = {
   resource: undefined,
   view: undefined,
@@ -113,6 +31,13 @@ let editor = {
   destroy() {},
 };
 
+document.getElementById("open").addEventListener("click", event => {
+  event.preventDefault();
+  document.getElementById("open-input").click();
+});
+document.getElementById("open-input").addEventListener("change", event => {
+  open(event.target.files[0]);
+});
 document.getElementById("start").addEventListener("click", event => {
   event.preventDefault();
   start();
@@ -127,16 +52,24 @@ const gameView = document.getElementById("game");
 
 gameView.style.display = "none";
 
-const ul = resourcesView.appendChild(document.createElement("ul"));
-ul.appendChild(resourceTree("Sprites", project.sprites, spriteOnEdit));
-ul.appendChild(resourceTree("Objects", project.objects, objectOnEdit));
-ul.appendChild(resourceTree("Rooms", project.rooms, roomOnEdit));
+function projectOnOpen() {
+  const view = resourcesView.appendChild(document.createElement("ul"));
 
-function resourceTree(name, data, resourceOnEdit) {
-  const li = document.createElement("li");
-  li.classList.add("open");
+  resourceTree(spriteOnEdit, view, "Sprites", project.sprites);
+  resourceTree(objectOnEdit, view, "Objects", project.objects);
+  resourceTree(roomOnEdit, view, "Rooms", project.rooms);
 
-  const a = li.appendChild(document.createElement("a"));
+  return {
+    view,
+    destroy() { this.view.remove(); },
+  };
+}
+
+function resourceTree(resourceOnEdit, parent, name, data) {
+  const view = parent.appendChild(document.createElement("li"));
+  view.classList.add("open");
+
+  const a = view.appendChild(document.createElement("a"));
   a.href = "#";
   a.textContent = name;
   a.addEventListener("click", event => {
@@ -149,8 +82,9 @@ function resourceTree(name, data, resourceOnEdit) {
     }
   });
 
-  const resources = li.appendChild(document.createElement("ul"));
-  for (const resource of data) {
+  const resources = view.appendChild(document.createElement("ul"));
+  for (const index in data) {
+    const resource = data[index];
     const li = resources.appendChild(document.createElement("li"));
     const a = li.appendChild(document.createElement("a"));
     a.href = "#";
@@ -170,8 +104,6 @@ function resourceTree(name, data, resourceOnEdit) {
       });
     });
   }
-
-  return li;
 }
 
 function spriteOnEdit(parent, sprite) {
@@ -180,7 +112,7 @@ function spriteOnEdit(parent, sprite) {
 
   const sheet = view.appendChild(document.createElement("div"));
   sheet.classList.add("sheet");
-  sheet.appendChild(sprite.images[0].canvas);
+  sheet.appendChild(sprite.canvas);
 
   return {
     resource: sprite,
@@ -198,7 +130,9 @@ function objectOnEdit(parent, object) {
   const sprite = view.appendChild(document.createElement("div"));
   sprite.classList.add("sprite");
   sprite.textContent = "Sprite: ";
-  sprite.appendChild(project.sprites[object.sprite].images[0].canvas);
+  if (project.sprites[object.sprite]) {
+    sprite.appendChild(project.sprites[object.sprite].canvas);
+  }
 
   const events = [];
   for (const event of object.events) { events.push(eventOnEdit(view, event)); }
@@ -270,18 +204,18 @@ function eventOnEdit(parent, event) {
   const label = view.appendChild(document.createElement("label"));
   label.textContent = "Event: ";
   const kind = label.appendChild(document.createElement("output"));
-  const kindNames = eventNames[event.event_type];
+  const kindNames = eventNames[event.type];
   kind.textContent = kindNames instanceof Array ?
-    kindNames[event.event_kind] :
-    kindNames(event.event_kind);
+    kindNames[event.kind] :
+    kindNames(event.kind);
 
-  const doc = event.actions[0].arguments[0];
+  const doc = event.code;
   const editor = new EditorView({ doc, extensions, parent: view });
 
   return {
     resource: event,
     editor,
-    apply() { this.resource.actions[0].arguments[0] = this.editor.state.sliceDoc(); },
+    apply() { this.resource.code = this.editor.state.sliceDoc(); },
     destroy() { this.editor.destroy(); },
   }
 }
@@ -316,7 +250,55 @@ function nameOnEdit(parent, resource) {
 
 // Controller
 
-let state = 0;
+async function open(blob) {
+  stop();
+
+  editor.destroy();
+  editor = { resource: undefined, view: undefined, apply() {}, destroy() {} };
+
+  resources.destroy();
+  resources = undefined;
+
+  buffer = undefined;
+  project = { sprites: [], objects: [], rooms: [] };
+
+  buffer = await blob.arrayBuffer();
+  with_game((game) => {
+    game.read_project(new Uint8Array(buffer));
+
+    game.visit({
+      sprite(sprite, name, [width, height], data) {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const cx = canvas.getContext("2d", { desynchronized: true });
+        const pixels = new Uint8ClampedArray(data);
+        const target = new Uint32Array(pixels.buffer, pixels.byteOffset, width * height);
+        for (let i = 0; i < width * height; i++) {
+          target[i] =
+            (data[4 * i + 2] << 0) |
+            (data[4 * i + 1] << 8) |
+            (data[4 * i + 0] << 16) |
+            (data[4 * i + 3] << 24);
+        }
+        cx.putImageData(new ImageData(pixels, width, height), 0, 0);
+        project.sprites[sprite] = { name, canvas };
+      },
+
+      object(object, name, sprite) {
+        project.objects[object] = { name, sprite, events: [] };
+      },
+      event(object, type, kind, code) {
+        project.objects[object].events.push({ type, kind, code });
+      },
+
+      room(room_index, name) {
+        project.rooms[room_index] = { name };
+      },
+    });
+  });
+  resources = projectOnOpen();
+}
 
 function start() {
   stop();
@@ -324,24 +306,25 @@ function start() {
   editor.apply();
 
   gameView.style.display = "";
-  state = run((builder) => {
-    for (const sprite of project.sprites) {
-      const [width, height] = sprite.images[0].size;
-      const cx = sprite.images[0].canvas.getContext("2d");
-      const data = cx.getImageData(0, 0, width, height).data;
-      builder.sprite(sprite.name, sprite.origin, [width, height], data);
+  with_game((game) => {
+    game.read_project(new Uint8Array(buffer));
+
+    for (const [sprite, { name }] of project.sprites.entries()) {
+      game.sprite(sprite, name);
     }
 
-    for (const object of project.objects) {
-      builder.object(object.name, object.sprite, object.events.length);
-      for (const event of object.events) {
-        builder.event(event.event_type, event.event_kind, event.actions[0].arguments[0]);
+    for (const [object, { name, events }] of project.objects.entries()) {
+      game.object(object, name);
+      for (const { type, kind, code } of events) {
+        game.event(object, type, kind, code);
       }
     }
 
-    for (const room of project.rooms) {
-      builder.room(room.name, room.width, room.height);
+    for (const [room, { name }] of project.rooms.entries()) {
+      game.room(room, name);
     }
+
+    state = game.run();
   });
 }
 

@@ -103,9 +103,12 @@ body.playground-page {
   cursor: pointer;
 }
 
+#open-input { display: none; }
+
 #resources {
   grid-area: tree;
   padding-top: 4px;
+  overflow: auto;
 }
 #resources ul {
   margin: 0;
