@@ -74,25 +74,23 @@ function buildShader(gl, type, source) {
 }
 
 export function rendererFrame({ gl, program, viewLocation, view, vao }, roomWidth, roomHeight) {
-  gl.canvas.style.width = `${roomWidth}px`;
-  gl.canvas.style.height = `${roomHeight}px`;
-  const width = window.devicePixelRatio * gl.canvas.clientWidth;
-  const height = window.devicePixelRatio * gl.canvas.clientHeight;
-  if (gl.canvas.width != width || gl.canvas.height != height) {
-    gl.canvas.width = width;
-    gl.canvas.height = height;
+  const scale = Math.round(window.devicePixelRatio) / window.devicePixelRatio;
+  gl.canvas.style.width = `${scale * roomWidth}px`;
+  gl.canvas.style.height = `${scale * roomHeight}px`;
+  if (gl.canvas.width != roomWidth || gl.canvas.height != roomHeight) {
+    gl.canvas.width = roomWidth;
+    gl.canvas.height = roomHeight;
   }
 
   const gray = 192.0 / 255.0;
   gl.clearColor(gray, gray, gray, 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT);
 
-  const scale = Math.ceil(window.devicePixelRatio);
-  gl.viewport(0, 0, width, height);
+  gl.viewport(0, 0, roomWidth, roomHeight);
   gl.bindBuffer(gl.UNIFORM_BUFFER, view);
   gl.bufferSubData(gl.UNIFORM_BUFFER, 0, new Float32Array([
-    width / scale, height / scale,
-    width, height,
+    roomWidth, roomHeight,
+    roomWidth, roomHeight,
   ]));
 
   gl.bindBufferBase(gl.UNIFORM_BUFFER, viewLocation, view);

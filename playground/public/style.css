@@ -165,6 +165,7 @@ body.playground-page {
   top: 0;
   bottom: 0;
   margin: auto;
+  image-rendering: pixelated;
 }
 
 #output {
