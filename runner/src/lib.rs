@@ -72,6 +72,7 @@ pub struct Object {
 
 pub struct Room {
     pub size: (u32, u32),
+    pub speed: u32,
     pub backgrounds: Vec<Layer>,
     pub instances: Vec<Instance>,
 }
@@ -147,8 +148,9 @@ pub fn build<F: Clone + FnMut() -> E, E: io::Write>(
         .collect();
 
     assets.rooms = game.rooms.iter()
-        .map(|&project::Room { ref backgrounds, ref instances, width, height, .. }| Room {
+        .map(|&project::Room { ref backgrounds, ref instances, width, height, speed, .. }| Room {
             size: (width, height),
+            speed,
             backgrounds: backgrounds.iter()
                 .map(|&project::RoomBackground {
                     visible, foreground, background, x, y, htiled, vtiled, hspeed, vspeed, stretch

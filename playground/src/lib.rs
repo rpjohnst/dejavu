@@ -114,18 +114,18 @@ pub extern "system" fn game_read_project<'a>(
                             parameters_used: 1,
                             parameters: vec![project::argument_type::STRING],
                             target: gml::vm::SELF,
-                            arguments: vec![b"direction += 1
+                            arguments: vec![b"direction += 2
 
 if x < 0 {
-    hspeed = 3
+    hspeed = 6
 } else if x > room_width {
-    hspeed = -3
+    hspeed = -6
 }
 
 if y < 0 {
-    vspeed = 3
+    vspeed = 6
 } else if y > room_height {
-    vspeed = -3
+    vspeed = -6
 }"],
                             ..project::Action::default()
                         },
@@ -148,23 +148,24 @@ if y < 0 {
             name: b"playground_rm",
             width: 640,
             height: 480,
+            speed: 60,
             code: b"",
             instances: vec![
                 project::Instance {
                     x: 213, y: 160, object_index: playground_obj, id: id1,
-                    code: b"hspeed = 3; vspeed = 3;"
+                    code: b"hspeed = 6; vspeed = 6;"
                 },
                 project::Instance {
                     x: 427, y: 160, object_index: playground_obj, id: id2,
-                    code: b"hspeed = -3; vspeed = 3;"
+                    code: b"hspeed = -6; vspeed = 6;"
                 },
                 project::Instance {
                     x: 213, y: 320, object_index: playground_obj, id: id3,
-                    code: b"hspeed = 3; vspeed = -3;"
+                    code: b"hspeed = 6; vspeed = -6;"
                 },
                 project::Instance {
                     x: 427, y: 320, object_index: playground_obj, id: id4,
-                    code: b"hspeed = -3; vspeed = -3;"
+                    code: b"hspeed = -6; vspeed = -6;"
                 },
             ],
             ..project::Room::default()

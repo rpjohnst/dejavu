@@ -47,7 +47,9 @@ export default async function init(canvas, output) {
   env.out_print = (ptr, len) => outPrint(output, stringFromWasm(ptr, len));
   env.err_print = (ptr, len) => errPrint(output, stringFromWasm(ptr, len));
 
-  env.schedule = (fn, cx) => schedule(() => playground.__indirect_function_table.get(fn)(cx));
+  env.schedule = (fn, cx) => schedule((timestamp) => {
+    playground.__indirect_function_table.get(fn)(cx, timestamp);
+  });
   env.cancel = cancel;
 
   env.renderer_new = (canvas, atlasPtr, atlasLen, width, height) => {
