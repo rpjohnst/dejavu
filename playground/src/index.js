@@ -1,4 +1,4 @@
-import init, { with_game, end } from "./playground.js";
+import init, { readProject, run, end } from "./playground.js";
 import { basicSetup } from "codemirror";
 import { EditorView, keymap } from "@codemirror/view";
 import { indentUnit } from "@codemirror/language";
@@ -9,34 +9,25 @@ import { gml } from "codemirror-lang-gml";
   const canvas = document.getElementById("canvas");
   const output = document.getElementById("output");
   await init(canvas, output);
-  open(new Blob());
+  open(new ArrayBuffer());
 })();
 
 // Model
 
-let buffer = new ArrayBuffer();
-let project = { sprites: [], objects: [], rooms: [] };
+let project;
 let state = 0;
 
 // View
 
-let resources = {
-  view: undefined,
-  destroy() {},
-};
-let editor = {
-  resource: undefined,
-  view: undefined,
-  apply() {},
-  destroy() {},
-};
+let resources = { view: undefined, destroy() {} };
+let editor = { resource: undefined, view: undefined, apply() {}, destroy() {} };
 
 document.getElementById("open").addEventListener("click", event => {
   event.preventDefault();
   document.getElementById("open-input").click();
 });
-document.getElementById("open-input").addEventListener("change", event => {
-  open(event.target.files[0]);
+document.getElementById("open-input").addEventListener("change", async event => {
+  open(await event.target.files[0].arrayBuffer());
 });
 document.getElementById("start").addEventListener("click", event => {
   event.preventDefault();
@@ -83,8 +74,7 @@ function resourceTree(resourceOnEdit, parent, name, data) {
   });
 
   const resources = view.appendChild(document.createElement("ul"));
-  for (const index in data) {
-    const resource = data[index];
+  for (const resource of data) {
     const li = resources.appendChild(document.createElement("li"));
     const a = li.appendChild(document.createElement("a"));
     a.href = "#";
@@ -112,7 +102,7 @@ function spriteOnEdit(parent, sprite) {
 
   const sheet = view.appendChild(document.createElement("div"));
   sheet.classList.add("sheet");
-  sheet.appendChild(sprite.canvas);
+  for (const canvas of sprite.canvases) { sheet.appendChild(canvas); }
 
   return {
     resource: sprite,
@@ -130,9 +120,8 @@ function objectOnEdit(parent, object) {
   const sprite = view.appendChild(document.createElement("div"));
   sprite.classList.add("sprite");
   sprite.textContent = "Sprite: ";
-  if (project.sprites[object.sprite]) {
-    sprite.appendChild(project.sprites[object.sprite].canvas);
-  }
+  const canvas = project.sprites[object.sprite]?.canvases?.[0];
+  if (canvas) { sprite.appendChild(canvas); }
 
   const events = [];
   for (const event of object.events) { events.push(eventOnEdit(view, event)); }
@@ -204,20 +193,36 @@ function eventOnEdit(parent, event) {
   const label = view.appendChild(document.createElement("label"));
   label.textContent = "Event: ";
   const kind = label.appendChild(document.createElement("output"));
-  const kindNames = eventNames[event.type];
+  const kindNames = eventNames[event.event_type];
   kind.textContent = kindNames instanceof Array ?
-    kindNames[event.kind] :
-    kindNames(event.kind);
+    kindNames[event.event_kind] :
+    kindNames(event.event_kind);
 
-  const doc = event.code;
-  const editor = new EditorView({ doc, extensions, parent: view });
+  const actions = [];
+  for (const action of event.actions) {
+    if (action.library == 1 && action.action == 603) {
+      actions.push(actionOnEdit(view, action));
+    }
+  }
 
   return {
     resource: event,
-    editor,
-    apply() { this.resource.code = this.editor.state.sliceDoc(); },
-    destroy() { this.editor.destroy(); },
+    actions,
+    apply() { for (const action of this.actions) { action.apply(); } },
+    destroy() { for (const action of this.actions) { action.destroy(); } },
   }
+}
+
+function actionOnEdit(parent, action) {
+  const doc = action.arguments[0];
+  const view = new EditorView({ doc, extensions, parent });
+
+  return {
+    resource: action,
+    view,
+    apply() { this.resource.arguments[0] = this.view.state.sliceDoc(); },
+    destroy() { this.view.destroy(); },
+  };
 }
 
 function roomOnEdit(parent, room) {
@@ -250,7 +255,7 @@ function nameOnEdit(parent, resource) {
 
 // Controller
 
-async function open(blob) {
+async function open(buffer) {
   stop();
 
   editor.destroy();
@@ -259,44 +264,28 @@ async function open(blob) {
   resources.destroy();
   resources = undefined;
 
-  buffer = undefined;
-  project = { sprites: [], objects: [], rooms: [] };
+  project = undefined;
 
-  buffer = await blob.arrayBuffer();
-  with_game((game) => {
-    game.read_project(new Uint8Array(buffer));
-
-    game.visit({
-      sprite(sprite, name, [width, height], data) {
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const cx = canvas.getContext("2d", { desynchronized: true });
-        const pixels = new Uint8ClampedArray(data);
-        const target = new Uint32Array(pixels.buffer, pixels.byteOffset, width * height);
-        for (let i = 0; i < width * height; i++) {
-          target[i] =
-            (data[4 * i + 2] << 0) |
-            (data[4 * i + 1] << 8) |
-            (data[4 * i + 0] << 16) |
-            (data[4 * i + 3] << 24);
-        }
-        cx.putImageData(new ImageData(pixels, width, height), 0, 0);
-        project.sprites[sprite] = { name, canvas };
-      },
-
-      object(object, name, sprite) {
-        project.objects[object] = { name, sprite, events: [] };
-      },
-      event(object, type, kind, code) {
-        project.objects[object].events.push({ type, kind, code });
-      },
-
-      room(room_index, name) {
-        project.rooms[room_index] = { name };
-      },
+  project = readProject(new Uint8Array(buffer));
+  for (const sprite of project.sprites) {
+    sprite.canvases = sprite.images.map(({ size, data }) => {
+      const canvas = document.createElement("canvas");
+      const width = canvas.width = size[0];
+      const height = canvas.height = size[1];
+      const cx = canvas.getContext("2d", { desynchronized: true });
+      const pixels = new Uint8ClampedArray(data);
+      const target = new Uint32Array(pixels.buffer, pixels.byteOffset, width * height);
+      for (let i = 0; i < width * height; i++) {
+        target[i] =
+          (data[4 * i + 2] << 0) |
+          (data[4 * i + 1] << 8) |
+          (data[4 * i + 0] << 16) |
+          (data[4 * i + 3] << 24);
+      }
+      cx.putImageData(new ImageData(pixels, width, height), 0, 0);
+      return canvas;
     });
-  });
+  }
   resources = projectOnOpen();
 }
 
@@ -306,26 +295,7 @@ function start() {
   editor.apply();
 
   gameView.style.display = "";
-  with_game((game) => {
-    game.read_project(new Uint8Array(buffer));
-
-    for (const [sprite, { name }] of project.sprites.entries()) {
-      game.sprite(sprite, name);
-    }
-
-    for (const [object, { name, events }] of project.objects.entries()) {
-      game.object(object, name);
-      for (const { type, kind, code } of events) {
-        game.event(object, type, kind, code);
-      }
-    }
-
-    for (const [room, { name }] of project.rooms.entries()) {
-      game.room(room, name);
-    }
-
-    state = game.run();
-  });
+  state = run(project);
 }
 
 function stop() {

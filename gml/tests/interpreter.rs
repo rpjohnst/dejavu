@@ -5,6 +5,8 @@ use std::ops::Range;
 
 use gml::{Function, Item, symbol::Symbol, vm};
 
+use bstr::BStr;
+
 /// Read script arguments.
 #[test]
 fn arguments() -> vm::Result<()> {
@@ -12,9 +14,9 @@ fn arguments() -> vm::Result<()> {
     let items = HashMap::default();
 
     let select = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"select", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"select"), body: BStr::new(b"{
         return argument0 + argument1
-    }" });
+    }") });
 
     let (mut code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     gml::load(&mut code, &items);
@@ -43,13 +45,13 @@ fn member() -> vm::Result<()> {
     let items = HashMap::default();
 
     let member = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"member", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"member"), body: BStr::new(b"{
         a = 3
         b[3] = 5
         var c;
         c = self.a + self.b[3]
         return c
-    }" });
+    }") });
 
     let (mut code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     gml::load(&mut code, &items);
@@ -84,7 +86,7 @@ fn builtin() -> vm::Result<()> {
     items.insert(global_array, Item::Member(Some(World::get_global_array), Some(World::set_global_array)));
 
     let builtin = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"builtin", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"builtin"), body: BStr::new(b"{
         repeat 2 {
             scalar = 3
         }
@@ -94,7 +96,7 @@ fn builtin() -> vm::Result<()> {
         global_array[0] = array[1] + global_scalar
         global_array[1] = global_scalar + global_array[0]
         return global_array[1]
-    }" });
+    }") });
 
     let (mut code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     gml::load(&mut code, &items);
@@ -128,12 +130,12 @@ fn global() -> vm::Result<()> {
     let items = HashMap::default();
 
     let global = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"global", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"global"), body: BStr::new(b"{
         a = 3
         global.a = 5
         globalvar a;
         return self.a + a
-    }" });
+    }") });
 
     let (mut code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     gml::load(&mut code, &items);
@@ -155,7 +157,7 @@ fn with_scopes() -> vm::Result<()> {
     let items = HashMap::default();
 
     let with = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"with", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"with"), body: BStr::new(b"{
         c = 3
         with (all) {
             n = other.c
@@ -168,7 +170,7 @@ fn with_scopes() -> vm::Result<()> {
             m = 13
         }
         return argument0.n + argument1.n + argument0.m + argument1.m
-    }" });
+    }") });
 
     let (mut code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     gml::load(&mut code, &items);
@@ -192,7 +194,7 @@ fn with_iterator() -> vm::Result<()> {
     let mut items = HashMap::new();
 
     let with = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"with", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"with"), body: BStr::new(b"{
         with (all) {
             c = 3
             var i;
@@ -205,7 +207,7 @@ fn with_iterator() -> vm::Result<()> {
             s += c
         }
         return s
-    }" });
+    }") });
 
     let create_instance = Symbol::intern(b"create_instance");
     items.insert(create_instance, Item::Native(World::native_create_instance, 0, false));
@@ -232,7 +234,7 @@ fn array() -> vm::Result<()> {
     let items = HashMap::default();
 
     let array = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"array", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"array"), body: BStr::new(b"{
         var a, b, c;
         a[0] = 3
         a[1] = 5
@@ -240,7 +242,7 @@ fn array() -> vm::Result<()> {
         b[2] = 13
         c[1, 1] = 21
         return a + a[1] + b[0] + b[1] + b[2] + c + c[1, 1]
-    }" });
+    }") });
 
     let (mut code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     gml::load(&mut code, &items);
@@ -262,13 +264,13 @@ fn conditional_initialization() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
-    game.scripts.push(project::Script { name: b"fibonacci", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"fibonacci"), body: BStr::new(b"{
         var t;
         if (true) {
             t = 1
         }
         return t
-    }" });
+    }") });
 
     let _: (vm::Assets<Context>, _) = gml::build(&game, &[], &items, io::stderr)
         .unwrap_or_else(|_| panic!());
@@ -283,11 +285,11 @@ fn dead_undef() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
-    game.scripts.push(project::Script { name: b"switch", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"switch"), body: BStr::new(b"{
         var i;
         return 0
         return i
-    }" });
+    }") });
 
     let _: (vm::Assets<Context>, _) = gml::build(&game, &[], &items, io::stderr)
         .unwrap_or_else(|_| panic!());
@@ -301,14 +303,14 @@ fn for_loop() -> vm::Result<()> {
     let items = HashMap::default();
 
     let factorial = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"factorial", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"factorial"), body: BStr::new(b"{
         var i, j;
         j = 1
         for (i = 1; i <= 4; i += 1) {
             j *= i
         }
         return j
-    }" });
+    }") });
 
     let (mut code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     gml::load(&mut code, &items);
@@ -329,7 +331,7 @@ fn switch() -> vm::Result<()> {
     let items = HashMap::default();
 
     let switch = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"switch", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"switch"), body: BStr::new(b"{
         var i;
         switch (argument0) {
         case 3:
@@ -341,7 +343,7 @@ fn switch() -> vm::Result<()> {
             return 21
         }
         return i
-    }" });
+    }") });
 
     let (mut code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     gml::load(&mut code, &items);
@@ -372,10 +374,10 @@ fn switch_empty() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
-    game.scripts.push(project::Script { name: b"switch", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"switch"), body: BStr::new(b"{
         switch (argument0) {
         }
-    }" });
+    }") });
 
     let _: (vm::Assets<Context>, _) = gml::build(&game, &[], &items, io::stderr)
         .unwrap_or_else(|_| panic!());
@@ -389,7 +391,7 @@ fn switch_fallthrough() -> vm::Result<()> {
     let items = HashMap::default();
 
     let switch = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"switch", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"switch"), body: BStr::new(b"{
         var i;
         i = 0
         switch (argument0) {
@@ -400,7 +402,7 @@ fn switch_fallthrough() -> vm::Result<()> {
             i += 5
         }
         return i
-    }" });
+    }") });
 
     let (mut code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     gml::load(&mut code, &items);
@@ -431,10 +433,10 @@ fn call_script() -> vm::Result<()> {
     let mut game = project::Game::default();
     let items = HashMap::default();
 
-    game.scripts.push(project::Script { name: b"id", body: b"return argument0" });
+    game.scripts.push(project::Script { name: BStr::new(b"id"), body: BStr::new(b"return argument0") });
 
     let call = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"call", body: b"return id(3) + 5" });
+    game.scripts.push(project::Script { name: BStr::new(b"call"), body: BStr::new(b"return id(3) + 5") });
 
     let (mut code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     gml::load(&mut code, &items);
@@ -455,13 +457,13 @@ fn recurse() -> vm::Result<()> {
     let items = HashMap::default();
 
     let fibonacci = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"fibonacci", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"fibonacci"), body: BStr::new(b"{
         if (argument0 < 2) {
             return 1
         } else {
             return fibonacci(argument0 - 1) + fibonacci(argument0 - 2)
         }
-    }" });
+    }") });
 
     let (mut code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     gml::load(&mut code, &items);
@@ -486,14 +488,14 @@ fn ffi() -> vm::Result<()> {
     items.insert(add, Item::Native(World::native_add, 2, false));
 
     let caller = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"caller", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"caller"), body: BStr::new(b"{
         var a, b, c;
         return call()
-    }" });
+    }") });
 
-    game.scripts.push(project::Script { name: b"call", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"call"), body: BStr::new(b"{
         return add(3, 5) + 8
-    }" });
+    }") });
 
     let (mut code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     gml::load(&mut code, &items);
@@ -516,17 +518,17 @@ fn reentrant() -> vm::Result<()> {
     items.insert(execute, Item::Native(World::native_execute, 2, false));
 
     let entry = Function::Script { id: game.scripts.len() as i32 };
-    game.scripts.push(project::Script { name: b"entry", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"entry"), body: BStr::new(b"{
         return caller()
-    }" });
+    }") });
 
-    game.scripts.push(project::Script { name: b"caller", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"caller"), body: BStr::new(b"{
         return execute(callee, 3) + 13
-    }" });
+    }") });
 
-    game.scripts.push(project::Script { name: b"callee", body: b"{
+    game.scripts.push(project::Script { name: BStr::new(b"callee"), body: BStr::new(b"{
         return argument0 + 5
-    }" });
+    }") });
 
     let (mut code, _) = gml::build(&game, &[], &items, io::stderr).unwrap_or_else(|_| panic!());
     gml::load(&mut code, &items);

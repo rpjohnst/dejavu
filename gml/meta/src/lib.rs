@@ -1,9 +1,6 @@
-extern crate proc_macro;
-
 use std::iter;
 use std::collections::HashMap;
 use proc_macro::TokenStream;
-use proc_macro2;
 use syn::{
     self, parse_quote, punctuated,
     ItemImpl, ImplItemFn, Attribute, Signature, FnArg, PatType,

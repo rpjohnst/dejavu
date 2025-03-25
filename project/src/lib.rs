@@ -1,9 +1,15 @@
+use bstr::BStr;
+
+#[cfg(feature = "wasm")]
+use wasm::Reflect;
+
 #[cfg(feature = "read")]
 pub use read::{read_project, read_exe, read_ged, read_gex, read_bmp};
 
 #[cfg(feature = "read")]
 mod read;
 
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Game<'a> {
     pub version: u32,
     pub debug: u32,
@@ -27,11 +33,12 @@ pub struct Game<'a> {
     pub last_instance: i32,
     pub last_tile: i32,
 
-    pub extensions: Vec<&'a [u8]>,
+    pub extensions: Vec<&'a BStr>,
 
     pub room_order: Vec<u32>,
 }
 
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Settings {
     pub fullscreen: bool,
     pub scaling: i32,
@@ -72,17 +79,19 @@ pub struct Settings {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Constant<'a> {
-    pub name: &'a [u8],
-    pub value: &'a [u8],
+    pub name: &'a BStr,
+    pub value: &'a BStr,
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Sound<'a> {
-    pub name: &'a [u8],
+    pub name: &'a BStr,
     pub kind: u32,
-    pub file_type: &'a [u8],
-    pub file_name: &'a [u8],
+    pub file_type: &'a BStr,
+    pub file_name: &'a BStr,
     pub data: &'a [u8],
     pub effects: u32,
     pub volume: f64,
@@ -91,8 +100,9 @@ pub struct Sound<'a> {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Sprite<'a> {
-    pub name: &'a [u8],
+    pub name: &'a BStr,
     pub version: u32,
 
     pub size: (u32, u32),
@@ -114,6 +124,7 @@ pub struct Sprite<'a> {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Image<'a> {
     pub size: (u32, u32),
     pub data: &'a [u8],
@@ -133,6 +144,7 @@ pub mod bounds_kind {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Bounds {
     pub left: i32,
     pub right: i32,
@@ -141,6 +153,7 @@ pub struct Bounds {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Mask {
     pub size: (u32, u32),
     pub bounds: Bounds,
@@ -148,8 +161,9 @@ pub struct Mask {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Background<'a> {
-    pub name: &'a [u8],
+    pub name: &'a BStr,
     pub version: u32,
 
     pub size: (u32, u32),
@@ -160,8 +174,9 @@ pub struct Background<'a> {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Path<'a> {
-    pub name: &'a [u8],
+    pub name: &'a BStr,
     pub smooth: bool,
     pub closed: bool,
     pub precision: u32,
@@ -169,20 +184,23 @@ pub struct Path<'a> {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Point {
     pub position: (f64, f64),
     pub speed: f64,
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Script<'a> {
-    pub name: &'a [u8],
-    pub body: &'a [u8],
+    pub name: &'a BStr,
+    pub body: &'a BStr,
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Object<'a> {
-    pub name: &'a [u8],
+    pub name: &'a BStr,
     pub sprite: i32,
     pub solid: bool,
     pub visible: bool,
@@ -194,6 +212,7 @@ pub struct Object<'a> {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Event<'a> {
     pub event_type: u32,
     pub event_kind: i32,
@@ -269,6 +288,7 @@ pub mod event_kind {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Action<'a> {
     pub library: u32,
     pub action: u32,
@@ -277,13 +297,13 @@ pub struct Action<'a> {
     pub is_question: bool,
     pub has_target: bool,
     pub action_type: u32,
-    pub name: &'a [u8],
-    pub code: &'a [u8],
+    pub name: &'a BStr,
+    pub code: &'a BStr,
     pub parameters_used: u32,
     pub parameters: Vec<u32>,
     pub target: i32,
     pub relative: bool,
-    pub arguments: Vec<&'a [u8]>,
+    pub arguments: Vec<&'a BStr>,
     pub negate: bool,
 }
 
@@ -327,9 +347,10 @@ pub mod argument_type {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Room<'a> {
-    pub name: &'a [u8],
-    pub caption: &'a [u8],
+    pub name: &'a BStr,
+    pub caption: &'a BStr,
 
     pub width: u32,
     pub height: u32,
@@ -338,7 +359,7 @@ pub struct Room<'a> {
     pub clear_color: u32,
     pub clear: bool,
 
-    pub code: &'a [u8],
+    pub code: &'a BStr,
 
     pub backgrounds: Vec<RoomBackground>,
 
@@ -350,6 +371,7 @@ pub struct Room<'a> {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct RoomBackground {
     pub visible: bool,
     pub foreground: bool,
@@ -364,6 +386,7 @@ pub struct RoomBackground {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct View {
     pub visible: bool,
     pub view_x: i32,
@@ -382,15 +405,17 @@ pub struct View {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Instance<'a> {
     pub x: i32,
     pub y: i32,
     pub object_index: i32,
     pub id: i32,
-    pub code: &'a [u8],
+    pub code: &'a BStr,
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Tile {
     pub x: i32,
     pub y: i32,
@@ -404,27 +429,29 @@ pub struct Tile {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct Extension<'a> {
-    pub name: &'a [u8],
-    pub folder: &'a [u8],
-    pub version: &'a [u8],
-    pub author: &'a [u8],
-    pub date: &'a [u8],
-    pub license: &'a [u8],
-    pub description: &'a [u8],
-    pub help_file: &'a [u8],
+    pub name: &'a BStr,
+    pub folder: &'a BStr,
+    pub version: &'a BStr,
+    pub author: &'a BStr,
+    pub date: &'a BStr,
+    pub license: &'a BStr,
+    pub description: &'a BStr,
+    pub help_file: &'a BStr,
     pub hidden: u32,
-    pub uses: Vec<&'a [u8]>,
+    pub uses: Vec<&'a BStr>,
     pub files: Vec<ExtensionFile<'a>>,
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct ExtensionFile<'a> {
-    pub file_name: &'a [u8],
-    pub original_name: &'a [u8],
+    pub file_name: &'a BStr,
+    pub original_name: &'a BStr,
     pub kind: u32,
-    pub initialization: &'a [u8],
-    pub finalization: &'a [u8],
+    pub initialization: &'a BStr,
+    pub finalization: &'a BStr,
     pub functions: Vec<ExtensionFunction<'a>>,
     pub constants: Vec<ExtensionConstant<'a>>,
     pub contents: &'a [u8],
@@ -438,11 +465,12 @@ pub mod extension_kind {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct ExtensionFunction<'a> {
-    pub name: &'a [u8],
-    pub external_name: &'a [u8],
+    pub name: &'a BStr,
+    pub external_name: &'a BStr,
     pub calling_convention: u32,
-    pub help_line: &'a [u8],
+    pub help_line: &'a BStr,
     pub hidden: u32,
     pub parameters_used: u32,
     pub parameters: [u32; 17],
@@ -461,9 +489,10 @@ pub mod parameter_type {
 }
 
 #[derive(Default)]
+#[cfg_attr(feature = "wasm", derive(Reflect))]
 pub struct ExtensionConstant<'a> {
-    pub name: &'a [u8],
-    pub value: &'a [u8],
+    pub name: &'a BStr,
+    pub value: &'a BStr,
     pub hidden: u32,
 }
 

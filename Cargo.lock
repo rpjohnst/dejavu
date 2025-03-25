@@ -77,6 +77,7 @@ dependencies = [
 name = "loader"
 version = "0.1.0"
 dependencies = [
+ "bstr",
  "project",
  "quickdry",
  "runner",
@@ -101,6 +102,7 @@ dependencies = [
 name = "playground"
 version = "0.1.0"
 dependencies = [
+ "bstr",
  "gml",
  "project",
  "quickdry",
@@ -121,8 +123,10 @@ dependencies = [
 name = "project"
 version = "0.1.0"
 dependencies = [
+ "bstr",
  "flate2",
  "quickdry",
+ "wasm",
 ]
 
 [[package]]
@@ -195,6 +199,18 @@ checksum = "00e2473a93778eb0bad35909dff6a10d28e63f792f16ed15e404fca9d5eeedbe"
 [[package]]
 name = "wasm"
 version = "0.1.0"
+dependencies = [
+ "bstr",
+ "wasm-meta",
+]
+
+[[package]]
+name = "wasm-meta"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "win32"

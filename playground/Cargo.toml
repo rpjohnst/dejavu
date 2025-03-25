@@ -8,7 +8,8 @@ crate-type = ["cdylib"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 gml = { workspace = true }
-project = { workspace = true, features = ["read"] }
+project = { workspace = true, features = ["wasm", "read"] }
 runner = { workspace = true }
 wasm = { workspace = true }
 quickdry = { workspace = true }
+bstr = { workspace = true }

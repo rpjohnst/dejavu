@@ -5,6 +5,7 @@ use std::error::Error;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::path::Path;
+use bstr::BStr;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut path = None;
@@ -41,7 +42,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else if kind == OsStr::new("gml") {
         gml = fs::read(path)?;
         let mut room = project::Room::default();
-        room.code = &gml[..];
+        room.code = BStr::new(&gml[..]);
         game.rooms.push(room);
         game.room_order.push(0);
     }

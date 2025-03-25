@@ -4,3 +4,5 @@ version = { workspace = true }
 edition = { workspace = true }
 
 [dependencies]
+wasm-meta = { path = "meta" }
+bstr = { workspace = true }

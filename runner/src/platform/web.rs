@@ -44,7 +44,7 @@ pub fn run(mut cx: crate::Context) -> *mut State {
     frame_cx
 }
 
-extern "system" fn frame_fn(frame_cx: *mut State, timestamp: f64) {
+extern "C" fn frame_fn(frame_cx: *mut State, timestamp: f64) {
     unsafe { (*frame_cx).handle = schedule(frame_fn, frame_cx); }
     let State { cx, thread, target, last, .. } = unsafe { &mut *frame_cx };
 
@@ -82,9 +82,9 @@ pub unsafe fn end(state: *mut State) {
     }
 }
 
-unsafe extern "system" {
+unsafe extern "C" {
     #[allow(improper_ctypes)]
-    fn schedule(frame_fn: extern "system" fn(*mut State, f64), frame_cx: *mut State) -> u32;
+    fn schedule(frame_fn: extern "C" fn(*mut State, f64), frame_cx: *mut State) -> u32;
     fn cancel(handle: u32);
 }
 

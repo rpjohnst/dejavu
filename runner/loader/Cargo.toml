@@ -7,3 +7,4 @@ edition = { workspace = true }
 runner = { workspace = true }
 project = { workspace = true, features = ["read"] }
 quickdry = { workspace = true }
+bstr = { workspace = true }

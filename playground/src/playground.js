@@ -2,7 +2,7 @@ import { clear, outPrint, errPrint } from "./page.js";
 import { schedule, cancel } from "../../runner/src/platform/web.js";
 import { rendererNew, rendererFrame, rendererBatch } from "../../runner/src/graphics/webgl2.js";
 import playground_wasm from "./playground.wasm";
-let playground;
+let playground, gameLayout;
 
 let canvasRef;
 
@@ -10,36 +10,7 @@ export default async function init(canvas, output) {
   const imports = {};
   const env = imports.env = {};
 
-  env.with_game_call = (fn, arena, game) => {
-    fn = deref(fn);
-    game = new Game(arena, game);
-    try {
-      fn(game);
-    } finally {
-      game.drop();
-    }
-  };
-  env.visit_sprite = (visitor, sprite, namePtr, nameLen, sizeX, sizeY, dataPtr, dataLen) => {
-    visitor = deref(visitor);
-    const name = stringFromWasm(namePtr, nameLen);
-    const data = sliceU8FromWasm(dataPtr, dataLen);
-    visitor.sprite(sprite, name, [sizeX, sizeY], data);
-  };
-  env.visit_object = (visitor, object, namePtr, nameLen, sprite) => {
-    visitor = deref(visitor);
-    const name = stringFromWasm(namePtr, nameLen);
-    visitor.object(object, name, sprite);
-  };
-  env.visit_object_event = (visitor, object, type, kind, codePtr, codeLen) => {
-    visitor = deref(visitor);
-    const code = stringFromWasm(codePtr, codeLen);
-    visitor.event(object, type, kind, code);
-  };
-  env.visit_room = (visitor, room, namePtr, nameLen) => {
-    visitor = deref(visitor);
-    const name = stringFromWasm(namePtr, nameLen);
-    visitor.room(room, name);
-  };
+  env.call_ptr = (fn, ptr0) => deref(fn)(ptr0);
 
   canvasRef = alloc(canvas);
 
@@ -47,7 +18,7 @@ export default async function init(canvas, output) {
   env.out_print = (ptr, len) => outPrint(output, stringFromWasm(ptr, len));
   env.err_print = (ptr, len) => errPrint(output, stringFromWasm(ptr, len));
 
-  env.schedule = (fn, cx) => schedule((timestamp) => {
+  env.schedule = (fn, cx) => schedule(timestamp => {
     playground.__indirect_function_table.get(fn)(cx, timestamp);
   });
   env.cancel = cancel;
@@ -70,89 +41,266 @@ export default async function init(canvas, output) {
   const response = await fetch(playground_wasm);
   const { module, instance } = await WebAssembly.instantiateStreaming(response, imports);
   playground = instance.exports;
+
+  const view = new DataView(playground.memory.buffer);
+  gameLayout = loadLayout(view, playground.GAME_LAYOUT.value);
 }
 
-export function with_game(fn) {
-  fn = alloc(fn);
-  try {
-    playground.with_game(fn);
-  } finally {
-    drop(fn);
-  }
+export function readProject(data) {
+  let project;
+  withArena(arena => {
+    const dataLen = data.byteLength;
+    const dataPtr = playground.arena_alloc(arena, dataLen, 1);
+    sliceU8FromWasm(dataPtr, dataLen).set(data);
+    withGame(game => {
+      playground.read_project(game, arena, dataPtr, dataLen);
+
+      const view = new DataView(playground.memory.buffer);
+      project = loadValue(view, game, gameLayout);
+    });
+  });
+  return project;
+}
+
+export function run(project) {
+  let state;
+  withArena(arena => {
+    withGame(game => {
+      const view = new DataView(playground.memory.buffer);
+      storeValue(view, game, gameLayout, arena, project);
+
+      state = playground.run(game, arena, canvasRef);
+    });
+  });
+  return state;
 }
 
 export function end(state) {
   playground.end(state);
 }
 
-export class Game {
-  constructor(arena, game) {
-    this.arena = arena;
-    this.game = game;
+function withArena(fn) {
+  fn = alloc(fn);
+  try {
+    return playground.with_arena(fn);
+  } finally {
+    drop(fn);
   }
+}
 
-  drop() {
-    this.game = undefined;
-    this.arena = undefined;
+function withGame(fn) {
+  fn = alloc(fn);
+  try {
+    return playground.with_game(fn);
+  } finally {
+    drop(fn);
   }
+}
 
-  run() {
-    return playground.game_run(this.game, this.arena, canvasRef);
+function loadLayout(view, data) {
+  switch (view.getUint8(data + 0)) {
+  case 0: return {
+    kind: "bool"
+  };
+  case 1: return {
+    kind: "integer", signed: view.getUint8(data + 1) != 0, size: view.getUint32(data + 4, true)
+  };
+  case 2: return {
+    kind: "float", size: view.getUint32(data + 4, true)
+  };
+  case 3: return {
+    kind: "array",
+    item: loadLayout(view, view.getUint32(data + 4, true)),
+    stride: view.getUint32(data + 8, true),
+    len: view.getUint32(data + 12, true),
+  };
+  case 4: {
+    const fields = {};
+    const ptr = playground.fields_ptr(data + 4), len = playground.fields_len(data + 4);
+    for (let data = ptr; data < ptr + 16 * len; data += 16) {
+      const name = stringFromWasm(playground.bstr_ptr(data + 0), playground.bstr_len(data + 0));
+      fields[name] = {
+        offset: view.getUint32(data + 8, true),
+        layout: loadLayout(view, view.getUint32(data + 12, true))
+      };
+    }
+    return { kind: "struct", fields };
   }
-
-  alloc(size, align) { return playground.arena_alloc(this.arena, size, align); }
-
-  read_project(data) {
-    const dataLen = data.byteLength;
-    const dataPtr = this.alloc(dataLen, 1);
-    sliceU8FromWasm(dataPtr, dataLen).set(data);
-
-    playground.game_read_project(this.game, this.arena, dataPtr, dataLen);
+  case 5: return { kind: "bstr" };
+  case 6: return {
+    kind: "slice",
+    item: loadLayout(view, view.getUint32(data + 4, true)),
+    stride: view.getUint32(data + 8, true),
+    ptr: playground.__indirect_function_table.get(view.getUint32(data + 12, true)),
+    len: playground.__indirect_function_table.get(view.getUint32(data + 16, true)),
+    store: playground.__indirect_function_table.get(view.getUint32(data + 20, true)),
+  };
+  case 7: return {
+    kind: "vec",
+    item: loadLayout(view, view.getUint32(data + 4, true)),
+    stride: view.getUint32(data + 8, true),
+    ptr: playground.__indirect_function_table.get(view.getUint32(data + 12, true)),
+    len: playground.__indirect_function_table.get(view.getUint32(data + 16, true)),
+    resize: playground.__indirect_function_table.get(view.getUint32(data + 20, true)),
+  };
+  default: throw new Error("Unexpected layout kind");
   }
+}
 
-  visit(visitor) {
-    visitor = alloc(visitor);
-    try {
-      playground.game_visit(this.game, visitor);
-    } finally {
-      drop(visitor);
+function loadValue(view, data, layout) {
+  switch (layout.kind) {
+  case "bool":
+    return view.getUint8(data) != 0;
+  case "integer":
+    if (layout.signed) {
+      switch (layout.size) {
+      case 1: return view.getInt8(data);
+      case 2: return view.getInt16(data, true);
+      case 4: return view.getInt32(data, true);
+      case 8: return view.getBigInt64(data, true);
+      default: throw new Error("Unexpected integer size");
+      }
+    } else {
+      switch (layout.size) {
+      case 1: return view.getUint8(data);
+      case 2: return view.getUint16(data, true);
+      case 4: return view.getUint32(data, true);
+      case 8: return view.getBigUint64(data, true);
+      default: throw new Error("Unexpected integer size");
+      }
+    }
+  case "float":
+    switch (layout.size) {
+    case 4: return view.getFloat32(data, true);
+    case 8: return view.getFloat64(data, true);
+    default: throw new Error("Unexpected float size");
+    }
+  case "array":
+    return loadArray(view, layout, data, layout.len);
+  case "struct": {
+    const struct = {};
+    for (const name in layout.fields) {
+      const field = layout.fields[name];
+      struct[name] = loadValue(view, data + field.offset, field.layout);
+    }
+    return struct;
+  }
+  case "bstr": {
+    return stringFromWasm(playground.bstr_ptr(data), playground.bstr_len(data));
+  }
+  case "slice": case "vec":
+    return loadArray(view, layout, layout.ptr(data), layout.len(data));
+  default: throw new Error("Unexpected layout kind");
+  }
+}
+
+function loadArray(view, layout, ptr, len) {
+  switch (layout.item.kind) {
+  case "integer":
+    if (layout.item.signed) {
+      switch (layout.item.size) {
+      case 1: return new sliceI8FromWasm(ptr, len).slice();
+      case 2: return new sliceI16FromWasm(ptr, len).slice();
+      case 4: return new sliceI32FromWasm(ptr, len).slice();
+      }
+    } else {
+      switch (layout.item.size) {
+      case 1: return new sliceU8FromWasm(ptr, len).slice();
+      case 2: return new sliceU16FromWasm(ptr, len).slice();
+      case 4: return new sliceU32FromWasm(ptr, len).slice();
+      }
+    }
+  default:
+    const array = [];
+    for (let data = ptr; data < ptr + layout.stride * len; data += layout.stride) {
+      array.push(loadValue(view, data, layout.item));
+    }
+    return array;
+  }
+}
+
+function storeValue(view, data, layout, arena, value) {
+  switch (layout.kind) {
+  case "bool":
+    return view.setUint8(data, value != 0);
+  case "integer":
+    if (layout.signed) {
+      switch (layout.size) {
+      case 1: return view.setInt8(data, value);
+      case 2: return view.setInt16(data, value, true);
+      case 4: return view.setInt32(data, value, true);
+      case 8: return view.setBigInt64(data, value, true);
+      default: throw new Error("Unexpected integer size");
+      }
+    } else {
+      switch (layout.size) {
+      case 1: return view.setUint8(data, value);
+      case 2: return view.setUint16(data, value, true);
+      case 4: return view.setUint32(data, value, true);
+      case 8: return view.setBigUint64(data, value, true);
+      default: throw new Error("Unexpected integer size");
+      }
+    }
+  case "float":
+    switch (layout.size) {
+    case 4: return view.setFloat32(data, value, true);
+    case 8: return view.setFloat64(data, value, true);
+    default: throw new Error("Unexpected float size");
+    }
+  case "array":
+    return storeArray(view, data, layout.len, layout, arena, value);
+  case "struct": {
+    for (const name in layout.fields) {
+      const field = layout.fields[name];
+      storeValue(view, data + field.offset, field.layout, arena, value[name]);
+    }
+    return;
+  }
+  case "bstr": {
+    const str = new TextEncoder().encode(value);
+    const len = str.byteLength;
+    const ptr = playground.arena_alloc(arena, len, 1);
+    playground.bstr_store(data, ptr, len);
+    return sliceU8FromWasm(ptr, len).set(str);
+  }
+  case "slice": {
+    const len = value.length;
+    const ptr = playground.arena_alloc(arena, layout.stride * len, layout.stride);
+    layout.store(data, ptr, len);
+    return storeArray(view, ptr, len, layout, arena, value);
+  }
+  case "vec": {
+    const len = value.length;
+    const ptr = layout.resize(data, len);
+    return storeArray(view, ptr, len, layout, arena, value);
+  }
+  default: throw new Error("Unexpected layout kind");
+  }
+}
+
+function storeArray(view, ptr, len, layout, arena, value) {
+  switch (layout.item.kind) {
+  case "integer": {
+    if (layout.item.signed) {
+      switch (layout.item.size) {
+      case 1: return sliceI8FromWasm(ptr, len).set(value);
+      case 2: return sliceI16FromWasm(ptr, len).set(value);
+      case 4: return sliceI32FromWasm(ptr, len).set(value);
+      }
+    } else {
+      switch (layout.item.size) {
+      case 1: return sliceU8FromWasm(ptr, len).set(value);
+      case 2: return sliceU16FromWasm(ptr, len).set(value);
+      case 4: return sliceU32FromWasm(ptr, len).set(value);
+      }
     }
   }
-
-  sprite(sprite, name) {
-    name = new TextEncoder().encode(name);
-    const nameLen = name.byteLength;
-    const namePtr = this.alloc(nameLen, 1);
-    sliceU8FromWasm(namePtr, nameLen).set(name);
-
-    playground.game_sprite(this.game, sprite, namePtr, nameLen);
+  default: {
+    for (let i = 0; i < value.length; i++) {
+      storeValue(view, ptr + layout.stride * i, layout.item, arena, value[i]);
+    }
+    return;
   }
-
-  object(object, name) {
-    name = new TextEncoder().encode(name);
-    const nameLen = name.byteLength;
-    const namePtr = this.alloc(nameLen, 1);
-    sliceU8FromWasm(namePtr, nameLen).set(name);
-
-    playground.game_object(this.game, object, namePtr, nameLen);
-  }
-
-  event(object, type, kind, code) {
-    code = new TextEncoder().encode(code);
-    const codeLen = code.byteLength;
-    const codePtr = this.alloc(codeLen, 1);
-    sliceU8FromWasm(codePtr, codeLen).set(code);
-
-    playground.game_object_event(this.game, object, type, kind, codePtr, codeLen);
-  }
-
-  room(room, name) {
-    name = new TextEncoder().encode(name);
-    const nameLen = name.byteLength;
-    const namePtr = this.alloc(nameLen, 1);
-    sliceU8FromWasm(namePtr, nameLen).set(name);
-
-    playground.game_room(this.game, room, namePtr, nameLen);
   }
 }
 
@@ -181,6 +329,18 @@ function sliceU8FromWasm(ptr, len) {
 }
 function sliceU16FromWasm(ptr, len) {
   return new Uint16Array(playground.memory.buffer, ptr, len);
+}
+function sliceU32FromWasm(ptr, len) {
+  return new Uint32Array(playground.memory.buffer, ptr, len);
+}
+function sliceI8FromWasm(ptr, len) {
+  return new Int8Array(playground.memory.buffer, ptr, len);
+}
+function sliceI16FromWasm(ptr, len) {
+  return new Int16Array(playground.memory.buffer, ptr, len);
+}
+function sliceI32FromWasm(ptr, len) {
+  return new Int32Array(playground.memory.buffer, ptr, len);
 }
 function sliceF32FromWasm(ptr, len) {
   return new Float32Array(playground.memory.buffer, ptr, len);

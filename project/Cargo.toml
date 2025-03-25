@@ -4,8 +4,11 @@ version = { workspace = true }
 edition = { workspace = true }
 
 [dependencies]
+wasm = { workspace = true, optional = true }
+bstr = { workspace = true }
 flate2 = { version = "1.0", optional = true }
 quickdry = { workspace = true, optional = true }
 
 [features]
-read = ["flate2", "quickdry"]
+wasm = ["dep:wasm"]
+read = ["dep:flate2", "dep:quickdry"]
